@@ -91,6 +91,7 @@ def test_cdj850_mod_registry_and_profile():
     assert modelfw.update_window_end("cdj850") == 0x3F0000
 
     assert "tempowide" in patch_main.PATCH_SETS["cdj850"].mods
+    assert "loader" in patch_main.PATCH_SETS["cdj850"].images
     assert "dspprobe" in patch_main.DSP_SETS["cdj850"].mods
 
     rows = {r.key: r for r in launcher_mods.load(type("L", (), {"emu": str(ROOT)})(), "cdj850")}

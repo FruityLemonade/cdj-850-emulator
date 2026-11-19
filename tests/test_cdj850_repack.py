@@ -108,12 +108,34 @@ def test_build_refuses_foreign_boot_region():
         build_upd(_fake_base(), b"x" * 100)
 
 
-def test_build_refuses_oversize_main():
-    from c850_repack import build_upd
+def test_build_accepts_main_past_the_stock_0x200000():
+    # The stock layout ends at 0x200000, but the updater programs up to
+    # 0x3F0000 and the bootloader decodes whatever length it is given.
+    from c850_repack import MAIN_END, PACKED_OFF, check_upd, build_upd
     rnd = random.Random(1)
     big = bytes(rnd.randrange(256) for _ in range(0x1A0000))
-    with pytest.raises(ValueError, match="past the MAIN region"):
-        build_upd(_fake_base(), big, check_boot=False)
+    out = build_upd(_fake_base(), big, check_boot=False)
+    (n,) = struct.unpack_from(">I", out, PACKED_OFF)
+    assert 0x200000 < PACKED_OFF + 4 + n + 2 <= MAIN_END
+    assert check_upd(out, image=big, check_boot=False) == []
+
+
+def test_build_refuses_main_past_0x3f0000(monkeypatch):
+    import c850_repack
+    n = c850_repack.MAIN_END - c850_repack.PACKED_OFF - 4 - 2 + 1
+    monkeypatch.setattr(c850_repack, "pack_tree", lambda image: bytes(n))
+    with pytest.raises(ValueError, match="past the MAIN region end 0x3f0000"):
+        c850_repack.build_upd(_fake_base(), b"x", check_boot=False)
+
+
+def test_check_flags_main_past_0x3f0000():
+    from c850_repack import MAIN_END, PACKED_OFF, check_upd, sum16
+    for over in (0, 1):
+        n = MAIN_END - PACKED_OFF - 4 - 2 + over
+        packed = struct.pack(">I", n) + bytes(n)
+        upd = _fake_base()[:PACKED_OFF] + packed + struct.pack(">H", sum16(packed))
+        flagged = [p for p in check_upd(upd, check_boot=False) if "past 0x3f0000" in p]
+        assert bool(flagged) == bool(over)
 
 
 def test_normalise_drops_only_zero_overrun():

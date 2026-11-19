@@ -36,6 +36,12 @@ deck's own update mode, which is MAIN code. So the checks are:
   3. Boot-critical code (bootcrit.py): no byte a mod writes, whether a call
      site or injected code or claimed free space, lies in code the boot, the
      panel, the display link, the update task or the USB stick task can run.
+     The one exception is the CDJ-850 loader stub (c850loader.py): it
+     rewrites the first literal of MAIN's entry, which is boot code by
+     definition, so that write is accepted only when what the literal now
+     reaches is, byte for byte, the stub c850loader writes, copying a blob
+     with a valid header, all of it over zeros of the statics the start-up
+     code clears.
      The display image has no call graph; there only the load table, the
      vector copy and bytes a mod did not declare are protected.
   4. The DSP program MAIN carries as data (dsppatch.py): the words a mod edits
@@ -64,6 +70,7 @@ sys.path.insert(0, HERE)
 sys.path.insert(0, os.path.join(HERE, '..', 'scripts', 'firmware'))
 
 import bootcrit
+import c850loader
 import c850_repack
 import dsppatch
 import gui_decode
@@ -502,7 +509,15 @@ def check_writes(target, stock_img, out_img, profile, spans, rep, table=None, ds
             cave = sigpatch.find_cave(image)
         except sigpatch.NotApplied:
             pass
-    flat = flat_spans(spans, changed, stock_img, table, cave, dsp)
+    if spans is None and target == 'main':
+        found = c850loader.spans(stock_img, out_img)
+        if found:
+            spans_of_loader = [(lo, lo + size) for lo, size, _ in found]
+            changed = [r for r in changed if not any(lo <= r[0] and r[1] <= hi for lo, hi in spans_of_loader)]
+    else:
+        found = []
+    flat = flat_spans(spans, changed, stock_img, table, cave, dsp) + \
+        [('loader', kind, off, off + size) for off, size, kind in found]
     if spans is not None:
         declared = bootcrit.merge([(lo, hi) for _, _, lo, hi in flat])
         exact = changed_ranges(stock_img, out_img, gap=1)
@@ -516,6 +531,8 @@ def check_writes(target, stock_img, out_img, profile, spans, rep, table=None, ds
             rep.fail('%s: %s claims %#x-%#x as free space, but it is not erased' % (target, mod, lo, hi))
         if kind == 'site' and target == 'main' and hi - lo > MAX_SITE_BYTES:
             rep.fail('%s: %s rewrites %d bytes at %#x, more than a call site' % (target, mod, hi - lo, lo))
+    if any(kind in LOADER_KINDS for _, kind, _, _ in flat):
+        check_loader(target, stock_img, out_img, flat, rep)
     runs = bootcrit.merge([(lo, hi) for _, kind, lo, hi in flat if kind == 'free'])
     proven = 0
     for lo, hi in runs:
@@ -532,6 +549,33 @@ def check_writes(target, stock_img, out_img, profile, spans, rep, table=None, ds
         rep.ok('%s: %d bytes of free space in %d runs are erased (or cave), unreferenced and outside every declared '
                'segment' % (target, proven, len(runs)))
     return flat
+
+
+LOADER_KINDS = ('loader', 'loaderblob')
+
+
+def check_loader(target, stock_img, out_img, flat, rep):
+    """The loader's writes are the entry literal and the stub and blob it
+    reaches, as c850loader verifies them, and nothing else is declared as one."""
+    problems = c850loader.verify(stock_img, out_img) if target == 'main' else ['the loader only patches MAIN']
+    try:
+        payload = c850loader.installed(out_img)
+    except c850loader.LoaderError:
+        payload = None
+    if not problems and payload is None:
+        problems = ['writes are declared as the loader, but the entry still calls the clear']
+    if not problems:
+        expect = {(lo, lo + size, kind) for lo, size, kind in c850loader.spans(stock_img, out_img)}
+        stray = [(lo, hi, kind) for _, kind, lo, hi in flat if kind in LOADER_KINDS and (lo, hi, kind) not in expect]
+        if stray:
+            problems = ['loader write %#x-%#x (%s) is not one c850loader makes' % stray[0]]
+    for p in problems:
+        rep.fail('%s: loader: %s' % (target, p))
+    if not problems:
+        rep.ok('%s: loader: entry literal %#x -> stub %#x, stub verified byte for byte, %d-byte payload to %#x, '
+               'all of it over zeros of the cleared statics'
+               % (target, c850loader.BASE + c850loader.ENTRY_LITERAL, c850loader.BLOB_ADDR, len(payload),
+                  c850loader.PAYLOAD))
 
 
 def check_free_unreached(stock_img, flat, base, rep, cave=None, byteorder='<'):
@@ -646,7 +690,8 @@ def check_main_image(stock_img, out_img, profile, spans, rep, dsp=None):
     rep.ok('main: boot-critical set built from %s: %d routines, %d bytes, %d ranges'
            % (', '.join(sorted(closure.roots)) or 'no task', len(closure.entries),
               sum(hi - lo for lo, hi in closure.ranges), len(closure.ranges)))
-    bad = overlaps(flat, closure.ranges)
+    # The loader's entry literal is boot code by design; check_loader verified what it now reaches.
+    bad = overlaps([f for f in flat if f[1] != 'loader'], closure.ranges)
     for mod, kind, lo, hi, (rlo, rhi) in bad[:SHOWN]:
         where = closure.routine_at(max(lo, rlo))
         func = ('routine %#x, reached from %s' % (base + where[0], where[1])) if where else 'the vector area or a task descriptor'
@@ -705,8 +750,9 @@ def summarize_writes(target, flat, base, rep):
     """What a change that came with no declaration did, in firmware addresses."""
     names = {'free': 'in erased space', 'site': 'over existing code', 'record': 'in the load table',
              'dsp': 'over words of the DSP program', 'dspfree': 'in the erased run of the DSP program',
-             'dspcave': 'in the cave of the DSP program'}
-    for kind in ('site', 'free', 'record', 'dsp', 'dspfree', 'dspcave'):
+             'dspcave': 'in the cave of the DSP program', 'loader': 'as the loader stub\'s entry literal',
+             'loaderblob': 'as the loader stub and its blob, over cleared statics'}
+    for kind in ('site', 'free', 'record', 'dsp', 'dspfree', 'dspcave', 'loader', 'loaderblob'):
         runs = [(lo, hi) for _, k, lo, hi in flat if k == kind]
         if not runs:
             continue

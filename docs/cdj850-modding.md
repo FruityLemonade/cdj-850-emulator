@@ -74,7 +74,7 @@ flowchart LR
 | `0x060024–0x1FE709` | `len` | Packed MAIN Stream | Okumura LZSS stream (ring size `4096`, pre-filled with `0x20`, initial write cursor `4078`). |
 | `0x1FE70A–0x1FE70B` | 2 B | Bootloader Checksum | `BE16` 16-bit plain byte sum (`sum(bytes) & 0xFFFF`) over `0x060020 .. 0x060024 + len` (length word + stream; `0xFB71` in stock v1.13). |
 | `0x1FE70C–0x20E70B` | 64 KB | File Tail Padding | `0x10000` zero bytes in `.UPD` file (`0xFF` in flash past the programmed sectors). |
-| `0x200000–0x3EFFFF` | 1.93 MB | Unused Flash Window | Erased (`0xFF`). The MAIN updater erases/programs up to `0x3EFFFF` (57 × 64 KB sectors from `0x060000`). |
+| `0x200000–0x3EFFFF` | 1.93 MB | Unused Flash Window | Erased (`0xFF`) in stock. The MAIN updater erases/programs up to `0x3EFFFF` (57 × 64 KB sectors from `0x060000`), so a repacked MAIN may grow into it (see below). |
 | `0x3F0000–0x3FFFFF` | 64 KB | Persistent Settings | Never touched by firmware updates. User UTILITY settings & key states live at `0x3F8000` (`PERSIST=1` preserves this sector). |
 
 ### Bootloader Verification & Unpack (`boot.bin`)
@@ -83,6 +83,8 @@ flowchart LR
 3. It sums every byte in `0x060020 .. 0x060024 + len` (`0x0100B2`).
 4. If `(sum & 0xFFFF) == want`, it LZSS-decodes exactly `len` bytes into SDRAM at `0x0C000000–0x0C38FFE0` (3,735,520 bytes) and executes `jsr @0x0C000000`.
 5. If the checksum mismatches, it runs the same check and unpack on the recovery image at `0x020000`.
+
+**Size limit: the packed MAIN may end anywhere up to `0x3F0000`** (`c850_repack.MAIN_END`), not just below the `0x200000` where the stock layout stops. Stage 2 takes the length as is and the decoder only counts it down (its only state is a 4 KB ring at `0x0DDEFC1C`); the updater programs `0x060000–0x3EFFFF` whatever the file length; and MAIN's only other flash writers (`0x0C08EE60`, `0x0C08F32A`) erase and program just the settings/log sectors `0x3F8000`, `0x3FA000`, `0x3FC000`, `0x3FE000`. Emulator proof: a `loader` build carrying 1,507,292 random bytes (packed MAIN ending at `0x370E5F`, a `0x380E5F`-byte file labelled `1.14`) boots to `NO DISC` with its payload intact, and installs from stock `1.13` through the service-mode USB update (`COMPLETE!`, flash `0x060000–0x3F0000` equal to the file, boot region untouched).
 
 ### Service-Mode USB Updater (`0x0C08EC44`)
 - Holding **USB SELECT + RELOOP** at power-on enters USB update mode in MAIN.
@@ -305,7 +307,7 @@ Both USB ports share the SH7263's on-chip controller at `0xFFFC1C00` through the
 
 ## 8. Writing & Validating CDJ-850 Mods
 
-The mod framework (`mods/`) supports three patch types on the CDJ-850 (`mods/players/cdj850.py`):
+The mod framework (`mods/`) supports four patch types on the CDJ-850 (`mods/players/cdj850.py`):
 
 ### 1. Code Cave in MAIN (`MAIN_PROFILE`)
 Because the unpacked MAIN image (`0x0C000000–0x0C38FFE0`) contains almost no contiguous `0xFF` erased flash and its tail (`0x0C1E8E5C+`) overlaps runtime buffers, CDJ-850 MAIN code hooks are placed in a **1,118-byte code cave** formed by six unreached RTOS debug-shell print handlers (`"show semaphore info"` through `"show message buffer info"`, SHA-256 `891c18aac15fe3179e6b6f72df866a24c9bdb443359cfdd63fe2465e0ee6bba8`).
@@ -326,6 +328,25 @@ For changing constants, tables, or conditional branches in place without a tramp
 - `DSP_PROFILE` locates the 4-stage SHI blob at `0x0C155B28` by its 4-word header (`0x000009, 0x000000, 0x300013, 0x04D03F`).
 - `DspMod` can edit 24-bit words in place (`edits=((p_addr, old_24bit, new_24bit), ...)`) and place new 24-bit DSP56300 subroutines into the zeroed vector gap `P:$0080..P:$00FE` of Segment 4 (`code=((0x0080, 'modname'),)`).
 - `dsppatch.verify_shi_boot()` automatically verifies that Segments 1–3 still end with `JMP $FF0000` (`0x0AF080, 0xFF0000`), Segment 4's reset vector `P:$0000` is non-zero, and no stock instruction references the claimed `P:$0080..P:$00FE` space.
+
+### 4. Custom Code in Free SDRAM (`loader`, `sigpatch.ImagePatch`)
+The cave is small, so larger code goes into SDRAM nobody uses. Traced from the start-up code, the kernel configuration, canary-filled 32 MB SDRAM dumps (rekordbox and WAV sessions over USB) and a scan for every literal or immediate that reaches the top of SDRAM, cached or through the uncached `0x2Dxxxxxx` mirror:
+
+| Range | Owner |
+|---|---|
+| `0x0C000000–0x0C1E27E0` | MAIN code, rodata, `.data` |
+| `0x0C1E27E0–0x0CEEFA20` | Statics, zeroed at start-up by `0x0C0B92AC` (bounds at `0x0C14F6F4`/`0x0C14F6F8`) |
+| `0x0CEEFA20–0x0DDEFA20` | Kernel SDRAM heap: task stacks, pools, the 12.1 MB `edbmalloc` pool |
+| `0x0DDEFA20–0x0DDF0C30` | Bootloader stage 2 and its LZSS ring; dead once MAIN runs |
+| `0x0DDF0C30–0x0DF79F50` | **Unused** (no code reference, canary intact in every run) |
+| `0x0DF79F50–0x0DFE0000` | CD sector cache, 150 × 2768 B, via `0x2DF79F50` |
+| `0x0DFE0000–0x0E000000` | PCM scratch during track load, via `0x2DFE0000` |
+
+**`0x0DE00000–0x0DF70000` (1.44 MB) is reserved for custom code.** The [`loader`](../mods/loader/README.md) mod (`mods/c850loader.py`) fills it at boot:
+- MAIN's entry calls the start-up clear through the literal at `0x0C000010`. The mod points that literal at a 64-byte stub at `0x0C1E2800`, in the zero-filled statics the clear wipes (inside the packed image, so covered by the bootloader's sum16).
+- The stub copies the blob behind it (header `LDR<`, format, length, sum32, region end, guard address; payload from `0x0DE00020`) to `0x0DE00000` through the uncached mirror, writes the `>LDR` guard at `0x0DF6FFFC`, and `jmp`s to the clear, which returns to the entry as before. It keeps `r3` (loaded in the entry's delay slot) and `PR`, and uses no cave bytes.
+- The blob travels inside the packed MAIN, which may end at `0x3F0000` (section 2), so even a payload that fills the whole region with incompressible bytes fits; the region's 1,507,292 bytes are the limit.
+- Hooks reach code in the payload with an ordinary `mov.l`/`jsr`. `validate.py` accepts the one write to boot code only for a byte-exact stub with a valid blob over zeros; `c850loader.py ram <dump>` checks the guards and payload sum in an SDRAM dump.
 
 ### Reference Mods Included in the Repository
 - **[`mods/tempo_wide/`](../mods/tempo_wide/cdj850/patch.py)**:

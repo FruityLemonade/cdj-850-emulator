@@ -186,3 +186,9 @@ UDP send wrapper, ...). Words a mod's routines hand each other at the end of
 the free space (`FreeEnd`) belong to that mod; no two mods may take the same
 bytes, which the tests check. An emulator-only knob (`high_fps`) has just its
 `mod.conf` and page.
+
+A few patches are neither a routine nor a byte rewrite found by a table. These
+are declared as a `sigpatch.ImagePatch`: a function that transforms the whole
+image and reports what it wrote. The only one so far is the CDJ-850
+[`loader`](../mods/loader/README.md). It changes the first literal of MAIN's
+entry, and the validator checks it with its own rule, `validate.check_loader`.

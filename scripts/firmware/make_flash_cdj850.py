@@ -3,9 +3,11 @@
 """Assemble the CDJ-850's 4 MB NOR flash image from the prepared firmware.
 
 The updater's own offsets (docs/cdj850-modding.md): boot.bin at flash 0, the
-MAIN region at 0x60000, erased (0xFF) elsewhere. The updater never programs
-past 0x200000, so the top half stays erased. The board boots through the
-bootloader at flash 0 (MAIN_BOOT=flash).
+MAIN region at 0x60000, erased (0xFF) elsewhere. This builds the stock flash,
+whose packed MAIN ends below 0x200000, so everything above stays erased. (The
+updater itself programs 0x060000-0x3EFFFF, and a repacked MAIN may run up to
+0x3F0000: c850_repack.MAIN_END.) The board boots through the bootloader at
+flash 0 (MAIN_BOOT=flash).
 
 usage: make_flash_cdj850.py [out.bin] [extract-dir]
   out.bin      default extract/cdj850/flash_cdj850.bin (repo-relative)
