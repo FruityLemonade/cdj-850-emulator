@@ -18,6 +18,11 @@ What the firmware itself does with the file (docs/cdj850-modding.md,
   check -- so `pack` takes everything below the packed MAIN from a base
   file and refuses a base whose boot region is not the shipped one. Bump
   the version (`--version`) or the deck will skip the update.
+* Size: the packed MAIN may run up to 0x3F0000 (MAIN_END), past the
+  0x200000 the stock layout ends at. Nothing else in MAIN writes flash
+  below 0x3F8000 (the settings/log sectors), and an update to a 3.5 MB
+  file ending at 0x370E5F was verified in the emulator
+  (docs/cdj850-modding.md, section 2).
 * The bootloader's second stage (boot.bin 0x10000, run at 0x0DDEFA20) reads
   a BE32 length at flash 0x60020, adds up the bytes 0x60020..0x60024+len and
   compares the low 16 bits with the BE16 that follows the stream. On a match
@@ -51,8 +56,13 @@ PACKED_OFF = 0x60020         # BE32 stream length, then the stream
 STREAM_OFF = PACKED_OFF + 4
 BOOT_END = 0x60000           # boot + recovery + erased: never changed
 PAD_LEN = 0x10000            # zeros after the checksum in the shipped file
-MAIN_END = 0x200000          # end of the MAIN region the bootloader table,
-                             # make_flash_cdj850.py and c850_decode assume
+MAIN_END = 0x3F0000          # where the packed MAIN (length, stream, sum)
+                             # must end: the updater programs up to here, and
+                             # the 64 KB above holds the settings/log sectors
+                             # it never writes. The bootloader has no bound
+                             # of its own (it decodes the BE32 length), and
+                             # stock ends at 0x1FE70C. Ending here also keeps
+                             # the file (+ PAD_LEN) inside the 4 MB buffer.
 FLASH_WRITE_END = 0x3F0000   # the updater programs 63 x 64 KB from 0
 RECOVERY_OFF = 0x20000       # bootloader's fallback image (same format)
 

@@ -76,9 +76,10 @@ def dsp_mods_for(model):
 
 
 def mods_for(model):
-    """Every patch of `model`: its routines, the rewrites of bytes the firmware already has, and the
-    mods of its DSP program."""
-    own = {**PATCH_SETS[model].mods, **PATCH_SETS[model].tables} if model in PATCH_SETS else {}
+    """Every patch of `model`: its routines, the rewrites of bytes the firmware already has, its
+    whole-image transforms (the CDJ-850 loader) and the mods of its DSP program."""
+    found = PATCH_SETS.get(model)
+    own = {**found.mods, **found.tables, **found.images} if found else {}
     return {**own, **dsp_mods_for(model)}
 
 
