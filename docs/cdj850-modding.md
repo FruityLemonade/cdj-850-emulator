@@ -128,7 +128,7 @@ MAIN runs a TOPPERS/µITRON-style real-time kernel. Tasks are registered from st
 |---|---|---|
 | `0x0CE6D25A` | `u8 is_usb_or_data_mode` | `1` in USB/data mode (set by `FUN_0C0EEFB0`), `0` in CD mode. Mirrors `0x0CE6D25B`. |
 | `0x0CE6D252` | `u8 active_source_index` | Source index (`2` = USB). |
-| `0x0CE6D25F` | `u8 player_state` | `0x0C0E6D25D + source_idx`: `0x0A` = USB browse, `2` = loading, `3` = playing, `4` = paused (CDJ mode / CUE), `5` = paused/braking (VINYL mode), `6` = cued. |
+| `0x0CE6D25F` | `u8 player_state` | `0x0C0E6D25D + source_idx`: `0x0A` = USB browse, `2` = loading, `3` = playing, `4` = paused (CDJ mode / CUE), `5` = paused/braking (VINYL mode), `6` = cued. On USB `4` = a loop is playing and `5` = paused in CDJ jog mode (see §4b). |
 | `0x0CE6CA9D` | `u8 speed_substate` | `0` = normal pitch-tracked, `1` = VINYL scratch, `2`/`0x12` = instant start with `HOLD=1`, `3` = hold/cued, `4`/`0x24` = VINYL touch/brake/release ramp. |
 | `0x0CE6D0DD` | `u8 time_mode_remain` | `1` = `REMAIN`, `0` = elapsed `TIME` (toggled by `0x0C0D9194`). |
 | `0x0CE6D0DE` | `u8 jog_mode_vinyl` | `1` = `VINYL` (factory default), `0` = `CDJ` mode. |
@@ -183,6 +183,103 @@ MAIN runs a TOPPERS/µITRON-style real-time kernel. Tasks are registered from st
   - Triggered whenever the DSP pulls `PE11/IRQ7` (`DSPDREQ`) low.
   - Masks `IRQ7` (`IPR02` low nibble = `0` at `0x0C076640`), calls `FUN_0C076474` to split the next 84 stereo frames into 45 32-bit words per SSI channel (`[0, header, 42 packed sample pairs, 0]`, where `SSI0` right header = `0xCE5C0000` and `SSI1` left header = `0xCA5A0000`), and starts DMAC `ch1` (`SSI0_TX`, `DMARS0 = 0x2300`) and `ch2` (`SSI1_TX`, `DMARS1 = 0x0027`).
   - When DMAC `ch2` finishes (`DEI2` ISR `0x0C076444`, vector `116`), it re-enables `IRQ7` (`IPR02` low nibble = `7`) so the DSP can request the next block.
+
+---
+
+## 4b. Player Control Flow: Keys, Loops, Cues, Display Text
+
+Traced on MAIN 1.13 (USB source, rekordbox export built by `tools/baken/baken`, GRID128 = 128.00 BPM, 64 bars, memory cues at bars 3/7/12/40, hot cues A/B/C at bars 2/5/9). Tags: **[emu]** = seen in the emulator (RAM over QMP, gdbstub watchpoints), **[static]** = Ghidra only. Driver: `scripts/debug/cdj850_trace.py` (stick builder, key presses, RAM dumps, gdbstub watchpoints). Note: QEMU's watchpoint stop PC is not exact on this target; the reported `PR` (caller) is reliable. Function names below were added to the Ghidra project.
+
+### Units (read this first)
+- **Position = CD frame = 1/75 s = one 2352-byte ring sector = 588 samples.** Every player-level position (cue, loop in/out, memory cue list, `D1C0`, `D158`, track length) is a `u32` frame count from the track start. **[emu]** (memory cues at 3.750/11.250/20.625/73.125 s load as 281/843/1546/5484 = `floor(ms*75/1000)`; GRID128 length 121 s = 9075 frames.)
+- **M/S/F** = `frames_to_minutes_seconds_frames` (`0x0C003E56`): M = f/4500, S = (f/75)%60, F = f%75. Code also rebuilds frames as `M*0x1194 + S*0x4B + F`.
+- **Ring sector ↔ frame:** the PCM ring (2400 sectors, §4 Audio Ring) is a streaming window. Sector-table entry `0x0C750C3C + ring*16`, `+0` u32 = absolute frame held by that slot (`ring_sector_to_frame` = `FUN_0C00851E`; when `*0x0C7F66C8 == 1` it decodes `entry+7` instead). **[emu]**: after the first wrap entry 0 held frame 2400; after a CALL jump the ring restarts at index 0 while the frame is 2083, so ring index ≠ frame.
+- **Current play frame:** `u32 0x0C7F647C` (copied into `D1C0` in state 6) **[emu]**. Ring read index `0x0C7F645C` (u16).
+- **Grid time:** `ms = frames*1000/75` (`FUN_0C073788` uses `(frames*1000) * 0x1B4E81B5 >> 35`); back: `frames = ms*75/1000`.
+- **Half frames:** no position finer than one frame was found in the player, cue list, loop records or ANLZ conversion. The only sub-frame quantity is the feeder's byte pointer `0x0C7F6470`, which loop wraps and seeks reset to sector boundaries (`base + sector*0x930`). Half-frame cue/jog needs a new unit or a byte-offset path in the feeder. **[static]**
+- **Paused (state 5, CDJ jog mode):** the frame stays fixed (`0x0C7F647C` = 609) while the ring read index cycles over about 12 sectors (597..608), the pause stutter buffer. **[emu]** Jog-search step size in pause was **not** measured (one `jog+1` count did not move the frame); `player_tick_jog` = `FUN_0C0DD978` is not traced.
+
+### 1. Key input path
+| Stage | Address | What |
+|---|---|---|
+| RX raw | `0x0CE6C960` | SCIF1 RX bytes (RX1 at +0, RX2 at +0x10). |
+| Unpack | `panel_unpack_buttons` `0x0C0D610C` (also inlined in `FUN_0C0D60BC`) | Copies RX1 bytes 1..14 to `0x0CE6C980+0..0xD` and RX2 bytes 1..12 to `+0xE..+0x19`. Words: `+0xC` word0 (RX1 13..14), `+0xE` word1, `+0x10` word2, `+0x12` word3, `+0x14` word4 (§5 masks). `FUN_0C10284C` is only a 100-entry debug key log. |
+| Accepted | `0x0CE6C9F2` (+0xE/+0x10/+0x12 = words 1..3, +0xC = word0 & 0x20) | Debounced copy, written when the state changed and the player gates allow it; sets **new-keys flag `u8 0x0CE6D132` = 1**. |
+| Remap | `panel_keys_to_internal_words` `0x0C0ECCB4`, called only by `bsr` at **`0x0C0ED1FA`** (delay slot `mov r0,r4`) in the DjControlTask loop when `0x0CE6D132` is set, directly before `FUN_0C0EC73C` (state tick, `bsr` at `0x0C0ED274`) | Builds the **internal "held" words K0/K1/K2** from `0x0CE6C980` (table below). Also copies pitch/jog fields. |
+| Held state | **K0 `u16 0x0CE6CA08`, K1 `0x0CE6CA0A`, K2 `0x0CE6CA0C`** (`0x0CE6CA0E` cleared) | Level state: bit set while the key is held. **[emu]**: BEAT SELECT held → `K0=0x0040`; + RELOOP → `0x0440`; BEAT 8 → `K1=0x0080`; CALL◀/▶/DELETE/MEMORY → `K2=0x0100/0x0200/0x0400/0x0800`; LOOP IN/OUT → `K0=0x1000/0x0800`. |
+| Previous | **`0x0CE6CA22/24/26`** | Copied from K0..K2 at the end of each player cycle by `player_keys_latch_prev` (`0x0C0E49CC`, tail-called from `FUN_0C0D79D8`). |
+| Edge rule | all handlers | press = `(K & m) != (prev & m) && (K & m) == m`; release = `(K & m) != (prev & m) && (K & m) == 0`. Hold timers are per handler (e.g. DELETE `0x0CE6CA7E` = 5000). |
+| UI lock | `u8 0x0CE6D151` | When 1, `FUN_0C0EC73C` saves K0..K2 to `0x0CE6CA14` and masks K0 &= 3, K1 &= 4 or 0x380C, K2 &= 0x100B. |
+| Dispatch | `player_key_dispatch_by_state` `0x0C0D7800` (switch on `player_state` `0x0CE6D25D+src`) | state 3/5 → `0x0C0DEB50` (named `player_handle_play_pause`, actually the whole play-state key handler), 4 (looping) → `keys_state4_looping` `0x0C0E0F34`, 6 (cued) → `0x0C0E1D54`, 7 → `0x0C0E2414`, 8 → `0x0C0E2A2C`, 9 → `0x0C0E36BC`, 10/12/14 → `0x0C0E3ED8`, other → `0x0C0DE75E`. |
+| Common keys | `player_handle_tempo_and_time_buttons` `0x0C0D8D78` (all states) | TEMPO, MT, VINYL, TIME, **MEMORY, DELETE, CALL◀/▶** (below). |
+
+Internal bits (from `0x0C0ECCB4`):
+
+| Word | Bits |
+|---|---|
+| K0 `0x0CE6CA08` | `0x8000` REV, `0x4000` CUE, `0x2000` PLAY, `0x1000` LOOP IN, `0x0800` LOOP OUT, `0x0400` RELOOP/EXIT, `0x0040` BEAT SELECT, `0x0020` SEARCH◀◀, `0x0010` SEARCH▶▶, `0x0008` TRACK▶▶\|, `0x0004` \|◀◀TRACK, `0x0002` DISC, `0x0001` USB |
+| K1 `0x0CE6CA0A` | `0x8000` TAG TRACK, `0x2000` INFO, `0x1000` TAG LIST, `0x0800` BROWSE, `0x0400` VINYL, `0x0200` TEMPO, `0x0100` MASTER TEMPO, **`0x0080` BEAT 8, `0x0040` BEAT 4, `0x0020` BEAT 2, `0x0010` BEAT 1**, `0x0008` BACK, `0x0004` EJECT |
+| K2 `0x0CE6CA0C` | `0x2000` TIME MODE, `0x1000` MENU, `0x0800` MEMORY, `0x0400` DELETE, `0x0200` CALL▶, `0x0100` CALL◀, `0x0008` USB STOP, `0x0001` LINK |
+
+**BEAT SELECT** press edge (K0 `0x40`) toggles `u8 0x0CE6D154` (fraction mode: loops become 1/16..1/2 beat) and `0x0CE6D156` in `player_keys_latch_prev` **[emu]**. No other handler uses the key, so BEAT SELECT + RELOOP is free.
+
+**Interception points**
+- **One hook for all player keys:** wrap the `bsr panel_keys_to_internal_words` at `0x0C0ED1FA`. After the call, K0..K2 hold the new level state; a mod keeps its own previous copy (stock `prev` is overwritten every cycle) and clears bits it consumes in K0..K2 before `FUN_0C0EC73C` runs. Stock handlers then never see the key (no edge, no hold). This is the only place where combos (BEAT SELECT+RELOOP, hold 8 + pad) are clean: the per-state beat-loop scanners test `0x80>>i` first, so with BEAT 8 held a new BEAT 1 press calls the handler with 8 again. **[static, call site checked]**
+- **Beat-loop buttons per state** (pool literals, one loader each, handler gets `beats` = 1/2/4/8 in r4 and returns 1 = handled): `0x0C0E02F4` (state 3/5 → `FUN_0C0E51B6`, loaded `0x0C0E0202`), `0x0C0E144C` (state 4 → `FUN_0C0E5390`, `0x0C0E12B0`), `0x0C0E2028` (state 6 → `FUN_0C0E53B0`, `0x0C0E1E66`), `0x0C0E30D4` (state 8 → `FUN_0C0E53B0`, `0x0C0E3044`), `0x0C0E2874` (state 7 → `FUN_0C0E5400`). All end in `auto_beat_loop_set`.
+- **CALL◀/▶:** pool literal **`0x0C0D9994`** (= `cue_call_prev_next`), loaded only at `0x0C0D98AC` (CALL▶, r4 = 1) and `0x0C0D98EA` (CALL◀, r4 = 0). Redirecting the literal swaps both buttons in every state (the handler is skipped when `u8 0x0C1E108C == 5`, which routes to `FUN_0C0E8776`).
+- **MEMORY:** press → tail jump to `memory_button` `0x0C0D4172` (pool `0x0C0D9714`). **DELETE:** press arms `0x0CE6CA7E = 5000` and sets bit 2 of `0x0CE6CA2E`; release → `FUN_0C0D439E` (pool `0x0C0D9970`); long hold path → `FUN_0C0D441A`. **[static]**
+
+### 2. Loops
+- **State:** `player_state` = **4 while a loop plays** **[emu]** (the §4 table's "4 = paused" is wrong for USB; CDJ-mode pause is 5). `u8 0x0CE6D0ED` = loop active (player), `0x0CE6D0EC` = a cue/loop point exists (enables RELOOP/MEMORY), `0x0CE6D0EE` = loop flag 2. `u8 0x0C1E1088` = active auto-loop beat count (1/2/4/8, 0 = none) **[emu]**. Audio layer: `u8 0x0C7F6674` = loop playing (set/cleared by the feeder), `0x0C7F6675` = rebuild pending, `0x0C7F6677` = out set.
+- **Loop records (audio task, all [emu]):**
+
+| Address | Field |
+|---|---|
+| `u32 0x0C7F6498` | loop in / cue frame |
+| `u16 0x0C7F649E` | its track number |
+| `u16 0x0C7F64A0/A2/A4` | its M, S, F |
+| `u16 0x0C7F64A8` | its ring sector |
+| `u32 0x0C7F64B0` | loop out frame (applied) |
+| `u16 0x0C7F64B6`, `0x0C7F64B8/BA/BC`, `0x0C7F64C0` | out track, M/S/F, ring sector |
+| `u32 0x0C7F64C4` | second out copy (selected when `u8 0x0C7F64E1 != 0`) |
+| `u32 0x0C7F64DC` | **requested loop out frame** (from audio cmd 6) |
+| `u32 0x0C7F650C` | track length in frames (clamp) |
+
+- **Auto beat loop** `auto_beat_loop_set` (`0x0C0E570A`, r4 = beats): stores beats in `0x0C1E1088`; if no loop is active (`0x0CE6D0ED == 0`) sets `D1C0` (`u32 0x0CE6D1C0`) = current frame (state 6: `*0x0C7F647C`; else `ring_sector_to_frame(*(s16)0x0C7F6468)`), then `beat_loop_out_from_bpm(beats, &bpm, tracklen)` (`0x0C0E5590`):  
+  `bpm = round(*(u16)0x0C9D23EC / 10)` (whole BPM, 0 → 130), `CA90 = D1C0 + 36000/bpm` (8-beat limit), **`D1C0 += beats*4500 / (bpm * (D154*15 + 1))`**, clamped to `tracklen-1`. It returns 1 only when enough audio is buffered past the out point, else 0 (no loop). Then **`audio_send_cmd(6, 0, D1C0 /*out*/, 0, 0, *0x0CE6D12D, 0, src)`**, state → 4, `0x0CE6D0EC/ED/EE` = 1. Loop in = the next sector the feeder plays. **[emu]** at 26.5 s: in 1991, out 2131 (140 = trunc(4·4500/128)), `CA90` 2272. Loop length is quantised to whole frames and whole BPM; no grid lookup.
+- **While a loop plays** (`0x0CE6D0ED == 1`) the beat buttons resize: `FUN_0C0E5668` computes the new out and sends `audio_send_cmd(6, 0, out, 1, …)`. **[emu]** loop in 43: BEAT 8 → request 324 (= 43+281), BEAT 1 → 78 (= 43+35). The request lands in `0x0C7F64DC` at once; `audio_apply_loop_out` (`0x0C009E5A`, audio task) moves it to `0x0C7F64B0` with the ring sector `FUN_0C008294(in_ring, out-in)` and MSF, and the feeder rebuilds the 4-segment loop (`audio_build_loop_segments` `0x0C015BD4`) at the next pass. The applied out was still the old value 2 s after the press and the new value after EXIT.
+- **To set an arbitrary loop:** loop in comes from the play position at LOOP IN (records above); out goes through `audio_send_cmd(6, 0, out_frame, resize?1:0, 0, *0x0CE6D12D, 0, *0x0CE6D252)`. **To change length while playing:** same call with param4 = 1 and the new out (in + len). **[emu for the stock paths]**
+- **LOOP IN** (K0 `0x1000` press in the state-3 handler `0x0C0DEB50`) writes the loop-in record (frame 2083 = MSF 0:27:58 **[emu]**). **LOOP OUT** after LOOP IN → state 4, out record set (2103) **[emu]**. LOOP OUT inside an auto loop changed nothing visible (`FUN_0C0E1438(2/3)` path, not traced). **RELOOP/EXIT** in state 4 → state 3, `0x0C7F6674 = 0`, `0x0CE6D0ED = 0`, records kept, `0x0CE6D0EC` stays 1 **[emu]**; RELOOP again re-enters state 4.
+- `audio_clear_loop_segments` (`0x0C015B18`) is called from `FUN_0C0EC73C` whenever the state leaves 4..9.
+
+### 3. Cues
+- **Runtime memory cue list** (current track): `0x0CE649D4`, entries of **0x24 bytes** (9 × u32), end marker `flags == 0xFFFFFFFF`, sorted by position (`FUN_0C0D3AF4`), max 10 (count `u16 0x0CE65850`). Entry: `[0]` flags (bit 0 = loop, bit 12 = set on new USB entries), `[1]` track, `[2]` loop-out track, **`[3]` cue frame**, **`[4]` loop-out frame**, `[5..8]` extra positions. **[emu]**: 281/843/1546/5484 from the export; MEMORY inside a loop added `{flags 1, 2083, out 2103}`.
+- **ANLZ context pointer `u32 0x0CE649D0`** (just before the list). In the emulator it held `0x0CFCFF2C`; **hot cue slots A/B/C at `ctx+0xF90/0xFC8/0x1000`** held the PCPT records with times 1875/7500/15000 ms **[emu]**. PCPT (0x38 bytes, big-endian): `+0x0C` hot cue number (0 = memory), `+0x1C` type (1 = point, 2 = loop), **`+0x20` time ms**, `+0x24` loop end ms (`0xFFFFFFFF` = none). Position = `ms*75/1000` frames.
+- **CALL◀/▶** `cue_call_prev_next` (`0x0C0D3B1A`, r4 = 0 prev / 1 next): USB branch calls `cue_select_from_list(src, 1)` (`0x0C0D275A`, via pool `0x0C0D41BC`, loaded once at `0x0C0D3F5C`). That function picks the entry with `FUN_0C0D35B6` and copies it to the **jump target record `0x0CE65C0C`** (0x24 bytes: `+1/+2` loop flags, `+3` flag bit 12, `+4` track, `+0xC` cue frame, `+0x10` out frame) and to **`u32 0x0CE6D158`** (cue frame), `0x0C7F66F4/0x0C7F6758/0x0C7F675C` (loop out) and `0x0CE6D0ED/EE` (memory loop). Then: state → 6, and **`audio_send_cmd(7, 4, *0x0CE6D158, loop?1:0, track, 0, 0, *0x0CE6D254)`** (a loop also sets `0x0CE6CA88 = 4`; without a loop `memset(0x0C7F64B0, 0, 0x14)` first). **[emu]**: CALL◀ → `D158` = 2083, state 6, memory loop armed; CALL▶ → 5484.
+- **Hot-cue trigger recipe:** fill `0x0CE65C0C`/`D158` like `cue_select_from_list` does and return 0, i.e. redirect pool `0x0C0D41BC` to a selector that returns the hot cue when a mod flag is set and otherwise tail-calls `0x0C0D275A`; then call `cue_call_prev_next`. **[static]**
+- **MEMORY** → `memory_button` (`0x0C0D4172`) → `memory_cue_add(src, 1)` (`0x0C0D2BC8`, USB branch): builds the 0x24 record from the loop/cue records (`0x0C7F649E`, MSF at `0x0C7F64A0` and `0x0C7F64B8`), calls **`FUN_0C0C1442(*0x0CE649D0, FUN_0C0747C6()+4, 0x0CE6A0F8, 0)`** (db handle, track key, converted record) (adds the cue to the ANLZ and writes it: `FUN_0C0C17E6` → `FUN_0C0C5960` → `FUN_0C0C5EEC` ANLZ save), then inserts into the runtime list. Popups come from `FUN_0C0D5912` (message ids 0x1F/0x32B/0x312/0x311/0x314). **[list update emu; USB write static]** (the emulator stick is `snapshot=on`).
+
+### 4. Beat grid
+- **Grid context `0x0C9D24FC`** **[emu]**: `+4` file id of the loaded grid (`0x0C9D2500`), `+8` FILE*, `+0x6C` file offset of the PQTZ entries, `+0x70` window valid, **`+0x74` beat count** (GRID128: 259), **`+0x78` u16 window index**, `+0x7A` u16 window count (1 if ≤ 1000 beats, else `(n-1001)/500 + 2`), **`+0x7C` window: 1000 entries × 8 bytes = `{u16 beat_in_bar (1..4), u16 BPM×100, u32 time_ms}`** (`0x0C9D2578` + 4 = first time). Window w holds beats `[w*500, w*500+1000)`.
+- `grid_page_window` (`0x0C00119E`, `(ctx, file_id)`): (re)reads header and window `+0x78` from the file (`offset + w*4000 + 0xC`, 8000 bytes). Returns 1 if valid.
+- `grid_find_beat` (`0x0C0012E4`, `(ctx, time_ms, mode)`): pages the window back/forward until it brackets `time_ms`, binary-searches (`FUN_0C0012B4`). **Returns the index inside the current window** (absolute beat = `ctx+0x78`·500 + index), −1 on error, 0 if before the window. With `lo` = last beat with time ≤ ms and `hi` = the next one: `mode 0` returns `lo` if `ms - t[lo] < t[hi] - ms`, else `hi` (nearest, ties go up); `mode != 0` always returns `hi` (the next beat, even on an exact hit). Read the time as `*(u32*)(0x0C9D2580 + idx*8)` and the BPM×100 as `*(u16*)(0x0C9D257A + idx*8)` **after** the call (it may page). Only caller: `FUN_0C073788` (BPM display).
+
+### 5. Panel LEDs
+- **Status staging block `S = 0x0C9D0AD8`**, copied to the TX page buffer `0x0C9D07A8` (page 1) / `0x0C9D07B8` (page 2) by `panel_tx_build_status_pages` (`0x0C065D9E`): page 1 bytes 1..7 = `S[0..6]` (**frame digit = `S[6]` = `0x0C9D0ADE`**), 8..9 = `S+8`, 10..11 = `S+10`, 13..14 = `S+0xC`; page 2 byte 1 = `S[0xE]`, 2 = `S[0x10]`, 3 = `S[0xF]`, 4 = `S[0x14]`, **5 = `S[0x11]` (`0x0C9D0AE9`), 6 = `S[0x12]` (`0x0C9D0AEA`), 7 = `S[0x13]` (`0x0C9D0AEB`)**, 8..14 = `S[0x15..0x1B]`. **[emu]** (TX page 2 bytes 5..7 equal `S[0x11..0x13]`).
+- **Beat-loop LEDs = page 2 byte 7 bits 0..3** (`0x01` = 1 … `0x08` = 8), **RELOOP = page 2 byte 6 bit 0**, LOOP IN/OUT = byte 5 `0x20/0x40`. Written at the end of `display_stage_navigation_leds` (`0x0C062FFC`, tail `0x0C063484..`): low nibble = `0xF` if `0x0CE6D154 == 0` (all lit) else 0; if `0x0C1E1088` (beats) ≠ 0 it sets that bit and byte 6 bit 0, and blinks the active bit (timers `0x0CE6C9A4` / `0x0CE6C9A0`). **[emu]**: playing `0x4F`; BEAT 4 loop `0x4B`/`0x4F` (bit 2 blinking); byte 6 `0x20` → `0x21` in a loop.
+- **Override point:** after the `bsr display_stage_navigation_leds` at `0x0C062FEE` (in `FUN_0C062F80`), rewrite `S[0x13] & 0x0F` (and `S[0x12]` bit 0). `panel_tx_build_status_pages` itself is boot-critical; do not hook it.
+
+### 6. Settings sector
+- **RAM record `0x0C9DA23C..0x0C9DA293` (0x58 bytes)**, written as an append log into flash `0x3F8000` (next-write pointer `u32 0x0C9DA294`, 0x3F8058 after the first record). The flash task (`0x0C08F2E0`) erases `0x3F8000/0x3FE000/0x3FA000/0x3FC000` (8 KB each) when it restarts the log and programs 0x2C halfwords from `0x0C9DA23C`. A factory record is written at first boot **[emu]**: `C3 02 10 "HISTORY"… "TAG LIST"…`.
+- Layout: `+0` b7/b6/b5 + low nibble (`0x0C08EFC4/EFEA/F010/F036`; b7 = VINYL default), `+1` b7 (`0x0C08F060`) + low nibble (`0x0C08F086`), `+2` low nibble (`0x0C08F0B2`), bits 4..6 AUTO STANDBY index (`0x0C08F15E`), b7 (`0x0C08F194`), `+3..+0x22` string (0x20, "HISTORY"), `+0x23..+0x42` string ("TAG LIST"), `+0x43` error-log index (mod 16), `+0x44..+0x53` error-code log, `+0x54..+0x57` copied on errors 0x12/0x15.
+- **Save:** each `*_and_save` wrapper calls `FUN_0C08E9B0(2, 0x0C9DA23C)` (e.g. `0x0C08F09C`). A VINYL or TEMPO press did not write flash **[emu]**.
+- **Spare bits:** byte `+1` (`0x0C9DA23D`) bits 4..6 (`0x70`): its only accessors are the bit-7 `bst`/`tst #0x80` pair and the low-nibble set/get (`&0xF0|v`, `&0xF`), which preserve them; factory value `0x02` **[static; factory value emu]**. Bit 4 of byte `+0` is likewise untouched by the listed setters, but not every getter of `+0` was checked.
+
+### 7. Dot-matrix text
+- The 100×27 matrix is **text-driven**: three row records at **`0x0C9D0B18 + row*0x105`** (`[tag, attr0, attr1, attr2, len, text[len]]`), serialised by `display_build_1/2` (`0x0C066046`/`0x0C0660D4`) into the `0x80` header and `0x81..` chunks at `0x0C9D07D0` (16 bytes per frame, at most 0x2F frames); dirty flag `0x0C9D1254`. No bitmap path was found for these rows; the `0x60`/`0x70..0x77` frames are the cue strip and waveform (§5).
+- **INFO view while playing:** `FUN_0C06543E` fills the rows (row 2 = attr0 `0x07` text, e.g. "make_test_stick"); its text copy returns to `0x0C06590E` **[emu, gdbstub write watch on row 2]**. `FUN_0C064F9A` drives the mode and row flags.
+- **Hook for a short line (e.g. `128.45 BPM`):** after `FUN_0C06543E` returns (or just before `display_build_1`, called by `FUN_0C064CA4` at `0x0C064CC0`), write a row record (tag = row index, `len` ≤ text length) into row 3 (`0x0C9D0D22`) and set `0x0C9D1254`. Which rows the INFO layout leaves free, and the attr byte meanings, are **not** verified.
+- **Frame digit byte** (page 1 byte 7) = `S[6]` = `0x0C9D0ADE`, written by `display_stage_track_and_time` (`0x0C0644D4`) from `frames_to_minutes_seconds_frames`; when `u16 0x0C9D1D94` ≥ 100 it is forced to `0x4A` (74) with seconds 59 and minutes 99; when `u16 0x0CE6D1EC` ≥ 0x97 all three are blanked (`0xFF`).
 
 ---
 
