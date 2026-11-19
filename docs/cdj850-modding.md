@@ -156,6 +156,13 @@ MAIN runs a TOPPERS/µITRON-style real-time kernel. Tasks are registered from st
 - **`FUN_0C0DD978` (`0x0C0DD978`)**: Main player tick and jog pitch-bend / scratch velocity processor.
 - **`FUN_0C015BD4` / `FUN_0C015B18`**: Builds / clears a 4-segment audio loop (`0x0C1C1460` / `0x0C7F6674`).
 
+### Idle Auto-Standby (`FUN_0C0EF844`, table `0x0C18CCDC`)
+- **Seconds counter**: `FUN_0C0EF844` (called from the player/power state machine `FUN_0C0EF8EC`) adds 1 to a u32 at `0x0C1E10B0` on each call and, after 1000 calls, adds 1 to the u16 seconds counter at `0x0C1E10AE`. Measured in the emulator: the standby request lands about 60 s after the count starts, which fits 1000 calls per second.
+- **Limit**: the request fires when the seconds counter reaches `table[idx]`, a u16 BE at `0x0C18CCDC + 2*idx`, with `idx = (UTILITY byte 0x0C9DA23E >> 4) & 7`. Stock entries: `idx 0` = 0 (AUTO STANDBY OFF, gated out before the compare), `idx 1` = `0x3840` = 14400 s = 4 hours (AUTO STANDBY ON). Indices 2..7 are not used by the UTILITY setting.
+- **Reset**: while the gate fails (`FUN_0C0EF7D6`, or the OFF index), the 6 bytes at `0x0C1E10AE` are cleared through `FUN_0C1106EC`. A TEMPO press in the emulator reset the seconds counter (24 to 8 in the test run), so key activity restarts the count.
+- **Request**: on expiry the state byte `0x0C1E10AC` goes to `4`. State 4 calls `FUN_0C0EEB12(1)`, which sets bit 0 of the status byte at `DAT_0C0EEC90+0x15`; that bit becomes byte 8 of the status page-2 frame (§5).
+- **Mod**: `mods/auto_standby` (`CDJ850_STANDBY_MINUTES`, default 20, 1..1092) rewrites only the `index 1` u16. Playing/source gates, the OFF index and the request path are unchanged.
+
 ### Audio Ring Buffer & SSI Feeder
 - **PCM Sector Ring (`0x0C1E8E5C–0x0C74B05C`)**: Holds `2400` (`0x960`) entries of `0x930` bytes each (2,352 bytes = 1 CD-DA sector = 588 stereo 16-bit big-endian frames). Both CD and USB WAV/MP3/AAC decoders write into this ring.
   - `0x0C7F645C`: Current play sector index (`READ_INDEX`, 16-bit halfword; `0x0C7F6466` in state 4).
