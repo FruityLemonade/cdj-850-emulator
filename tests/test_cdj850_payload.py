@@ -208,10 +208,11 @@ def test_patch_update_adds_the_loader_and_validate_accepts_all_mods_combined(tmp
     names.remove("loader")             # added by itself for the payload
     r = _run(ROOT / "mods" / "patch_update.py", "--model", "cdj850", C850, out, *names)
     assert r.returncode == 0, r.stdout + r.stderr
-    assert "patch_main: payload of bpm_decimals, payload_demo" in r.stdout
+    assert "patch_main: payload of bpm_decimals, payload_demo, quant_loops" in r.stdout
     assert "PASS main: loader: entry literal" in r.stdout
-    # payload_demo's hook literal and redirect, bpm_decimals' hook literal and redirect
-    assert "PASS main: 4 written words call into the payload" in r.stdout
+    # payload_demo's hook literal and redirect, bpm_decimals' hook literal and redirect,
+    # quant_loops' seven redirects
+    assert "PASS main: 11 written words call into the payload" in r.stdout
     v = _run(ROOT / "mods" / "validate.py", "--model", "cdj850", "--stock", C850, out)
     assert v.returncode == 0, v.stdout + v.stderr
     assert "all checks passed" in v.stdout

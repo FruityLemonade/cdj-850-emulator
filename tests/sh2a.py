@@ -204,6 +204,12 @@ class Sh2a:
                 r[n] = r[m] & 0xFF
             elif lo == 0xD:
                 r[n] = r[m] & 0xFFFF
+            elif lo == 0x7:
+                r[n] = ~r[m] & MASK                             # not
+            elif lo == 0xE:
+                r[n] = signed(r[m], 8) & MASK                   # exts.b
+            elif lo == 0xF:
+                r[n] = signed(r[m], 16) & MASK                  # exts.w
             else:
                 raise AssertionError('op %#06x' % op)
         elif group == 0x0:
@@ -291,6 +297,15 @@ class Sh2a:
                 self.macl = val
             else:
                 self.pr = val
+        elif low == 0x84:                                       # divu R0,Rn (SH-2A)
+            r[n] = v // r[0] if r[0] else MASK
+        elif low == 0x94:                                       # divs R0,Rn (SH-2A)
+            a, b = signed(v), signed(r[0])
+            r[n] = (abs(a) // abs(b) * (1 if (a < 0) == (b < 0) else -1)) & MASK if b else MASK
+        elif low == 0x11:                                       # cmp/pz Rn
+            self.t = int(signed(v) >= 0)
+        elif low == 0x15:                                       # cmp/pl Rn
+            self.t = int(signed(v) > 0)
         elif low == 0x80 and op & 0xF00F == 0x4000:             # mulr R0,Rn
             r[n] = v * r[0] & MASK
         elif op & 0xF00F == 0x400C:                             # shad Rm,Rn
