@@ -127,6 +127,17 @@ DataPatch = collections.namedtuple('DataPatch', 'what target fw_versions table b
                                    defaults=('site',))
 
 
+# A patch that is neither a routine nor a rewrite of bytes found by a table: a
+# whole-image transform with its own checks, such as the CDJ-850 loader stub
+# (c850loader.py), which changes one word of MAIN's entry and fills zeros the
+# start-up code clears.
+# what, target, fw_versions as in Mod
+# apply     function (image, environment) -> (new image, [(offset, size,
+#           kind)]); raises NotApplied when the image is not one it was
+#           written for. Applying it to its own output changes nothing.
+ImagePatch = collections.namedtuple('ImagePatch', 'what target fw_versions apply')
+
+
 def is_pcrel_load(op):
     return op & 0xF000 == 0xD000
 
@@ -645,24 +656,25 @@ def trampoline_size(key, hooks):
 
 # The patches of one model's image: its ImageProfile, the routines of the mods
 # (placed in the image, and so laid out together) and the DataPatches (rewrites
-# of bytes already there).
-PatchSet = collections.namedtuple('PatchSet', 'profile mods tables', defaults=({},))
+# of bytes already there) and the ImagePatches (whole-image transforms).
+PatchSet = collections.namedtuple('PatchSet', 'profile mods tables images', defaults=({}, {}))
 
 
 def patch_set(profile, declared):
     """The PatchSet of the patches a model's mod folders declare."""
     return PatchSet(profile,
                     {n: p for n, p in declared.items() if isinstance(p, Mod)},
-                    {n: p for n, p in declared.items() if isinstance(p, DataPatch)})
+                    {n: p for n, p in declared.items() if isinstance(p, DataPatch)},
+                    {n: p for n, p in declared.items() if isinstance(p, ImagePatch)})
 
 
 def patch_model(sets, blob_path, data, names, model, tag, report=None, spans=None):
-    """patch() with the PatchSet `sets` holds for `model`, then its DataPatches.
-    A mod the model has no patch for is reported as not applied; an image with
-    none gets back as it is."""
+    """patch() with the PatchSet `sets` holds for `model`, then its DataPatches,
+    then its ImagePatches. A mod the model has no patch for is reported as not
+    applied; an image with none gets back as it is."""
     report = {} if report is None else report
     found = sets.get(model)
-    known = {**found.mods, **found.tables} if found else {}
+    known = {**found.mods, **found.tables, **found.images} if found else {}
     for name in names:
         if name not in known:
             report[name] = ('skipped', 'no patch for %s' % model)
@@ -675,6 +687,34 @@ def patch_model(sets, blob_path, data, names, model, tag, report=None, spans=Non
                     [n for n in names if n in found.mods], tag=tag, report=report, spans=spans)
     if any(n in found.tables for n in names):
         out = patch_tables(out, found.tables, [n for n in names if n in found.tables], tag, report, spans)
+    if any(n in found.images for n in names):
+        out = patch_images(out, found.images, [n for n in names if n in found.images], tag, report, spans)
+    return out
+
+
+def patch_images(data, images, names, tag, report, spans):
+    """Apply the ImagePatch `images[name]` for each name to data, in the order
+    given. One that raises NotApplied is left out and reported; one whose
+    output is its input is 'present'. Its spans go to `spans` as it names them."""
+    spans = {} if spans is None else spans
+    out = bytes(data)
+    for name in names:
+        image = images[name]
+        try:
+            new, written = image.apply(out, os.environ)
+        except NotApplied as e:
+            report[name] = ('skipped', str(e))
+            print('%s: %s not applied: %s' % (tag, image.what, e))
+            continue
+        spans.setdefault(name, []).extend(written)
+        if new == out:
+            report[name] = ('present', '')
+            print('%s: %s already applied' % (tag, image.what))
+            continue
+        out = new
+        report[name] = ('applied', '')
+        print('%s: %s written (%s)' % (tag, image.what,
+                                       ', '.join('%d bytes at %#x' % (size, off) for off, size, _ in written)))
     return out
 
 

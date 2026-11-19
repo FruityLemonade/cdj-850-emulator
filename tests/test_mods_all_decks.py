@@ -133,6 +133,9 @@ def test_a_mod_folder_holds_every_routine_it_declares():
         for name, mod in decl.MODS.items():
             if isinstance(mod, sigpatch.DataPatch):
                 continue
+            if isinstance(mod, sigpatch.ImagePatch):    # writes its own bytes; the .s is a listing
+                assert os.path.isfile(os.path.join(folder, "%s_%s.s" % (mod.target, name))), (folder, name)
+                continue
             for ext in (".s", ".bin"):
                 assert os.path.isfile(os.path.join(folder, "%s_%s%s" % (mod.target, name, ext))), (folder, name)
 

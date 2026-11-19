@@ -235,6 +235,13 @@ python3 mods/patch_update.py --model cdj850 path/to/C850MAIN.UPD C850MAIN_MOD.UP
 python3 mods/validate.py --model cdj850 --stock path/to/C850MAIN.UPD C850MAIN_MOD.UPD
 ```
 
+To carry custom code, add the [`loader`](mods/loader/README.md) mod and name the
+payload (raw bytes, copied to free SDRAM at boot and run from `0x0DE00020`):
+
+```sh
+CDJ850_LOADER_PAYLOAD=blob.bin python3 mods/patch_update.py --model cdj850 path/to/C850MAIN.UPD C850MAIN_MOD.UPD loader
+```
+
 Run the model's tests with `python3 -m pytest tests/test_cdj850_*.py`. The live
 tests need the built emulator and the prepared firmware. The modding and reverse-engineering reference
 covers the panel protocol, hardware model, memory map and mod hooks. [CDJ-850 reverse engineering & modding](docs/cdj850-modding.md)
