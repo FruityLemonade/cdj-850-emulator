@@ -55,6 +55,8 @@ typedef void c850_hook_fn(u32 *regs, u32 *sp);
 #define C850_MASTER_TEMPO       C850_U8(0x0CE6D0E0)
 #define C850_JOG_MODE_VINYL     C850_U8(0x0CE6D0DE)
 #define C850_DSP_TARGET_SPEED   C850_U32(0x0CE6C940) /* 0x080000 = 1.0x */
+#define C850_PITCH              C850_S16(0x0CE6CA50) /* pitch, 1/100 % (FUN_0C0D9B44) [emu] */
+#define C850_PITCH_WIDE         C850_U8(0x0CE6CA4C)  /* WIDE scale flag for C850_PITCH */
 
 /* ---- BPM words (section 4, mods/bpm999) ---- */
 #define C850_BPM_BASE_TENTHS    C850_U16(0x0C9D23EC) /* 1280 = 128.0 BPM */
@@ -135,7 +137,7 @@ typedef void c850_hook_fn(u32 *regs, u32 *sp);
 /* entry i of the current window: {u16 beat_in_bar, u16 bpm*100, u32 time_ms} */
 #define C850_GRID_BEAT_IN_BAR(i) C850_U16(0x0C9D2578 + (i) * 8)
 #define C850_GRID_BPM100(i)      C850_U16(0x0C9D257A + (i) * 8)
-#define C850_GRID_TIME_MS(i)     C850_U32(0x0C9D2580 + (i) * 8)
+#define C850_GRID_TIME_MS(i)     C850_U32(0x0C9D257C + (i) * 8) /* ctx+0x80 + i*8 (grid_find_beat) */
 
 /* ---- Panel LEDs and status staging (section 4b.5) ---- */
 #define C850_STATUS_STAGING     0x0C9D0AD8           /* S, copied into TX pages 1/2 */
