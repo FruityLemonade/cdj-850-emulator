@@ -163,6 +163,14 @@ MAIN runs a TOPPERS/µITRON-style real-time kernel. Tasks are registered from st
 - **Request**: on expiry the state byte `0x0C1E10AC` goes to `4`. State 4 calls `FUN_0C0EEB12(1)`, which sets bit 0 of the status byte at `DAT_0C0EEC90+0x15`; that bit becomes byte 8 of the status page-2 frame (§5).
 - **Mod**: `mods/auto_standby` (`CDJ850_STANDBY_MINUTES`, default 20, 1..1092) rewrites only the `index 1` u16. Playing/source gates, the OFF index and the request path are unchanged.
 
+### BPM Words, Clamps & Readers (`mods/bpm999`)
+- **Base tempo** `0x0C9D23EC`: `u16 BE` tenths of BPM (`1800` = 180.0). Written by the beat-grid setter (`FUN_0C073788` clamp `movi20 #0x708` at `0x0C0737D6`), the auto counter (`FUN_0C0726EC`, `FUN_0C072824`, reject `> 0x710`, clamp `0x708`) and `FUN_0C072930` (reset to 0).
+- **Whole pitched BPM** `0x0C9D23F0`: `u16 BE`, `round(round(base/10) x (10000+pitch)/10000)`. Written by `FUN_0C0D9B44`, the auto counter tails and the grid setter. No clamp in memory.
+- **Staging BPM** `0x0C9D0AE0` (TX page 0x01 bytes 8..9): written by `display_stage_bpm` (`0x0C064118`, tail `0x0C0642AA..0x0C0642B8` hooked by `bpm999`) and `FUN_0C068304` (boot-critical, unpitched). Read only by `panel_tx_build_status_pages` (`0x0C065D9E`, boot-critical, not touched).
+- **Sync/tempo range** `FUN_0C0D1C42`: base outside 60.0..(199.9 stock, 999.0 with `bpm999`) stores 130.0 in the sync field. `FUN_0C0D1D56`, `FUN_0C0D1CE6` compute pitch as `(target x 10000) / base - 10000` and cast to `short` before the +-16% test: a wrap is possible when target/base is about 7.5 or more.
+- **Readers of 0x0C9D23EC** (safe / needs change / changed): `display_stage_bpm` safe (staging, changed by hook); `FUN_0C072930` safe (zeroes); `FUN_0C0726EC`, `FUN_0C072824` kept (detector window); grid setter (`0x0C0736xx`) safe; `FUN_0C073788` changed; `upd_load_from_cd`, `upd_load_from_usb` safe (service update uses the word as scratch: writes 0 / 200); `FUN_0C06F320` formatter needs check (thousands digit can be 1..9 at 999.0); `FUN_0C0715F6` not checked; `FUN_0C0D1B58`, `FUN_0C0D1BDE`, `FUN_0C0D1E40` safe (copies into sync fields); `FUN_0C0D1C42` changed (range); `FUN_0C0D1D56`, `FUN_0C0D1CE6` safe in range, short-cast wrap noted above; `FUN_0C0D9B44` safe (no overflow: 999 x 20000 < 2^31), output clamped at display; `FUN_0C0E54AE` safe (whole BPM for link/MIDI, `0x82` sentinel for 0; check the consumer's range); `FUN_0C0E9E68`, `FUN_0C0EA8AE` safe (signed-16 compares up to 9990); `FUN_0C0EF112`, `FUN_0C0EB46E` safe (zero); `player_handle_play_pause`, `FUN_0C0E2A2C`, `FUN_0C0E0F34`, `FUN_0C0E2414`, `FUN_0C0EB704`, `FUN_0C0EC73C`, `FUN_0C0EBA58`, `FUN_0C0EBF0E`, `FUN_0C0EC128`, `FUN_0C0DE680`, `FUN_0C0DB2E8`, `FUN_0C0D60BC`, `FUN_0C0E8ECC`, `FUN_0C0EB660` not checked (xref pattern only).
+- **Mod**: `mods/bpm999` (grid and range DataPatches, display clamp hook), `mods/bpm_probe` (BPM 199 and frame 75..99 hook on the same span, default off; counters at `0x0DDF0C40/44`, unused SDRAM).
+
 ### Audio Ring Buffer & SSI Feeder
 - **PCM Sector Ring (`0x0C1E8E5C–0x0C74B05C`)**: Holds `2400` (`0x960`) entries of `0x930` bytes each (2,352 bytes = 1 CD-DA sector = 588 stereo 16-bit big-endian frames). Both CD and USB WAV/MP3/AAC decoders write into this ring.
   - `0x0C7F645C`: Current play sector index (`READ_INDEX`, 16-bit halfword; `0x0C7F6466` in state 4).
@@ -359,6 +367,8 @@ The cave is small, so larger code goes into SDRAM nobody uses. Traced from the s
 - **[`mods/tempo_wide/`](../mods/tempo_wide/cdj850/patch.py)**:
   - Hooks `0x0C0D8DC2..0x0C0D8DCE` in the `TEMPO` button handler (`main_tempowide.s`): when current range `r6 == 2` (±10%), rewrites saved `r6` at `@(24,r4)` to `3` (±16%) so the firmware's next increment steps `3 -> 4` (`WIDE`, ±100%) on USB.
   - Applies two `DataPatch` edits (`tempowidemath1`, `tempowidemath2`) in `FUN_0C0D59B8` so USB mode uses the overflow-safe `WIDE` pitch multiplier.
+- **[`mods/bpm999/`](../mods/bpm999/README.md)**: beat-grid tempo clamp 180.0 -> 999.0 (`movi20` at `0x0C0737D6`), sync range upper bound 199.9 -> 999.0 (`0x0C0D1C80`), and a clamp of the staging BPM word to 999 hooked at `display_stage_bpm`'s tail (`0x0C0642AA..0x0C0642B8`).
+- **[`mods/bpm_probe/`](../mods/bpm_probe/README.md)** (hardware probe, off): BPM 199 and frame digits 75..99 on the same hook.
 - **[`mods/dsp_probe/`](../mods/dsp_probe/cdj850/patch.py)**:
   - Replaces a main-loop `NOP` (`0x000000`) at Segment 4 `P:$01EA` with `JSR $0080` (`0x0D0080`) and places `nop; nop; rts` (`0x000000, 0x000000, 0x00000C`) at `P:$0080`.
 
