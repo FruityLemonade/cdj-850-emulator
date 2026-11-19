@@ -62,6 +62,7 @@ header and lies over zeros of the cleared statics. Any other write to the
 entry fails as a change to boot-critical code. `python3 mods/c850loader.py check <stock.bin> <main.bin>`
 runs the same check on two unpacked images.
 
-The packed MAIN must still end below `0x200000` (`c850_repack.MAIN_END`).
-Stock leaves 6 KB free, so the payload is limited to a few KB until that
-limit is raised towards `0x3F0000`.
+The packed MAIN may end anywhere up to `0x3F0000` (`c850_repack.MAIN_END`;
+the stock layout stops at `0x200000`, the updater programs to `0x3F0000`).
+Even a payload that fills the whole region with random bytes packs to an
+end of `0x370E5F`, so the region's 1,507,292 bytes are the only limit.

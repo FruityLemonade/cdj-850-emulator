@@ -20,6 +20,8 @@ def find_main_label(data):
         raise ValueError("label at 0x%x, expected 0x%x" % (off, C850_LABEL_OFF))
     return off
 def carve_regions(data):
+    # The regions of the SHA-pinned stock file (read_upd): its packed MAIN ends
+    # at 0x1FE70C. A repacked MAIN may run up to 0x3F0000 (c850_repack.MAIN_END).
     return {
         "boot": data[0x000000:0x040000],
         "erased": data[0x040000:0x060000],

@@ -74,7 +74,7 @@ flowchart LR
 | `0x060024–0x1FE709` | `len` | Packed MAIN Stream | Okumura LZSS stream (ring size `4096`, pre-filled with `0x20`, initial write cursor `4078`). |
 | `0x1FE70A–0x1FE70B` | 2 B | Bootloader Checksum | `BE16` 16-bit plain byte sum (`sum(bytes) & 0xFFFF`) over `0x060020 .. 0x060024 + len` (length word + stream; `0xFB71` in stock v1.13). |
 | `0x1FE70C–0x20E70B` | 64 KB | File Tail Padding | `0x10000` zero bytes in `.UPD` file (`0xFF` in flash past the programmed sectors). |
-| `0x200000–0x3EFFFF` | 1.93 MB | Unused Flash Window | Erased (`0xFF`). The MAIN updater erases/programs up to `0x3EFFFF` (57 × 64 KB sectors from `0x060000`). |
+| `0x200000–0x3EFFFF` | 1.93 MB | Unused Flash Window | Erased (`0xFF`) in stock. The MAIN updater erases/programs up to `0x3EFFFF` (57 × 64 KB sectors from `0x060000`), so a repacked MAIN may grow into it (see below). |
 | `0x3F0000–0x3FFFFF` | 64 KB | Persistent Settings | Never touched by firmware updates. User UTILITY settings & key states live at `0x3F8000` (`PERSIST=1` preserves this sector). |
 
 ### Bootloader Verification & Unpack (`boot.bin`)
@@ -83,6 +83,8 @@ flowchart LR
 3. It sums every byte in `0x060020 .. 0x060024 + len` (`0x0100B2`).
 4. If `(sum & 0xFFFF) == want`, it LZSS-decodes exactly `len` bytes into SDRAM at `0x0C000000–0x0C38FFE0` (3,735,520 bytes) and executes `jsr @0x0C000000`.
 5. If the checksum mismatches, it runs the same check and unpack on the recovery image at `0x020000`.
+
+**Size limit: the packed MAIN may end anywhere up to `0x3F0000`** (`c850_repack.MAIN_END`), not just below the `0x200000` where the stock layout stops. Stage 2 takes the length as is and the decoder only counts it down (its only state is a 4 KB ring at `0x0DDEFC1C`); the updater programs `0x060000–0x3EFFFF` whatever the file length; and MAIN's only other flash writers (`0x0C08EE60`, `0x0C08F32A`) erase and program just the settings/log sectors `0x3F8000`, `0x3FA000`, `0x3FC000`, `0x3FE000`. Emulator proof: a `loader` build carrying 1,507,292 random bytes (packed MAIN ending at `0x370E5F`, a `0x380E5F`-byte file labelled `1.14`) boots to `NO DISC` with its payload intact, and installs from stock `1.13` through the service-mode USB update (`COMPLETE!`, flash `0x060000–0x3F0000` equal to the file, boot region untouched).
 
 ### Service-Mode USB Updater (`0x0C08EC44`)
 - Holding **USB SELECT + RELOOP** at power-on enters USB update mode in MAIN.
@@ -343,6 +345,7 @@ The cave is small, so larger code goes into SDRAM nobody uses. Traced from the s
 **`0x0DE00000–0x0DF70000` (1.44 MB) is reserved for custom code.** The [`loader`](../mods/loader/README.md) mod (`mods/c850loader.py`) fills it at boot:
 - MAIN's entry calls the start-up clear through the literal at `0x0C000010`. The mod points that literal at a 64-byte stub at `0x0C1E2800`, in the zero-filled statics the clear wipes (inside the packed image, so covered by the bootloader's sum16).
 - The stub copies the blob behind it (header `LDR<`, format, length, sum32, region end, guard address; payload from `0x0DE00020`) to `0x0DE00000` through the uncached mirror, writes the `>LDR` guard at `0x0DF6FFFC`, and `jmp`s to the clear, which returns to the entry as before. It keeps `r3` (loaded in the entry's delay slot) and `PR`, and uses no cave bytes.
+- The blob travels inside the packed MAIN, which may end at `0x3F0000` (section 2), so even a payload that fills the whole region with incompressible bytes fits; the region's 1,507,292 bytes are the limit.
 - Hooks reach code in the payload with an ordinary `mov.l`/`jsr`. `validate.py` accepts the one write to boot code only for a byte-exact stub with a valid blob over zeros; `c850loader.py ram <dump>` checks the guards and payload sum in an SDRAM dump.
 
 ### Reference Mods Included in the Repository

@@ -226,13 +226,15 @@ def test_loader_build_boots_and_leaves_the_blob_in_sdram(tmp_path, monkeypatch):
         pytest.skip("extract/cdj850/flash_cdj850.bin is not present")
     if os.name == "nt":
         pytest.skip("QMP socket descriptor inheritance requires POSIX")
-    payload = os.urandom(4098)
+    payload = os.urandom(0x10002)     # random, so the packed MAIN ends past the stock 0x200000
     (tmp_path / "payload.bin").write_bytes(payload)
     monkeypatch.setenv("CDJ850_LOADER_PAYLOAD", str(tmp_path / "payload.bin"))
     report = {}
     flash = tmp_path / "flash.bin"
     flash.write_bytes(patch_main.patch_flash(FLASH_BIN.read_bytes(), ["loader", "tempowide"], "cdj850", report))
     assert report["loader"][0] == "applied" and report["tempowide"][0] == "applied"
+    (n,) = struct.unpack_from(">I", flash.read_bytes(), c850_repack.PACKED_OFF)
+    assert 0x200000 < c850_repack.STREAM_OFF + n + 2 <= c850_repack.MAIN_END
 
     qmp_s, qmp_c = socket.socketpair()
     env = os.environ.copy()
@@ -274,7 +276,13 @@ def test_loader_build_boots_and_leaves_the_blob_in_sdram(tmp_path, monkeypatch):
         region = dump.read_bytes()
         assert L.check_ram(region) == []
         assert region[0x20:0x20 + len(payload)] == payload
-        assert not any(stub.read_bytes()), "the start-up clear did not wipe the stub and its source copy"
+        # The stretch is statics the firmware fills once it runs, so check the
+        # stub and header are zero and no piece of the payload is left.
+        src = stub.read_bytes()
+        assert not any(src[:L.STUB_SIZE + 0x20]), "the start-up clear did not wipe the stub"
+        body = src[L.STUB_SIZE + 0x20:]
+        left = [i for i in range(0, len(payload) - 63, 64) if body[i:i + 64] == payload[i:i + 64]]
+        assert not left, "the start-up clear left the payload's source copy at %#x" % (L.BLOB_ADDR + 0x60 + left[0])
     finally:
         qmp.close()
         qmp_s.close()

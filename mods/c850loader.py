@@ -86,7 +86,7 @@ HEADER = 0x20
 PAYLOAD = REGION + HEADER        # where the payload runs from
 MAX_PAYLOAD = GUARD_HI_ADDR - PAYLOAD
 
-# The stub, hand-assembled from mods/loader/cdj850/loader_stub.s. The pool
+# The stub, hand-assembled from mods/loader/cdj850/main_loader.s. The pool
 # (SRC, DST, WORDS, GUARD_HI_ADDR | UNCACHED, GUARD_HI, CLEAR) follows at
 # +0x1C. mov.l @(disp,pc) reads (pc & ~3) + 4 + disp * 4.
 STUB_CODE = (
