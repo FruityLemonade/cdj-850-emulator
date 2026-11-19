@@ -46,9 +46,6 @@ def main(argv=None):
     if cmd == "firmware":
         from . import firmware
         return firmware.main(rest)
-    if cmd == "dsp-stamp":
-        from . import dsp_module
-        return dsp_module.main(rest)
     if cmd == "packages":
         from . import host, setup
         print(" ".join(setup.packages_for(host.kind(), setup.missing_prerequisites(host.kind()))))

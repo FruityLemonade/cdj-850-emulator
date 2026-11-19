@@ -31,11 +31,17 @@ DMA = 0xFFFE1000
 
 
 def _cdj850_binary():
-    binary = os.environ.get("GUI_QEMU", os.path.expanduser(
-        "~/qemu-build-eb/qemu-system-sh4eb"))
-    if not os.path.isfile(binary):
-        pytest.skip("qemu-system-sh4eb is not built")
-    return binary
+    repo_eb = str(Path(__file__).resolve().parent.parent / "qemu-build-eb" / "qemu-system-sh4eb")
+    candidates = [
+        os.environ.get("GUI_QEMU", ""),
+        os.path.join(os.environ["QEMU_EB_BUILD"], "qemu-system-sh4eb") if os.environ.get("QEMU_EB_BUILD") else "",
+        repo_eb,
+        os.path.expanduser("~/qemu-build-eb/qemu-system-sh4eb"),
+    ]
+    for binary in candidates:
+        if binary and os.path.isfile(binary):
+            return binary
+    pytest.skip("qemu-system-sh4eb is not built")
 
 
 class Deck:

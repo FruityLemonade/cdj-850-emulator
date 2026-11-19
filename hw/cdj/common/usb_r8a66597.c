@@ -429,11 +429,6 @@ static void cdj_usb_pipe_run(CdjUsbState *s, unsigned pipe)
     }
 
     if (out) {
-        /* A transmitting pipe whose FIFO window is DMAC-wired (DREQE) raises a
-         * DMA request for its data once armed. */
-        if (!s->buf[pipe].len && cdj_usb_pipe_has_dreq(s, pipe)) {
-            cdj_dmac_dreq();
-        }
         if (!s->buf[pipe].len) {
             /* An empty buffer here is the zero-length packet that follows a
              * completed data phase. usb-storage would STALL it; the module
@@ -472,15 +467,12 @@ static void cdj_usb_pipe_run(CdjUsbState *s, unsigned pipe)
     }
     cdj_usb_pipe_in_end(s, pipe, ended);
 
-    /* DREQE: the window is wired to the DMAC, which carries sector data.
-     * Only the first instalment kicks the DMAC; a continuation runs from
-     * inside the DMAC's own FIFO read and must not re-enter it. */
+    /* DREQE: the window is wired to the DMAC, which carries sector data. */
     if (cdj_usb_pipe_has_dreq(s, pipe)) {
         if (cdj_usb_debug()) {
             info_report("usb: pipe %u DREQ -- handing %u bytes to the DMAC",
                         pipe, s->buf[pipe].len);
         }
-        cdj_dmac_dreq();
     }
 }
 

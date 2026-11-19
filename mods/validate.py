@@ -73,10 +73,7 @@ import bootcrit
 import c850loader
 import c850_repack
 import dsppatch
-import gui_decode
-import main_decode
 import modelfw
-import patch_gui
 import patch_main
 import sigpatch
 
@@ -1004,7 +1001,7 @@ def check_alone(data, model, rep):
 
 def profiles_for(model):
     profiles = {}
-    for target, module in (('main', patch_main), ('gui', patch_gui)):
+    for target, module in (('main', patch_main),):
         found = module.PATCH_SETS.get(model)
         if found:
             profiles[target] = found.profile

@@ -11,11 +11,9 @@
 #   phases: source   fetch QEMU v11.1.2 into qemu-src/ (skipped if it is there;
 #                    a tree of another version is moved to qemu-src-<version>)
 #           patches  apply patches/ to it (idempotent: applied ones are skipped)
-#           main     the MAIN QEMU, qemu-system-sh4 with the CDJ-2000NXS2 board
+#           display  the CDJ-850 QEMU, qemu-system-sh4eb with the SH7263 board
 #                    (applies patches/ first, so a pull's new patches are in)
-#           display  the display-board QEMU, qemu-system-sh4eb with the SH7269
-#                    (likewise)
-#           dsp      the DSP core library, libc66x.so, for the run-time JIT
+#           main     alias for display (single-board sh4eb machine)
 #   env:    QEMU_BUILD / QEMU_EB_BUILD   build trees. Windows default
 #                                        /c/qemu-build-mingw[-eb]: they must be on
 #                                        the same drive as this source, on NTFS.
@@ -74,51 +72,28 @@ phase_patches() {
     PATCHED=1
 }
 
-phase_main() {
-    # A pull can bring new QEMU patches, and the board sources then need them:
-    # the rebuild start.sh offers after a pull runs only main and display.
-    [ "${PATCHED:-0}" = 1 ] || phase_patches
-    if on_windows; then
-        echo "== building the MAIN QEMU (Windows, MSYS2)"
-        bash "$E/scripts/build/build_windows.sh" main
-    else
-        echo "== building the MAIN QEMU ($(uname -s))"
-        bash "$E/scripts/build/build_main.sh"
-    fi
-    cdj_build_dirs
-    cdj_stamp_write "$CDJ_MAIN_BUILD"
-}
-
 phase_display() {
     [ "${PATCHED:-0}" = 1 ] || phase_patches
     if on_windows; then
-        echo "== building the display-board QEMU (Windows, MSYS2)"
+        echo "== building the CDJ-850 QEMU (Windows, MSYS2)"
         bash "$E/scripts/build/build_windows.sh" eb
     else
-        echo "== building the display-board QEMU ($(uname -s))"
+        echo "== building the CDJ-850 QEMU ($(uname -s))"
         bash "$E/scripts/build/build_display.sh"
     fi
     cdj_build_dirs
     cdj_stamp_write "$CDJ_EB_BUILD"
 }
 
-phase_dsp() {
-    echo "== building the DSP core library for the auto-JIT"
-    make -C "$E/hw/cdj/c6x" -j"${JOBS:-4}" "O=${C66X_JIT_LIBDIR:-$HOME/build/c6x}" \
-        "${C66X_JIT_LIBDIR:-$HOME/build/c6x}/libc66x.so"
-}
-
 [ "$#" -gt 0 ] || set -- all
 for phase in "$@"; do
     case "$phase" in
-        all)     phase_source; phase_patches; phase_main; phase_display; phase_dsp ;;
+        all)     phase_source; phase_patches; phase_display ;;
         source)  phase_source ;;
         patches) phase_patches ;;
-        main)    phase_main ;;
-        display) phase_display ;;
-        dsp)     phase_dsp ;;
+        main|display) phase_display ;;
         -h | --help) sed -n '/^#   usage:/,/^#           JOBS/p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'; exit 0 ;;
-        *) echo "unknown phase '$phase' (source, patches, main, display, dsp or all)" >&2; exit 2 ;;
+        *) echo "unknown phase '$phase' (source, patches, display or all)" >&2; exit 2 ;;
     esac
 done
 
@@ -126,5 +101,5 @@ if [ "$*" = all ]; then
     echo
     echo "done. Next: ./setup.sh --skip-build walks you through the firmware, the"
     echo "USB image and your setup; or by hand: scripts/firmware/prepare_firmware.sh"
-    echo "--install <C2KNXS2.UPD>, a USB image (docs/setup.md), then ./start.sh (or just ./setup.sh)"
+    echo "--install <C850MAIN.UPD>, a USB image (docs/setup.md), then ./start.sh (or just ./setup.sh)"
 fi

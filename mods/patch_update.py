@@ -75,13 +75,8 @@ sys.path.insert(0, HERE)
 sys.path.insert(0, FIRMWARE)
 
 import modelfw
-import patch_gui
 import patch_main
 import c850_repack
-import gui_decode
-import gui_encode
-import main_decode
-import main_encode
 import validate
 from launcher import layout, mods as mod_rows
 
@@ -99,25 +94,17 @@ def _decode_target(target, section, fw):
     if target == 'main' and fw.container == 'c850':
         hdr = section[c850_repack.LABEL_OFF:c850_repack.PACKED_OFF]
         return hdr, None, None, c850_repack.unpack_main(section)
-    return TARGETS[target][0](section, fw)
+    raise SystemExit('patch_update: unsupported target/container %s/%s' % (target, fw.container))
 
 
 def _encode_target(target, section, image, fw):
     if target == 'main' and fw.container == 'c850':
         return c850_repack.build_upd(section, image, check_boot=True)
-    return TARGETS[target][1](section, image, fw)
+    raise SystemExit('patch_update: unsupported target/container %s/%s' % (target, fw.container))
 
-# target -> (decode(section, fw) -> (header, declared, avail, image),
-#            encode(section, image, fw) -> section, module owning mods_for()/patch())
-#
-# gui's section is a flat LZSS blob with nothing to keep but its 32-byte
-# header; main's carries the bootloader and emergency-updater S-records before
-# the image, which its encode() copies forward from the whole original section.
+
 TARGETS = {
-    'gui': (lambda section, fw: gui_decode.decode(section),
-            lambda section, image, fw: gui_encode.encode(section[:32], image), patch_gui),
-    'main': (lambda section, fw: main_decode.decode(section, fw.main_off, verify=False),
-             lambda section, image, fw: main_encode.encode(section, image, fw.main_off), patch_main),
+    'main': (_decode_target, _encode_target, patch_main),
 }
 
 

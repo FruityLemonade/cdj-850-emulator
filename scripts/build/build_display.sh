@@ -27,11 +27,11 @@ case "$(uname -s)" in
     MINGW*|MSYS*|CYGWIN*) EXESUF=".exe" ;;
 esac
 
-CFG_ARGS="--target-list=sh4eb-softmmu --disable-werror --disable-docs --disable-tools --disable-libnfs"
-# The display board's window: Cocoa on macOS, GTK elsewhere (see build_main.sh).
+CFG_ARGS="--target-list=sh4eb-softmmu --disable-werror --disable-docs --disable-tools --disable-libnfs --disable-fuse"
+# The window and sound backends: Cocoa + Core Audio on macOS, GTK elsewhere.
 case "$(uname -s)" in
     Darwin)
-        CFG_ARGS="$CFG_ARGS --enable-cocoa"
+        CFG_ARGS="$CFG_ARGS --enable-cocoa --enable-coreaudio"
         # A Python QEMU's configure can use (qemu_python.sh). Only here:
         # elsewhere the host's python3 has always done.
         . "$HERE/qemu_python.sh"
@@ -63,4 +63,4 @@ ninja "qemu-system-sh4eb$EXESUF"
 
 echo
 echo "built: $BUILD/qemu-system-sh4eb$EXESUF"
-"$BUILD/qemu-system-sh4eb$EXESUF" -M help | grep -i sh7269 || true
+"$BUILD/qemu-system-sh4eb$EXESUF" -M help | grep -i cdj850 || true

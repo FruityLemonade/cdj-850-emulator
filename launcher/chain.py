@@ -124,9 +124,6 @@ def run_main(name, args):
     if hasattr(signal, "SIGHUP"):
         signal.signal(signal.SIGHUP, lambda *_: hangup(request_stop))
     try:
-        if name in ("live", "live_linked"):
-            from . import live
-            return live.main(args, linked=name == "live_linked")
         return importlib.import_module("launcher." + name).main(args)
     finally:
         if own:

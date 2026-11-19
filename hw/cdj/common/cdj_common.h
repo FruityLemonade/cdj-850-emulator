@@ -144,36 +144,11 @@ typedef struct CdjRegInit {
 void cdj_regs(MemoryRegion *sysmem, const char *name, hwaddr base,
               hwaddr size, const CdjRegInit *init);
 
-/* sh4_intc.c: set up, reset and report a board's sh_intc tables. */
-void cdj_intc_setup(MemoryRegion *sysmem, SuperHCPU *cpu, struct intc_desc *desc,
-                    int nr_sources,
-                    struct intc_mask_reg *mask, int nmask,
-                    struct intc_prio_reg *prio, int nprio,
-                    struct intc_vect *vect, int nvect,
-                    struct intc_group *groups, int ngroups);
-void cdj_intc_report(struct intc_desc *desc, int nr_sources, uint16_t lo, uint16_t hi);
-
-/* sh4a_dmac.c: the SH-4A DMAC. */
-typedef struct CdjDmacDei {
-    qemu_irq irq;               /* NULL = the channel raises no interrupt */
-    unsigned max;               /* raise cap before it goes silent, 0 = none */
-} CdjDmacDei;
-void cdj_dmac_init(MemoryRegion *sysmem, const char *name, hwaddr base,
-                   hwaddr dreq_base, hwaddr dreq_size, const CdjDmacDei *dei);
-void cdj_dmac_dei_connect(unsigned ch, qemu_irq irq);
-/* Optional fixed FIFO endpoint; returns false until a complete burst is ready. */
-void cdj_dmac_fifo_connect(hwaddr port,
-                          bool (*transfer)(bool, uint8_t *, unsigned));
-void cdj_dmac_dreq(void);
-
 const char *cdj_getenv(const char *name);
 
 /* Statistics the models print at start and exit are off unless CDJ_REPORT=1. */
 bool cdj_report_enabled(void);
 void cdj_add_exit_report(Notifier *n);
-
-/* The CDJ_MPOKE, CDJ_MCOPY, CDJ_MFILL and CDJ_LOADBIN memory holds. */
-void cdj_mpoke_init(void);
 
 /* Ask the host to run the calling thread on a performance core. */
 void cdj_thread_prefer_fast_core(void);

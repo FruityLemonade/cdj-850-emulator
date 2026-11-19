@@ -17,19 +17,70 @@ Points are cached per build, firmware, medium and MAIN_ARGS (snapshot.py).
 import os
 import shlex
 import shutil
+import stat
 import subprocess
+import sys
 import time
 
-from . import chain, dsp_module, host, model, mods, sites, snapshot
-from .boot_deck import _monsock, window_display
-from .chain import nonempty, say, warn_banner
+from . import chain, host, model, mods, sites, snapshot
+from .chain import nonempty, say
 from .layout import Layout
-from .rig import DEFAULT_GROUP, default_audiodev
+
+DEFAULT_GROUP = "239.255.77.12:12340"
 
 # The panel key socket's UDP port, which the key scripts send to.
 PANEL_KEY_PORT = 40124
 # Where an older deck sends MAIN's frame to the panel MCU, for the app's lamps.
 PANEL_STATE_PORT = 40024
+
+
+def default_audiodev():
+    k = host.kind()
+    return "sdl" if k == host.WINDOWS else "coreaudio" if k == host.MACOS else "pa"
+
+
+def _monsock(lay):
+    sys.path.insert(0, lay.run)
+    try:
+        import cdj_monsock
+    finally:
+        sys.path.remove(lay.run)
+    return cdj_monsock
+
+
+def _launchctl_manager():
+    try:
+        return subprocess.run(["launchctl", "managername"], capture_output=True, text=True).stdout.strip()
+    except OSError:
+        return ""
+
+
+def _is_socket(path):
+    try:
+        return stat.S_ISSOCK(os.stat(path).st_mode)
+    except OSError:
+        return False
+
+
+def window_display(d, tag, notes):
+    """The -display for a window: GUI_DISPLAY d made to fit this host, with
+    the cursor shown."""
+    k = host.kind()
+    if k == host.MACOS:
+        if d == "gtk":
+            d = "cocoa"
+        if d in ("cocoa", "sdl") and _launchctl_manager() != "Aqua":
+            notes.append((2, "[%s] no desktop session (ssh?) -- falling back to GUI_DISPLAY=none" % tag))
+            d = "none"
+    elif k != host.WINDOWS and d in ("gtk", "sdl"):
+        wayland = os.path.join(os.environ.get("XDG_RUNTIME_DIR", "/nonexistent"),
+                               os.environ.get("WAYLAND_DISPLAY", "wayland-0"))
+        if not (os.path.isdir("/tmp/.X11-unix") and os.listdir("/tmp/.X11-unix")) and not _is_socket(wayland):
+            notes.append((2, "[%s] no X or Wayland socket -- falling back to GUI_DISPLAY=none" % tag))
+            d = "none"
+    if d != "none" and not d.startswith("vnc") and "show-cursor=" not in d:
+        d += ",show-cursor=on"
+    return d
 
 
 def main_qemu(lay, env, m=None):
@@ -56,10 +107,7 @@ def missing_images(lay, m):
 
 
 def dsp_env(lay, m, env, found=None):
-    """The DSP knobs a model's profile sets: the busy-wait loop the core skips,
-    the interrupt fast path, and the module built by build_dsp_module.sh (when its
-    stamp fits) unless MODULE=none or C66X_JIT names one by hand. `found` is the
-    sites of the MAIN image that runs (sites.find), the installed one's when None."""
+    """The DSP knobs a model's profile sets."""
     knobs = {}
     if (found or sites.find(lay, m)).pinned:
         knobs[m.dsp_idle_knob] = nonempty(env, m.dsp_idle_knob, m.dsp_idle)
@@ -67,13 +115,6 @@ def dsp_env(lay, m, env, found=None):
             knobs["C66X_IDLE_ISR_FAST"] = nonempty(env, "C66X_IDLE_ISR_FAST", m.dsp_isr_fast)
     if m.dsp_mhz:
         knobs["CDJ_C6747_MHZ"] = nonempty(env, "CDJ_C6747_MHZ", m.dsp_mhz)
-    if env.get("C66X_JIT") or env.get("MODULE") == "none":
-        return knobs
-    module = dsp_module.check(lay, m)
-    if module.path:
-        knobs["C66X_JIT"] = dsp_module.native_chain(module.path)
-    if module.notice:
-        warn_banner(*module.notice)
     return knobs
 
 
@@ -210,7 +251,7 @@ def point_dir(tmp, argv, env, media, point, left_out=()):
     MAIN_ARGS and sound device, and the knobs of command() a caller left out."""
     files = [argv[0], _boot_image(argv)] + [env[k] for k in ("CDJ_BF531_UPD", "CDJ_M16C_GUI") if k in env] + [media]
     # The sound device and the DSP module shape the machine as well.
-    files += dsp_module.chain_files(env)
+    files += [p for p in env.get("C66X_JIT", "").split(",") if p and os.path.isfile(p)]
     audio = argv[argv.index("-audio") + 1] if "-audio" in argv else ""
     options = env.get("MAIN_ARGS", "") + " " + audio + "".join(" -" + k for k in sorted(left_out))
     return os.path.join(snapshot.root(tmp, files, options), point)

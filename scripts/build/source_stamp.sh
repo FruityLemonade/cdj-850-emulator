@@ -51,13 +51,12 @@ cdj_stale_builds() {
     local now dir bin
     cdj_build_dirs
     now="$(cdj_source_stamp "$CDJ_EMU_DIR")"
-    for dir in "$CDJ_MAIN_BUILD:qemu-system-sh4" "$CDJ_EB_BUILD:qemu-system-sh4eb"; do
-        bin="${dir#*:}$CDJ_EXE"; dir="${dir%:*}"
-        [ -f "$dir/$bin" ] || continue
-        if [ -f "$dir/$CDJ_STAMP_NAME" ]; then
-            [ "$(cat "$dir/$CDJ_STAMP_NAME")" = "$now" ] || echo "$dir"
-        elif [ -n "$(find "$CDJ_EMU_DIR/hw/cdj" "$CDJ_EMU_DIR/patches" -type f -newer "$dir/$bin" -print 2>/dev/null | head -1)" ]; then
-            echo "$dir"
-        fi
-    done
+    dir="$CDJ_EB_BUILD"
+    bin="qemu-system-sh4eb$CDJ_EXE"
+    [ -f "$dir/$bin" ] || return 0
+    if [ -f "$dir/$CDJ_STAMP_NAME" ]; then
+        [ "$(cat "$dir/$CDJ_STAMP_NAME")" = "$now" ] || echo "$dir"
+    elif [ -n "$(find "$CDJ_EMU_DIR/hw/cdj" "$CDJ_EMU_DIR/patches" -type f -newer "$dir/$bin" -print 2>/dev/null | head -1)" ]; then
+        echo "$dir"
+    fi
 }

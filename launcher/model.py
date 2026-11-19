@@ -10,7 +10,7 @@ import re
 
 from .layout import Layout
 
-DEFAULT = "cdj2000nxs2"
+DEFAULT = "cdj850"
 
 # Where the display board's own update is kept beside the main images, for a
 # model whose display runs inside the MAIN emulator.
