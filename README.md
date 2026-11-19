@@ -1,175 +1,17 @@
 <div align="center">
 
-# Pioneer CDJ & XDJ Emulator
+# Pioneer CDJ-850 Emulator
 
 **Original firmware. Emulated hardware.**
 
-Pioneer DJ players on your computer, from the CDJ-2000 to the NXS2 and XDJ family.
+The Pioneer CDJ-850 running its real firmware on your computer.
 
 [![License: GPL-2.0-or-later](https://img.shields.io/badge/license-GPL--2.0--or--later-blue.svg)](LICENSE)
 [![Platform: Windows | Linux | macOS](https://img.shields.io/badge/platform-Windows%20%7C%20Linux%20%7C%20macOS-lightgrey.svg)](#quick-start)
 [![QEMU 11.1](https://img.shields.io/badge/QEMU-11.1-orange.svg)](https://www.qemu.org/)
 [![Firmware not included](https://img.shields.io/badge/firmware-not%20included-red.svg)](#not-included)
 
-[Supported players](#supported-players) · [CDJ-850](#cdj-850) · [Quick start](#quick-start) · [Documentation](#documentation) · [Mods](docs/mods.md) · [How it works](docs/how-it-works.md)
-
-<table>
-  <tr>
-    <td align="center"><a href="docs/img/decks/cdj2000nxs2.png"><img src="docs/img/decks/cdj2000nxs2.png" alt="CDJ-2000NXS2 screen playing a track" height="180"></a><br><sub>CDJ-2000NXS2</sub></td>
-    <td align="center"><a href="docs/img/decks/xdj1000.png"><img src="docs/img/decks/xdj1000.png" alt="XDJ-1000 screen playing a track" height="180"></a><br><sub>XDJ-1000</sub></td>
-    <td align="center"><a href="docs/img/decks/xdj700.png"><img src="docs/img/decks/xdj700.png" alt="XDJ-700 screen playing a track" height="180"></a><br><sub>XDJ-700</sub></td>
-  </tr>
-  <tr>
-    <td align="center"><a href="docs/img/decks/cdj900nxs.png"><img src="docs/img/decks/cdj900nxs.png" alt="CDJ-900NXS screen playing a track" height="180"></a><br><sub>CDJ-900NXS</sub></td>
-    <td align="center"><a href="docs/img/decks/cdj2000nxs.png"><img src="docs/img/decks/cdj2000nxs.png" alt="CDJ-2000NXS screen playing a track" height="180"></a><br><sub>CDJ-2000NXS</sub></td>
-    <td align="center"><a href="docs/img/decks/cdj2000.png"><img src="docs/img/decks/cdj2000.png" alt="CDJ-2000 screen playing a track" height="180"></a><br><sub>CDJ-2000</sub></td>
-  </tr>
-  <tr>
-    <td align="center" colspan="3"><a href="docs/img/decks/cdj850.png"><img src="docs/img/decks/cdj850.png" alt="CDJ-850 screen playing a track, with time, BPM and a track overview" height="180"></a><br><sub>CDJ-850</sub></td>
-  </tr>
-</table>
-
-<sub>Screens captured from the emulator. Select one for full size.</sub>
-
-</div>
-
-The **CDJ-2000NXS2** boots, mounts a virtual USB stick, and loads and plays tracks from it. The waveform
-scrolls, the time counts down, and the sound you hear is computed by the
-player's own DSP program on an emulated DSP. Start two and they find each other
-on an emulated Pro DJ Link network, where MASTER and SYNC work between them.
-Plug in a MIDI controller and it plays them, or use the [virtual deck](docs/using-the-deck.md#virtual-deck).
-
-Eight older players have experimental emulation. This fork adds the CDJ-850,
-with USB playback, the original audio DSP program and a recreation of its
-blue panel display. [CDJ-850](#cdj-850) · [Upstream project](https://github.com/Stijn-Jacobs/cdj-nxs2-qemu)
-
-## Features
-
-These are the CDJ-2000NXS2's; the older players are covered under
-[Supported players](#supported-players).
-
-| | |
-|---|---|
-| 🎛️ **The real firmware** | All three processors of the player run its own code: MAIN, the display board and the audio DSP. |
-| 🔊 **The DSP's own sound** | A C66x emulator with a JIT runs the DSP program MAIN uploads at boot; the audio you hear is its output. |
-| 📈 **Load and play** | A track from the stick loads and plays; the waveform and playhead move, the time counts down. |
-| 🔗 **Pro DJ Link** | Two decks take their own addresses from a small DHCP server, announce themselves, and MASTER and SYNC work between them. |
-| 🎚️ **Any MIDI controller** | A profile of what the controller sends plus a mapping to CDJ keys. A Roland DJ-202 mapping is included, with its LEDs mirroring the player's lamps. |
-| 🌀 **Jog and touch** | The jog bends the DSP's playback speed through the firmware's own jog engine; a click in the window is a touch on the screen. |
-| 🧪 **Built for modding** | Trace any firmware address, watch memory, change it while it runs, call firmware functions, script every input. |
-
-<a id="screenshots"></a>
-
-## Screenshots
-
-<p align="center">
-<img src="docs/img/app-screen.gif" alt="The CDJ-2000NXS2's own screen, emulated: the colour waveform scrolling and the time counting down while a track plays" width="720">
-</p>
-
-<p align="center">
-<a href="docs/img/hero.png"><img src="docs/img/hero.png" alt="Two emulated CDJ-2000NXS2s: deck 1 in SYNC follows master deck 2 to 193.7 BPM" width="900"></a>
-</p>
-
-<details>
-<summary><b>More Pro DJ Link screens</b></summary>
-
-<table>
-  <tr>
-    <td align="center"><img src="docs/img/two-decks.png" alt="Deck 2 showing player 1's beat" width="400"><br><sub>Deck 2 tracks the master's beat over Pro DJ Link</sub></td>
-    <td align="center"><img src="docs/img/waveform.png" alt="MASTER TEMPO and SYNC on" width="400"><br><sub>MASTER TEMPO and SYNC, colour waveform</sub></td>
-  </tr>
-  <tr>
-    <td align="center"><img src="docs/img/browse.png" alt="Browsing player 1's USB from deck 2" width="400"><br><sub>Browsing the other player's USB over the link</sub></td>
-    <td align="center"><img src="docs/img/link-load.png" alt="A track loaded from player 1" width="400"><br><sub>...and playing a track loaded from it</sub></td>
-  </tr>
-</table>
-
-</details>
-
-<a id="supported-players"></a>
-
-## Supported players
-
-The CDJ-2000NXS2 is the fully supported player; the older models are
-experimental. Sound is on by default (`NOSOUND=1` turns it off). Screenshots
-show the firmware interface, not a claim of feature parity.
-
-| player | status | what works |
-|---|---|---|
-| **CDJ-2000NXS2** | ✅ Fully supported | Plays tracks from USB in real time with sound. Pro DJ Link, MIDI controllers and [mods](docs/mods.md). |
-| **XDJ-1000MK2** | 🧪 Experimental | Loads and plays from USB with the DSP module setup builds; an MP3 breaks up about every 6 s and MASTER TEMPO runs below real time. PLAY, CUE and touch work. Two decks link. |
-| **XDJ-700** | 🧪 Experimental | Loads and plays from USB with the DSP module setup builds; an MP3 breaks up about every 6 s and MASTER TEMPO runs below real time. Touch works. |
-| **XDJ-1000** | 🧪 Experimental | Loads and plays from USB in real time with the DSP module setup builds. MASTER TEMPO runs below real time. PLAY, CUE, tempo, jog and touch work. |
-| **CDJ-900NXS** | 🧪 Experimental | Loads and plays from USB with the DSP module setup builds, in real time until MASTER TEMPO is switched on. |
-| **CDJ-2000NXS** | 🧪 Experimental | Loads and plays from USB in real time with the DSP module setup builds. PLAY, CUE, tempo and jog work. Two decks link. |
-| **CDJ-900** | 🧪 Experimental | Loads and plays from USB; its display shows the overview, playhead and time. |
-| **CDJ-2000** | 🧪 Experimental | Loads and plays from USB in real time with the DSP module setup builds. PLAY, CUE, tempo and jog work. Two decks link. |
-| **CDJ-850** | 🧪 Experimental | Browses and plays from USB with sound. CUE, loops, tempo fader and jog work. The virtual deck shows the blue display and jog readout. [CDJ-850](#cdj-850) |
-
-<!-- feature-matrix:start -->
-<details>
-<summary>Feature matrix per player</summary>
-
-✅ works, measured &nbsp; ⚠️ partly, see the note &nbsp; ❌ does not work &nbsp; ➖ the player does not have it &nbsp; · not tested yet
-
-| | CDJ-2000NXS2 | XDJ-1000MK2 | XDJ-700 | XDJ-1000 | CDJ-900NXS | CDJ-2000NXS | CDJ-900 | CDJ-2000 | CDJ-850 |
-|---|---|---|---|---|---|---|---|---|---|
-| **Media** | | | | | | | | |
-| USB | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
-| **Playback** | | | | | | | | |
-| Sound | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ❌ | ✅ | ⚠️<sup>9</sup> |
-| Real time with the setup DSP module | ✅ | ✅ | ⚠️<sup>1</sup> | ✅ | ⚠️<sup>2</sup> | ✅ | · | ✅ | ➖<sup>9</sup> |
-| **Display** | | | | | | | | |
-| Waveform / overview | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ⚠️<sup>10</sup> |
-| Tempo and BPM readout | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ⚠️<sup>11</sup> |
-| **Transport** | | | | | | | | |
-| PLAY / pause | ✅ | ✅ | ⚠️<sup>3</sup> | ✅ | ⚠️<sup>3</sup> | ✅ | ✅ | ✅ | ✅ |
-| CUE | ✅ | ✅ | · | ✅ | · | ✅ | · | ✅ | ✅ |
-| **Tempo** | | | | | | | | |
-| Tempo fader | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | · | ✅ | ✅ |
-| MASTER TEMPO | ⚠️<sup>4</sup> | ⚠️<sup>5</sup> | ⚠️<sup>5</sup> | ⚠️<sup>5</sup> | ⚠️<sup>5</sup> | · | · | · | ⚠️<sup>12</sup> |
-| **Jog** | | | | | | | | |
-| Pitch bend | ✅ | · | · | ✅ | · | ✅ | · | ✅ | ✅ |
-| Vinyl / scratch | ⚠️<sup>6</sup> | ✅ | ✅ | ✅ | ✅ | ✅ | · | ✅ | ✅ |
-| Needle search | ✅ | · | · | · | ➖ | · | ➖ | · | ➖ |
-| **Performance** | | | | | | | | |
-| Hot cues | ✅ | · | · | · | ➖ | · | ➖ | · | ➖ |
-| Loops | ⚠️<sup>7</sup> | · | · | · | · | · | · | · | ✅ |
-| Beat jump | · | · | · | · | ➖ | ➖ | ➖ | ➖ | ➖ |
-| Slip | ⚠️<sup>8</sup> | · | · | · | · | · | · | ➖ | ➖ |
-| **Interface** | | | | | | | | |
-| Touch screen | ✅ | ✅ | ✅ | ✅ | ➖ | ➖ | ➖ | ➖ | ➖ |
-| **Pro DJ Link** | | | | | | | | |
-| Link with other players | ✅ | ✅ | · | · | · | ✅ | · | ✅ | ➖ |
-
-Firmware: CDJ-2000NXS2 1.87, XDJ-1000MK2 1.45, XDJ-700 1.15, XDJ-1000 1.13, CDJ-900NXS 1.31, CDJ-2000NXS 1.44, CDJ-900 4.32, CDJ-2000 4.33, CDJ-850 1.13.
-
-1. Real time in rate, but an MP3 underruns about every 6 s; a WAV plays clean.
-2. Real time until MASTER TEMPO is switched on; no run of its own yet.
-3. Only one run so far.
-4. Sound can drop out after switching it on.
-5. Runs at 66-94 % of real time with it on, so the sound breaks up.
-6. VINYL scratching not tested yet.
-7. Loops engage in only some runs.
-8. The slipped playback is not checked yet.
-9. The CDJ-850 has its own DSP emulator. Sound can break up if the host CPU
-   falls behind.
-10. The track overview and cue markers work. Text scrolling and lamp timing
-    still need checking.
-11. The tempo percentage, range and whole-number BPM have been verified.
-12. The switch and lamp work. Playback speed with MASTER TEMPO on still needs
-    measuring.
-
-</details>
-<!-- feature-matrix:end -->
-
-<a id="cdj-850"></a>
-
-## CDJ-850
-
-The **CDJ-850** runs its original firmware and plays tracks from a virtual USB
-stick. Its own audio DSP program makes the sound. The virtual deck recreates
-the blue display, the jog wheel's centre display and the illuminated buttons.
+[Features](#features) · [Quick start](#quick-start) · [What works](#what-works) · [Modding & testing](#modding--testing) · [Documentation](#documentation)
 
 <table>
   <tr>
@@ -178,106 +20,32 @@ the blue display, the jog wheel's centre display and the illuminated buttons.
   </tr>
 </table>
 
-### Start the CDJ-850
+<sub>Screens captured from the emulator. Select one for full size.</sub>
 
-You need your own `C850MAIN.UPD` **version 1.13** and some music. Install the
-tools and clone this repository, then run these commands from the cloned
-folder. [Quick start](#quick-start)
+</div>
 
-```sh
-./setup.sh --model cdj850 --firmware path/to/C850MAIN.UPD
-./start.sh --model cdj850 --app
-```
+The **CDJ-850** boots its original firmware, mounts a virtual USB stick, and loads and plays tracks from it. Its own 24-bit audio DSP program runs on an emulated Freescale DSP56371 and computes the sound you hear. The display window and virtual deck recreate the blue character and dot-matrix display, the jog wheel's centre readout, and the illuminated panel controls.
 
-Setup asks for a rekordbox USB export or a folder of music. In the app, select
-**USB**, turn the browse knob to move through the list and press it to open a
-folder or load a track. Click **PLAY/PAUSE** to start or pause. On the keyboard,
-press `U` for USB, `↑` or `↓` to browse, `Enter` to select and `Space` to play
-or pause.
+Based on the [Pioneer CDJ & XDJ Emulator](https://github.com/Stijn-Jacobs/cdj-nxs2-qemu) project.
 
-To keep settings such as auto cue and jog mode between launches, start with
-`PERSIST=1 ./start.sh --model cdj850 --app`.
+<a id="features"></a>
 
-### What works
+## Features
 
 | | |
 |---|---|
-| **Play and mix** | PLAY/PAUSE, CUE, loops and memory cues work. Move the tempo fader to change speed. Drag the edge of the jog wheel to bend the pitch or its top to scratch in VINYL mode. |
-| **Read the deck** | The display shows track and artist, elapsed or remaining time, BPM, tempo range and the track overview with cue markers. The jog display shows playback position and VINYL status. |
-| **Use the panel** | The source, transport and loop lamps follow the firmware, including flashes. Drag or scroll VINYL SPEED ADJUST to change how fast the track stops and starts. A button press wakes the deck from standby. |
-| **Connect over USB-B** | The emulated PC mode sends MIDI and HID reports to a test host. |
-
-Audio can break up when the host CPU falls behind. CD playback is still under
-development.
-
-<details>
-<summary><b>Tests, snapshots and firmware mods</b></summary>
-
-The emulator can save and restore a running CDJ-850 with USB storage attached.
-For repeatable developer runs, QEMU's `-icount shift=2,sleep=off` advances
-virtual time with the guest's instructions. With `CDJ850_DSP_IPS=2048`, this
-is the reference for checking audio output sample by sample. See the live USB
-tests for the launch command. [USB tests](tests/test_cdj850_usb.py)
-
-`CDJ850_PANEL_SCRIPT` schedules button presses in virtual milliseconds. This
-example selects USB and presses the browse knob twice.
-
-```sh
-CDJ850_PANEL_SCRIPT=6000:usb:200,9000:enter:200,13000:enter:200 \
-  ./start.sh --model cdj850
-```
-
-These commands build and check a firmware update with the `tempo_wide` and
-`dsp_probe` mods.
-
-```sh
-python3 mods/patch_update.py --model cdj850 path/to/C850MAIN.UPD C850MAIN_MOD.UPD tempo_wide dsp_probe
-python3 mods/validate.py --model cdj850 --stock path/to/C850MAIN.UPD C850MAIN_MOD.UPD
-```
-
-To carry custom code, add the [`loader`](mods/loader/README.md) mod and name the
-payload (raw bytes, copied to free SDRAM at boot and run from `0x0DE00020`):
-
-```sh
-CDJ850_LOADER_PAYLOAD=blob.bin python3 mods/patch_update.py --model cdj850 path/to/C850MAIN.UPD C850MAIN_MOD.UPD loader
-```
-
-Run the model's tests with `python3 -m pytest tests/test_cdj850_*.py`. The live
-tests need the built emulator and the prepared firmware. The modding and reverse-engineering reference
-covers the panel protocol, hardware model, memory map and mod hooks. [CDJ-850 reverse engineering & modding](docs/cdj850-modding.md)
-
-To restore the CDJ-850 analysis notes in a local Ghidra project, follow the
-[Ghidra annotation import guide](scripts/ghidra/README.md).
-
-</details>
-
-<a id="not-included"></a>
-
-## Nothing from Pioneer DJ is included
-
-> **This repository distributes no firmware, no ROM or flash images, no fonts,
-> no artwork files and no manuals or schematics.** Everything here was written
-> for this project. To run it you supply your own copy of the public
-> firmware update file for the player, which the setup unpacks on your machine, into a folder
-> that is never committed.
->
-> The screenshots in this README and in `docs/` show the emulated firmware's own interface, running in
-> this emulator, for illustration.
->
-> This project is not affiliated with, endorsed by or supported by Pioneer DJ or
-> AlphaTheta. Pioneer DJ, CDJ, rekordbox and PRO DJ LINK are trademarks of their
-> respective owners.
+| 🎛️ **The real firmware** | Both processors run the player's own code: the Renesas SH7263 (SH-2A big-endian) MAIN CPU and the Freescale DSP56371 24-bit audio DSP that MAIN boots over SHI. |
+| 🔊 **The DSP's own sound** | The emulated DSP56371 executes the four-stage program MAIN uploads at boot and streams audio through the ESAI transmitter to your host sound card. |
+| 🖥️ **Blue panel & jog display** | High-level emulation of the Panel CPU (`IC1007`) over SCIF1 renders the 3-row browse/text display, track overview waveform, memory cue markers, BPM/tempo readout, and 135° jog ring. |
+| 🌀 **Play and mix** | PLAY/PAUSE, CUE, IN/OUT/4-BEAT loops, reloop, memory cues, tempo fader (±6 / ±10 / ±16 / WIDE), VINYL touch/scratch, pitch bend, and VINYL SPEED ADJUST work. |
+| 🔌 **USB-B PC mode** | Emulates the R8A66597 USB function controller for PC mode, sending USB-MIDI and USB-HID reports to a host or controller bridge. |
+| 🧪 **Built for modding** | Patch and validate `C850MAIN.UPD` firmware updates, inject SH-2A code hooks or DSP56371 patches, load up to 1.44 MB of custom code into free SDRAM at boot, and script panel inputs in virtual time. |
 
 <a id="quick-start"></a>
 
 ## Quick start
 
-The CDJ-850 uses its own firmware file and setup command. [Start the CDJ-850](#start-the-cdj-850)
-
-**You will need** a recent multi-core CPU (see [Limits](#limits)), about 3 GB of
-disk for the build trees and the DSP module, Python 3.11 or newer, the update
-file for your player, and your own music. For the CDJ-2000NXS2 that is
-`C2KNXS2.UPD` **version 1.87**; every address in the model is for that version.
+**You will need** a recent multi-core CPU (see [Limits](#limits)), about 2 GB of disk for the QEMU build tree, Python 3.11 or newer, your own copy of `C850MAIN.UPD` **version 1.13**, and a rekordbox USB export or a folder of music.
 
 **1. Get a shell for your system** (only your own line applies):
 
@@ -290,78 +58,118 @@ file for your player, and your own music. For the CDJ-2000NXS2 that is
 **2. Clone and run setup** (the same on every system):
 
 ```sh
-git clone https://github.com/FruityLemonade/cdj-850-qemu.git cdj-nxs2
-cd cdj-nxs2
-./setup.sh
+git clone https://github.com/FruityLemonade/cdj-850-emulator.git
+cd cdj-850-emulator
+./setup.sh --firmware path/to/C850MAIN.UPD
 ```
 
-`setup.sh` walks you through seven steps: prerequisites, the build (10–40
-minutes), your update file, the USB stick (a rekordbox export or a plain folder
-of music), the [DSP module](docs/dsp-module.md), your setup and the
-[mods](docs/mods.md). Every one is safe to re-run and is skipped when it is
-already done. [Setup in detail](docs/setup.md) has each step, every option and
-the notes for macOS.
+`setup.sh` checks your build tools, fetches and patches QEMU 11.1.2, builds `qemu-system-sh4eb` with the `cdj850` machine, unpacks `C850MAIN.UPD` into a 4 MB NOR flash image (`extract/cdj850/flash_cdj850.bin`), and prepares your virtual USB stick (from a rekordbox export or a plain folder of music). Every step is safe to re-run and is skipped when already done. See [Setup in detail](docs/setup.md) for all options.
 
 **3. Play:**
 
 ```sh
-./start.sh          # Ctrl-C stops everything
+./start.sh --app    # launches the emulator with the full virtual deck face
 ```
 
-The deck window opens and the CDJ-2000NXS2 boots to its screen. Click the window,
-press `U` for the USB stick, `↓` to a track, `Enter` to load it and `Space` to
-play (every key: [Keyboard](docs/using-the-deck.md#keyboard)). Click the screen to touch it.
+Or run `./start.sh` for the compact display window on its own (`Ctrl-C` stops everything).
 
-**Updating:** `git pull`, then `./start.sh` as usual. The emulator is compiled,
-so when a pull changed its code `start.sh` notices and offers to rebuild
-(`./build.sh main display` does the same by hand). A pull that changed the DSP
-module's generator also needs the module built again (see [DSP module](docs/dsp-module.md)).
+In the deck, select **USB**, turn the browse knob to move through the list, and press it to open a folder or load a track. Click **PLAY/PAUSE** to start or pause. On the keyboard, press `U` for USB, `↑` or `↓` to browse, `Enter` to select, and `Space` to play or pause (every key: [Using the deck](docs/using-the-deck.md)).
 
-**Another player:** `./setup.sh --model <id> --firmware <update file>`, then
-`./start.sh`; [Other players](docs/setup.md#other-players) lists the ids and
-files.
+To keep user UTILITY settings (such as auto cue, tempo range, and jog mode) in flash across launches, start with:
+
+```sh
+PERSIST=1 ./start.sh --app
+```
+
+**Updating:** `git pull`, then `./start.sh` as usual. When a pull changes the C sources or patches, `start.sh` notices and offers to rebuild (`./build.sh display` does the same by hand).
+
+<a id="what-works"></a>
+
+## What works
+
+| | |
+|---|---|
+| **Play and mix** | PLAY/PAUSE, CUE, loops and memory cues work. Move the tempo fader to change speed. Drag the edge of the jog wheel to bend the pitch or its top to scratch in VINYL mode. |
+| **Read the deck** | The display shows track and artist, elapsed or remaining time, BPM, tempo range and the track overview with cue markers. The jog display shows playback position and VINYL status. |
+| **Use the panel** | The source, transport and loop lamps follow the firmware, including flashes. Drag or scroll VINYL SPEED ADJUST to change how fast the track stops and starts. A button press wakes the deck from standby. |
+| **Connect over USB-B** | The emulated PC mode sends MIDI and HID reports to a host or test client. |
+
+<a id="modding--testing"></a>
+
+## Modding & testing
+
+The repository includes a full firmware patching, repacking, and static validation pipeline for `C850MAIN.UPD` (v1.13):
+
+- **Build and validate a modded firmware update** with the included `tempo_wide` (enables `WIDE` ±100% tempo on USB/Rekordbox tracks) and `dsp_probe` (DSP56371 stage-4 P-RAM subroutine hook) mods:
+
+  ```sh
+  python3 mods/patch_update.py --model cdj850 path/to/C850MAIN.UPD C850MAIN_MOD.UPD tempo_wide dsp_probe
+  python3 mods/validate.py --model cdj850 --stock path/to/C850MAIN.UPD C850MAIN_MOD.UPD
+  ```
+
+- **Load custom code/data into free SDRAM at boot** (`0x0DE00000–0x0DF70000`, up to 1.44 MB) using the [`loader`](mods/loader/README.md) mod (`mods/c850loader.py`):
+
+  ```sh
+  CDJ850_LOADER_PAYLOAD=blob.bin python3 mods/patch_update.py --model cdj850 path/to/C850MAIN.UPD C850MAIN_MOD.UPD loader
+  ```
+
+- **Script panel inputs in virtual time** with `CDJ850_PANEL_SCRIPT` (timestamps in virtual milliseconds). This example selects USB and presses the browse rotary twice:
+
+  ```sh
+  CDJ850_PANEL_SCRIPT=6000:usb:200,9000:enter:200,13000:enter:200 ./start.sh
+  ```
+
+- **Deterministic runs & snapshots:** The emulator supports QEMU VM snapshots (`savevm`/`loadvm`) with USB storage attached. For repeatable runs, `-icount shift=2,sleep=off` advances virtual time with guest instructions, and `CDJ850_DSP_IPS=2048` provides sample-accurate reference execution.
+- **Run the test suite:**
+
+  ```sh
+  python3 -m pytest tests -ra
+  ```
+
+  Offline unit tests run without firmware or a QEMU build; live integration tests (`tests/test_cdj850_*.py`, `tests/test_sh2a_smoke.py`) run automatically when `qemu-system-sh4eb` and `extract/cdj850/` are present.
+- **Ghidra annotations:** To import the reverse-engineered function names, globals, and comments into a local Ghidra project, follow the [Ghidra annotation import guide](scripts/ghidra/README.md).
 
 <a id="limits"></a>
 
 ## Limits
 
-- **Speed depends on your CPU.** One deck runs in real time on a fast desktop.
-  Two decks need roughly twice that, and on a busy or modest machine they fall
-  behind real time (the audio then has gaps).
-- **MASTER TEMPO is heavy.** It makes the DSP program do far more work per
-  sample, and it is currently the most demanding thing you can ask of the
-  emulator.
-- **Only firmware v1.87** is supported for the CDJ-2000NXS2.
-- **Work in progress.** The older players are experimental (see
-  [Supported players](#supported-players)). On the NXS2 the USB stick is the
-  only medium so far. Some panel keys are decoded by the firmware but have not
-  been tried here; the controller tools say so when you bind one.
+- **Speed depends on your CPU.** The SH7263 and DSP56371 run together inside `qemu-system-sh4eb`; audio can break up if the host CPU falls behind real time.
+- **MASTER TEMPO** adds pitch-scale synthesis work on the DSP and still needs playback-speed calibration.
+- **Only firmware v1.13** (`C850MAIN.UPD`) is targeted by the mod addresses and profile constants.
+- **CD drive playback** (ATAPI / CD-DA) is still under development; USB storage is the primary medium.
+
+<a id="not-included"></a>
+
+## Nothing from Pioneer DJ is included
+
+> **This repository distributes no firmware, no ROM or flash images, no fonts,
+> no artwork files and no manuals or schematics.** Everything here was written
+> for this project. To run it you supply your own copy of the public
+> firmware update file (`C850MAIN.UPD`), which the setup unpacks on your machine into a folder
+> that is never committed.
+>
+> The screenshots in this README and in `docs/` show the emulated firmware's own interface, running in
+> this emulator, for illustration.
+>
+> This project is not affiliated with, endorsed by or supported by Pioneer DJ or
+> AlphaTheta. Pioneer DJ, CDJ and rekordbox are trademarks of their
+> respective owners.
+
+<a id="documentation"></a>
 
 ## Documentation
 
-The pages describe the CDJ-2000NXS2 unless they say otherwise.
-
-- [Setup in detail](docs/setup.md): every setup step and option, macOS, the
-  older players, another firmware version or a modded update
-- [Using the deck](docs/using-the-deck.md): the keyboard, the virtual deck app
-  and its web page, service mode
-- [MIDI controllers](midi/README.md): using a controller, learning a new one,
-  the DJ-202 mapping and its LEDs, the deck's own USB-MIDI port
-- [Pro DJ Link](docs/pro-dj-link.md): two decks, and rekordbox and Ableton Live
-  on this PC
-- [Mods](docs/mods.md): what each one does, patching and checking a real
-  firmware update, adding a mod
-- [CDJ-850 reverse engineering & modding](docs/cdj850-modding.md): memory map,
-  flash container, SCIF1 panel protocol, DSP56371 SHI/ESAI pipeline and mod hooks
-- [CDJ-850 service manual reference](docs/cdj850-service-manual.md): hardware
-  IC/pin maps, error codes, service modes and signal levels
-- [HID mode](docs/hid-mode.md): the deck as a HID controller over its USB-B port
-- [The DSP module](docs/dsp-module.md): the native module setup builds, and
-  when it needs building again
-- [How it works](docs/how-it-works.md): the three processors, a platform for
-  modding the firmware, booting from the flash, starting from a saved deck,
-  the repository layout
-- [Model profiles](models/README.md): one file per player, and adding one
+- [CDJ-850 reverse engineering & modding](docs/cdj850-modding.md): memory map, flash container (`C850MAIN.UPD`), bootloader checksums, SCIF1 panel protocol, DSP56371 SHI/ESAI pipeline, SDRAM layout, and mod hooks
+- [CDJ-850 service manual reference](docs/cdj850-service-manual.md): hardware IC/board mappings, SH7263 & Panel CPU pin maps, user settings in flash, error codes, service modes, and signal levels
+- [Ghidra annotations](scripts/ghidra/README.md): portable annotation bundle and headless import script for `C850MAIN.UPD` v1.13
+- [Loader mod](mods/loader/README.md): boot-time stub copying custom code/data into free SDRAM (`0x0DE00000–0x0DF70000`)
+- [Mods](docs/mods.md): patching and validating firmware updates, writing code hooks, data patches, DSP patches, and whole-image transforms
+- [Setup in detail](docs/setup.md): setup steps, options, and platform notes
+- [Using the deck](docs/using-the-deck.md): keyboard shortcuts, virtual deck controls, and service mode
+- [MIDI controllers](midi/README.md): mapping a MIDI controller and using the deck's USB-MIDI port
+- [HID mode](docs/hid-mode.md): using the deck as a controller over its emulated USB-B port
+- [How it works](docs/how-it-works.md): architecture overview, flash booting, snapshots, and repository layout
+- [Model profiles](models/README.md): configuration fields in `models/cdj850.conf`
 
 ## Licence
 
@@ -370,24 +178,8 @@ version 2 or (at your option) any later version** (`GPL-2.0-or-later`); the
 full text is in [`LICENSE`](LICENSE), and each file carries an
 `SPDX-License-Identifier` line.
 
-<details>
-<summary><b>Third-party files and binaries</b></summary>
-
-- The C66x instruction decode tables in `hw/cdj/c6x/binutils/` are copied from
-  GNU binutils and licensed **GPL-3.0-or-later**. They are compiled into the
-  MAIN emulator, so a binary built from this tree is distributed under
-  GPL-3.0-or-later terms.
-- `hw/cdj/boards/nxs2/standin/minimp3.h` is minimp3, released into the public domain (CC0).
-
-QEMU itself is GPL-2.0-or-later overall, with a few GPL-2.0-only files; if you
-distribute a binary, check how those parts combine with GPL-3.0. This note
-describes the files' licences; it is not legal advice.
-
-</details>
-
 ## Credits
 
-[QEMU](https://www.qemu.org/), which this machine plugs into; GNU binutils, for
-the TI C6x opcode tables; [minimp3](https://github.com/lieff/minimp3);
-[baken](https://github.com/M-Igashi/baken) (MIT), which writes the USB export
-for the folder-of-music setup step.
+- [Pioneer CDJ & XDJ Emulator (`cdj-nxs2-qemu`)](https://github.com/Stijn-Jacobs/cdj-nxs2-qemu), the upstream emulator and modding framework this project builds on
+- [QEMU](https://www.qemu.org/), which the SH-2A and CDJ-850 machine model plug into
+- [baken](https://github.com/M-Igashi/baken) (MIT), which writes the rekordbox USB export for the folder-of-music setup step
