@@ -62,8 +62,6 @@ done
 echo
 
 case "$WHICH" in
-    main) bash "$HERE/build_main.sh" ;;
-    eb)   bash "$HERE/build_display.sh" ;;
-    both) bash "$HERE/build_main.sh" && bash "$HERE/build_display.sh" ;;
+    main|eb|both) bash "$HERE/build_display.sh" ;;
     *)    echo "usage: $0 [main|eb|both]" >&2; exit 2 ;;
 esac

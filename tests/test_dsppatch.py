@@ -189,67 +189,6 @@ def test_half_words_of_a_compact_word_are_not_read_as_a_branch():
     assert refs(blob) == []
 
 
-# -- the XDJ-700 -----------------------------------------------------------------------
-
-def test_the_xdj700_program_is_where_the_notes_put_it(xdj700_main):
-    profile = modelfw.dsp_profile('xdj700')
-    assert dsppatch.find_blob(xdj700_main, profile) == 0xE770
-
-
-def test_the_xdj700_free_run_is_erased_and_the_program_does_not_point_into_it(xdj700_main):
-    profile = modelfw.dsp_profile('xdj700')
-    start = dsppatch.find_blob(xdj700_main, profile)
-    blob = xdj700_main[start:start + profile.length]
-    run = blob[profile.free[0] - profile.load:profile.free[1] - profile.load]
-    assert set(run) == {0xFF}
-    lo, hi = profile.free[0] + dsppatch.EDGE, profile.free[1] - dsppatch.EDGE
-    assert dsppatch.references(blob, profile.load, lo, hi) == []
-
-
-def test_the_xdj700_scan_finds_the_nine_calls_of_the_slot_flag_setter(xdj700_main):
-    profile = modelfw.dsp_profile('xdj700')
-    start = dsppatch.find_blob(xdj700_main, profile)
-    blob = xdj700_main[start:start + profile.length]
-    assert dsppatch.references(blob, profile.load, 0xC003B5AC, 0xC003B5B0) == [
-        0xC0032CD4, 0xC0034C80, 0xC0034D60, 0xC0034DA0, 0xC0034DD4, 0xC0034F2C, 0xC0035000, 0xC003750C, 0xC00377A8]
-
-
-def run_on(image, profile, mods):
-    report = {}
-    return dsppatch.patch(profile, image, mods, sorted(mods), report=report), report
-
-
-def real_mod(profile):
-    """The record writer's early return for ids above 8 and a few words of
-    code, as a mod of the XDJ-700 would carry them."""
-    return dsppatch.DspMod(what='dsp test mod', target='dsp', fw_versions=('1.15',),
-                           edits=((0xC003A850, 0x00292A58, 0x00290BD8),),
-                           code=((profile.free[0] + 0x1000, (0x00000000, 0x00008000)),))
-
-
-def test_the_xdj700_program_takes_a_mod_once(xdj700_main):
-    profile = modelfw.dsp_profile('xdj700')
-    mods = {'dsptest': real_mod(profile)}
-    out, report = run_on(xdj700_main, profile, mods)
-    assert report == {'dsptest': ('applied', '')} and out != xdj700_main
-    assert len(out) == len(xdj700_main)
-    again, report = run_on(out, profile, mods)
-    assert again == out and report == {'dsptest': ('present', '')}
-
-
-@needs_xdj700
-def test_a_patched_xdj700_update_passes_the_validator(tmp_path, monkeypatch, capsys):
-    profile = modelfw.dsp_profile('xdj700')
-    monkeypatch.setitem(patch_main.DSP_SETS, 'xdj700',
-                        sigpatch.PatchSet(profile, {'dsptest': real_mod(profile)}))
-    out = tmp_path / 'out.UPD'
-    monkeypatch.setattr(sys, 'argv', ['patch_update.py', '--model', 'xdj700', REAL_XDJ700, str(out), 'dsptest'])
-    patch_update.main()
-    text = capsys.readouterr().out
-    assert 'dsp: 1 words of the DSP program edited, 8 bytes of code placed' in text
-    assert 'FAIL' not in text and 'all checks passed' in text
-
-
 def test_the_validator_fails_code_placed_off_the_erased_run_or_where_the_program_points():
     blob = program()
     put(blob, LOAD + 0x200, CODE + 0x40)

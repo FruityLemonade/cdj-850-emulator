@@ -418,13 +418,18 @@ def build_norb_blob():
 
 
 def qemu_binary():
-    if "GUI_QEMU" in os.environ:
-        cand = os.environ["GUI_QEMU"]
-    else:
-        cand = os.path.expanduser("~/qemu-build-eb/qemu-system-sh4eb")
-    if not (cand and os.path.isfile(cand)):
-        pytest.skip("qemu-system-sh4eb not built (looked at %s)" % cand)
-    return cand
+    repo_eb = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+                           "qemu-build-eb", "qemu-system-sh4eb")
+    candidates = [
+        os.environ.get("GUI_QEMU", ""),
+        os.path.join(os.environ["QEMU_EB_BUILD"], "qemu-system-sh4eb") if os.environ.get("QEMU_EB_BUILD") else "",
+        repo_eb,
+        os.path.expanduser("~/qemu-build-eb/qemu-system-sh4eb"),
+    ]
+    for cand in candidates:
+        if cand and os.path.isfile(cand):
+            return cand
+    pytest.skip("qemu-system-sh4eb not built")
 
 
 def pick_cpu(qemu):

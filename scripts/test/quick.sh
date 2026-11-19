@@ -46,9 +46,9 @@ OUT="${CDJ_TEST_OUT:-${TMPDIR:-/tmp}/cdj-quick}"
 mkdir -p "$OUT"
 if [ "${1:-}" = --tier2 ]; then
     shift
-    PARTS="${*:-unit c6x decks2 nxs2}"
+    PARTS="${*:-unit decks2}"
 else
-    PARTS="${*:-unit c6x decks}"
+    PARTS="${*:-unit decks}"
 fi
 
 pick_python() {
@@ -76,23 +76,6 @@ run_unit() {
     if [ $rc = 0 ]; then echo "PASS $passed tests"; else echo "FAIL $failed of $((passed + failed)) tests (unit-*.log)"; fi
 }
 
-run_c6x() {
-    local recs="" r
-    for r in ${CDJ_TEST_C6REC:-}; do [ -f "$r" ] && recs="$recs $r"; done
-    [ -n "$recs" ] || { echo "SKIP no recordings in CDJ_TEST_C6REC"; return; }
-    make -s -C "$EMU/hw/cdj/c6x" O="$OUT/c6x" "$OUT/c6x/c6xreplay" > "$OUT/c6x-build.log" 2>&1 \
-        || { echo "FAIL c6xreplay did not build (c6x-build.log)"; return; }
-    for r in $recs; do
-        "$OUT/c6x/c6xreplay" "$r" "${C6REC_CYCLES:-200000000}" > "$OUT/c6x-$(basename "$r" .c6rec).log" 2>&1 &
-    done
-    wait
-    local bad=""
-    for r in $recs; do
-        grep -aq '^verdict: EXACT' "$OUT/c6x-$(basename "$r" .c6rec).log" || bad="$bad $(basename "$r")"
-    done
-    if [ -z "$bad" ]; then echo "PASS $(echo $recs | wc -w | tr -d ' ') recordings EXACT"; else echo "FAIL not EXACT:$bad"; fi
-}
-
 run_decks() {
     [ -n "${CDJ_TEST_DECKS:-}" ] || { echo "SKIP no deck table in CDJ_TEST_DECKS"; return; }
     python3 "$HERE/deck_smoke.py" "$CDJ_TEST_DECKS" ${1:+"$1"} --lock-wait "${CDJ_TEST_LOCK_WAIT:-20}" \
@@ -106,16 +89,11 @@ run_decks2() { run_decks --tier2 decks2; }
 
 run_snap() { run_decks --snapshot snap; }
 
-run_nxs2() {
-    [ "${CDJ_TEST_NXS2:-}" = 1 ] || { echo "SKIP set CDJ_TEST_NXS2=1 to run the NXS2 deck"; return; }
-    bash "$HERE/nxs2_play.sh" | tail -1
-}
-
 start=$(date +%s)
 for p in $PARTS; do
     case "$p" in
-        unit | c6x | decks | decks2 | snap | nxs2) "run_$p" > "$OUT/$p.result" 2>&1 & ;;
-        *) echo "unknown part '$p' (unit, c6x, decks, decks2, snap, nxs2)" >&2; exit 2 ;;
+        unit | decks | decks2 | snap) "run_$p" > "$OUT/$p.result" 2>&1 & ;;
+        *) echo "unknown part '$p' (unit, decks, decks2, snap)" >&2; exit 2 ;;
     esac
 done
 wait

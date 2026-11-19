@@ -266,30 +266,28 @@ def add_qemu(runtime, lay):
         "/c/qemu-build-mingw" if host.is_windows() else os.path.join(host.home(), "qemu-build"))
     eb_dir = os.environ.get("QEMU_EB_BUILD") or values.get("QEMU_EB_BUILD") or main_dir + "-eb"
     sfx = host.exe_suffix()
-    bins = [os.path.join(host.native(main_dir), "qemu-system-sh4" + sfx),
-            os.path.join(host.native(eb_dir), "qemu-system-sh4eb" + sfx)]
-    lib = os.path.join(os.environ.get("C66X_JIT_LIBDIR") or os.path.join(host.home(), "build", "c6x"), "libc66x.so")
-    for f in bins + [lib]:
+    bins = [os.path.join(host.native(eb_dir), "qemu-system-sh4eb" + sfx)]
+    for f in bins:
         if not os.path.isfile(f):
-            sys.exit("%s is missing: build it first (./build.sh main display dsp)" % f)
+            sys.exit("%s is missing: build it first (./build.sh display)" % f)
     q = os.path.join(runtime, "qemu")
     os.makedirs(q)
-    for f in bins + [lib]:
+    for f in bins:
         shutil.copy2(f, q)
     k = host.kind()
     # The build trees keep debug information: 55 MB per QEMU on Windows.
     strip = ["strip", "-x"] if k == host.MACOS else ["strip"]
-    subprocess.run(strip + [os.path.join(q, os.path.basename(f)) for f in bins + [lib]], check=True)
+    subprocess.run(strip + [os.path.join(q, os.path.basename(f)) for f in bins], check=True)
     if k == host.WINDOWS:
-        for f in bins + [lib]:
+        for f in bins:
             for dll in _dll_closure(f):
                 if not os.path.exists(os.path.join(q, os.path.basename(dll))):
                     shutil.copy2(dll, q)
     elif k == host.MACOS:
-        _bundle_dylibs(q, [os.path.join(q, os.path.basename(f)) for f in bins + [lib]])
+        _bundle_dylibs(q, [os.path.join(q, os.path.basename(f)) for f in bins])
     else:
-        _bundle_sos(q, [os.path.join(q, os.path.basename(f)) for f in bins + [lib]])
-    add_keymaps(os.path.join(q, os.path.basename(bins[1])), host.native(eb_dir))
+        _bundle_sos(q, [os.path.join(q, os.path.basename(f)) for f in bins])
+    add_keymaps(os.path.join(q, os.path.basename(bins[0])), host.native(eb_dir))
     return _source_stamp(lay)
 
 
@@ -411,14 +409,6 @@ def add_app(app):
     ignore = shutil.ignore_patterns("__pycache__", "*.pyc", "cdj.conf", "logs", ".venv")
     for d in APP_TREES:
         shutil.copytree(os.path.join(EMU, d), os.path.join(app, d), ignore=ignore)
-    c6x = os.path.join(app, C6X)
-    os.makedirs(os.path.join(c6x, "tools"))
-    shutil.copy2(os.path.join(EMU, C6X, "tools", "c14_jitgen.py"), os.path.join(c6x, "tools"))
-    for root, _, files in os.walk(os.path.join(EMU, C6X)):
-        for f in files:
-            if f.endswith(".h"):
-                src = os.path.join(root, f)
-                _copy(src, os.path.join(c6x, os.path.relpath(src, os.path.join(EMU, C6X))))
     for f in ("README.md", "requirements.txt"):
         shutil.copy2(os.path.join(EMU, f), app)
     # The README links into docs/; the screenshots stay online.

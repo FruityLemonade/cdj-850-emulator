@@ -57,8 +57,6 @@ import dsppatch
 import modelfw
 import sigpatch
 import c850_repack
-import main_decode
-import main_encode
 
 # The MAIN patches of each model: the routines its mod folders declare, placed
 # the way its player's profile says.
@@ -128,17 +126,7 @@ def patch_flash(flash, names, model=modelfw.DEFAULT_MODEL, report=None):
         out[lo:window_end] = b'\xff' * (window_end - lo)
         out[lo:len(upd)] = upd[lo:]
         return bytes(out)
-    _, image = main_decode.decode_image(flash, off)
-    patched = patch(image, names, model, report)
-    packed = main_encode.encode_image(patched)
-    if len(packed) > window_end - off:
-        raise SystemExit('patch_main: patched image (%d bytes) does not fit '
-                         'the flash window' % len(packed))
-    out = bytearray(flash)
-    lo, hi = off, window_end
-    out[lo:hi] = b'\xff' * (hi - lo)      # erase the window, as the real updater does
-    out[lo:lo + len(packed)] = packed
-    return bytes(out)
+    raise SystemExit('patch_main: unsupported container %r for %s' % (fw.container, model))
 
 
 def assemble():

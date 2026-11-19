@@ -116,16 +116,13 @@ def test_a_profile_without_load_steps_cannot_be_checked():
         mod_check.plan(fake_model(""), None)
 
 
-def test_the_cdj900nxs_face_wires_every_key_the_plan_presses():
-    m = model.load("cdj900nxs")
+def test_the_cdj850_face_wires_every_key_the_plan_presses():
+    m = model.load("cdj850")
     face = mod_check.load_face(m.app_face)
     steps, skipped = mod_check.plan(m, face)
     assert skipped == []
     keys = [s[1] for s in steps if s[0] == "key"]
-    for wire in ("0x10:1:300:or", "0x14:1:300:or", "0x11:1:300:or", "0x13:32:300:or", "0x14:8:0:hold",
-                 "0x14:4:300:or", "0x14:2:300:or"):
-        assert wire in keys
-    assert "0x0e:1:0:rot" in keys
+    assert "0x04:1:0:rot" in keys
 
 
 def test_every_one_window_deck_with_a_face_can_be_planned():
@@ -135,12 +132,6 @@ def test_every_one_window_deck_with_a_face_can_be_planned():
             continue
         steps, _ = mod_check.plan(m, mod_check.load_face(m.app_face) if m.app_face else None)
         assert mod_check.shots(steps)[:2] == ["01-idle", "02-load"]
-
-
-def test_the_rig_is_refused(monkeypatch):
-    args = SimpleNamespace(model="cdj2000nxs2", image="x", media="")
-    with pytest.raises(mod_check.CheckError, match="two-board rig"):
-        mod_check.prepare(args)
 
 
 # -- judging -------------------------------------------------------------------

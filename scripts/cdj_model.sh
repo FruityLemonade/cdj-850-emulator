@@ -2,7 +2,7 @@
 # Sourced, not run. Loads a model profile from models/<id>.conf into MODEL_*
 # variables, so the firmware and launch scripts carry no model specifics.
 #
-#   cdj_model_load [id]   id defaults to $CDJ_MODEL, else cdj2000nxs2
+#   cdj_model_load [id]   id defaults to $CDJ_MODEL, else cdj850
 #   cdj_model_list        the ids that have a profile
 
 CDJ_MODELS_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../models" && pwd)"
@@ -16,7 +16,7 @@ cdj_model_list() {
 }
 
 cdj_model_load() {
-    local id="${1:-${CDJ_MODEL:-cdj2000nxs2}}"
+    local id="${1:-${CDJ_MODEL:-cdj850}}"
     local f="$CDJ_MODELS_DIR/$id.conf"
 
     if [ ! -f "$f" ]; then

@@ -26,11 +26,11 @@ def pixels(level):
 
 def deck(tmp_path, fb):
     ini = configparser.ConfigParser()
-    ini.read_string("[xdj1000]\nmachine = xdj1000\nqemu = %s\nkernel = k\ngolden = g.ppm\nport = 1\n%s"
+    ini.read_string("[cdj850]\nmachine = cdj850\nqemu = %s\nkernel = k\ngolden = g.ppm\nport = 1\n%s"
                     % (sys.executable, "fb = 0x14600000 800 480\n" if fb else ""))
     keep = tmp_path / "keep"
     keep.mkdir()
-    return deck_smoke.Deck("xdj1000", ini["xdj1000"], str(tmp_path), str(tmp_path), str(tmp_path), str(keep))
+    return deck_smoke.Deck("cdj850", ini["cdj850"], str(tmp_path), str(tmp_path), str(tmp_path), str(keep))
 
 
 def stub_screendump(monkeypatch, frame):
@@ -79,14 +79,14 @@ def test_nothing_is_kept_without_the_option(tmp_path):
 
 def test_saved_frame_carries_its_verdict(tmp_path, monkeypatch):
     d = deck(tmp_path, fb=False)
-    frame = tmp_path / "xdj1000.ppm"
+    frame = tmp_path / "cdj850.ppm"
     deck_smoke.write_ppm(str(frame), W, H, pixels(90))
     deck_smoke.keep_frame(d, str(frame))
     d.result, d.detail = "PASS", "screen matched at 12 s; playhead MOTION"
     deck_smoke.save_kept(d)
-    with Image.open(os.path.join(d.keep_dir, "xdj1000.png")) as img:
+    with Image.open(os.path.join(d.keep_dir, "cdj850.png")) as img:
         assert img.tobytes() == pixels(90)
-    with open(os.path.join(d.keep_dir, "xdj1000.json")) as f:
+    with open(os.path.join(d.keep_dir, "cdj850.json")) as f:
         side = json.load(f)
     assert side["verdict"] == "PASS" and side["firmware"] == "1.13"
     assert side["source"] == "screendump" and side["size"] == [W, H]

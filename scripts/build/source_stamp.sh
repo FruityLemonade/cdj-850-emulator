@@ -27,12 +27,8 @@ cdj_build_dirs() {
 # edits still do): untracked strays such as macOS's .DS_Store would otherwise
 # change the stamp after every build and ask for a rebuild forever.
 cdj_source_files() {
-    if git -C "$1" rev-parse --is-inside-work-tree > /dev/null 2>&1; then
-        git -C "$1" ls-files -z -- hw/cdj patches
-    else
-        ( cd "$1" && find hw/cdj patches -type f ! -path '*/__pycache__/*' ! -name '*.pyc' \
-            ! -name '.DS_Store' -print0 )
-    fi
+    ( cd "$1" && find hw/cdj patches -type f ! -path '*/__pycache__/*' ! -name '*.pyc' \
+        ! -name '.DS_Store' -print0 )
 }
 
 cdj_source_stamp() {
@@ -51,7 +47,7 @@ cdj_stale_builds() {
     local now dir bin
     cdj_build_dirs
     now="$(cdj_source_stamp "$CDJ_EMU_DIR")"
-    for dir in "$CDJ_MAIN_BUILD:qemu-system-sh4" "$CDJ_EB_BUILD:qemu-system-sh4eb"; do
+    for dir in "$CDJ_EB_BUILD:qemu-system-sh4eb"; do
         bin="${dir#*:}$CDJ_EXE"; dir="${dir%:*}"
         [ -f "$dir/$bin" ] || continue
         if [ -f "$dir/$CDJ_STAMP_NAME" ]; then
