@@ -139,6 +139,16 @@ def declared_mods(target):
     return {model: routines for model, routines in found.items() if routines}
 
 
+def routine_folders(model):
+    """{registry name: mod folder} of every patch a mod folder declares for `model`."""
+    found = {}
+    for path in sorted(glob.glob(os.path.join(HERE, '*', model, 'patch.py'))):
+        mod = os.path.basename(os.path.dirname(os.path.dirname(path)))
+        for name in mod_patch(mod, model).MODS:
+            found[name] = mod
+    return found
+
+
 def routine_source(prefix, name, model):
     """The assembly of one mod's routine for `model`: mods/<mod>/<model>/<prefix>_<name>.s."""
     return glob.glob(os.path.join(HERE, '*', model, '%s_%s.s' % (prefix, name)))[0]

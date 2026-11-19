@@ -4,7 +4,7 @@
 
     usage: patch_main.py [--model <id>] <main_unpacked.bin> <patched.bin> <mod> [<mod>...]
            patch_main.py --flash <flash.bin> <patched-flash.bin> <mod> [<mod>...]
-           patch_main.py --assemble     rebuild every mod's .bin from its .s
+           patch_main.py --assemble     rebuild every mod's .bin from its .s (sh-elf-as -isa=sh2a)
            patch_main.py --list
 
 Same shape as patch_gui.py (see that file for the general mechanism), on the
@@ -43,8 +43,18 @@ player's file and shared by every mod on it. The patch engine moves the
 site's span into one trampoline that runs it once and then calls each selected
 mod's routine in registry order -- see sigpatch.trampoline() for the code and
 the contract a hook routine follows.
+
+A mod can also ship C and SH-2A assembly for the shared payload,
+mods/<mod>/<model>/payload/ (payloadbuild.py). When any patch of such a mod is
+named, the payload of every such mod named is built, the `loader` patch is
+added (it copies the payload to SDRAM at boot), and the hooks
+(Mod(routine='payload:<symbol>')) and pool redirects (PoolRedirect) of the
+mods call into it by symbol. $CDJ850_LOADER_PAYLOAD, which hands the loader a
+raw payload file, is still honoured when no named mod has payload sources;
+with them, it must hold exactly the payload they build.
 """
 import os
+import shutil
 import subprocess
 import sys
 import tempfile
@@ -55,8 +65,17 @@ sys.path.insert(0, HERE)
 sys.path.insert(0, FIRMWARE)
 import dsppatch
 import modelfw
+import payloadbuild
 import sigpatch
 import c850_repack
+
+# The ImagePatch that copies the payload to SDRAM, and the key of the
+# environment it reads the built payload from (mods/loader/cdj850/patch.py).
+LOADER = 'loader'
+PAYLOAD_BLOB_KEY = 'cdj850.payload_blob'
+
+# The sh-elf binutils --assemble uses are payloadbuild.tool_prefix():
+# $CDJ850_SH_ELF, else tools/sh-elf/bin/sh-elf-.
 
 # The MAIN patches of each model: the routines its mod folders declare, placed
 # the way its player's profile says.
@@ -79,8 +98,28 @@ def mods_for(model):
     """Every patch of `model`: its routines, the rewrites of bytes the firmware already has, its
     whole-image transforms (the CDJ-850 loader) and the mods of its DSP program."""
     found = PATCH_SETS.get(model)
-    own = {**found.mods, **found.tables, **found.images} if found else {}
+    own = {**found.mods, **found.tables, **found.images, **found.redirects} if found else {}
     return {**own, **dsp_mods_for(model)}
+
+
+def payload_folders(names, model=modelfw.DEFAULT_MODEL):
+    """The mod folders, among those `names` belong to, that ship payload sources."""
+    folders = modelfw.routine_folders(model)
+    return sorted({folders[n] for n in names if n in folders and payloadbuild.sources(folders[n], model)})
+
+
+def with_loader(names, model=modelfw.DEFAULT_MODEL):
+    """`names`, plus the loader when one of them brings payload code."""
+    names = list(names)
+    if payload_folders(names, model) and LOADER in mods_for(model) and LOADER not in names:
+        names.append(LOADER)
+    return names
+
+
+def build_payload(names, model=modelfw.DEFAULT_MODEL):
+    """The payloadbuild.Payload of the named mods, or None when none ships payload sources."""
+    folders = payload_folders(names, model)
+    return payloadbuild.build(folders, model) if folders else None
 
 
 def every_mod():
@@ -101,9 +140,34 @@ def dsp_blob_path(name, model=modelfw.DEFAULT_MODEL):
 
 
 def patch(data, names, model=modelfw.DEFAULT_MODEL, report=None, spans=None):
+    report = {} if report is None else report
+    names = with_loader(names, model)
+    symbols, env = None, None
+    folders = payload_folders(names, model)
+    if folders:
+        try:
+            built = payloadbuild.build(folders, model)
+        except payloadbuild.PayloadError as e:
+            found = PATCH_SETS[model]
+            uses = [n for n in names if n in found.redirects
+                    or (n in found.mods and sigpatch.payload_symbol(found.mods[n]))]
+            for n in uses + [LOADER]:
+                report[n] = ('skipped', 'payload not built: %s' % str(e).splitlines()[0])
+                print('patch_main: %s not applied: %s' % (n, report[n][1]))
+            names = [n for n in names if n not in uses and n != LOADER]
+        else:
+            symbols = built.symbols
+            env = dict(os.environ)
+            env[PAYLOAD_BLOB_KEY] = built.blob
+            print('patch_main: payload of %s: %d bytes at %#x' % (', '.join(folders), len(built.blob),
+                                                                 payloadbuild.BASE))
     dsp = [n for n in names if n in dsp_mods_for(model)]
     image = sigpatch.patch_model(PATCH_SETS, blob_path, data, [n for n in names if n not in dsp],
-                                 model, 'patch_main', report, spans)
+                                 model, 'patch_main', report, spans, payload=symbols, env=env)
+    if symbols is not None and report.get(LOADER, ('skipped',))[0] == 'skipped':
+        callers = [n for n in names if report.get(n, ('',))[0] in ('applied', 'present') and n != LOADER]
+        raise SystemExit('patch_main: the loader did not go in (%s), so the payload %s call would not be there'
+                         % (report.get(LOADER, ('', 'not named'))[1], ', '.join(callers)))
     if not dsp:
         return image
     return dsppatch.patch(DSP_SETS[model].profile, image, DSP_SETS[model].mods, dsp, 'patch_main', report, spans,
@@ -130,20 +194,31 @@ def patch_flash(flash, names, model=modelfw.DEFAULT_MODEL, report=None):
     raise SystemExit('patch_main: unsupported container %r for %s' % (fw.container, model))
 
 
+def assemble_routine(name, model, out, tmp):
+    """Assemble the .s of one cave routine into `out` with the sh-elf binutils
+    (-isa=sh2a: MAIN uses SH-2A-only instructions such as movi20 and movu.b)."""
+    patches = PATCH_SETS[model]
+    endian = '-big' if patches.profile.byteorder == '>' else '-little'
+    prefix = payloadbuild.tool_prefix()
+    obj = os.path.join(tmp, name + '.o')
+    subprocess.run([prefix + 'as', '-isa=sh2a', endian, '-I', os.path.dirname(source(name, model)),
+                    '-o', obj, source(name, model)], check=True)
+    subprocess.run([prefix + 'objcopy', '-O', 'binary', obj, out], check=True)
+
+
 def assemble():
     with tempfile.TemporaryDirectory() as tmp:
         for model, patches in PATCH_SETS.items():
-            endian = '-big' if patches.profile.byteorder == '>' else '-little'
             for name in patches.mods:
-                obj = os.path.join(tmp, name + '.o')
-                subprocess.run(['sh4-linux-gnu-as', '--isa=sh4', endian,
-                                '-I', os.path.dirname(source(name, model)),
-                                '-o', obj, source(name, model)], check=True)
-                subprocess.run(['sh4-linux-gnu-objcopy', '-O', 'binary',
-                                obj, blob_path(name, model)], check=True)
+                if sigpatch.payload_symbol(patches.mods[name]):
+                    continue        # built with the payload, payloadbuild.py
+                assemble_routine(name, model, blob_path(name, model), tmp)
                 print('patch_main: wrote %s (%d bytes)'
                       % (blob_path(name, model), os.path.getsize(blob_path(name, model))))
         tools = os.environ.get('TIC6X', os.path.expanduser('~/opt/tic6x/bin/tic6x-elf-'))
+        if DSP_SETS and not shutil.which(tools + 'as') and not os.path.exists(tools + 'as'):
+            print('patch_main: %sas not found: DSP routines not reassembled (set $TIC6X)' % tools)
+            return
         for model, patches in DSP_SETS.items():
             for mod in patches.mods.values():
                 for at, name in mod.code:

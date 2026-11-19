@@ -530,6 +530,8 @@ def check_writes(target, stock_img, out_img, profile, spans, rep, table=None, ds
             rep.fail('%s: %s rewrites %d bytes at %#x, more than a call site' % (target, mod, hi - lo, lo))
     if any(kind in LOADER_KINDS for _, kind, _, _ in flat):
         check_loader(target, stock_img, out_img, flat, rep)
+    if target == 'main':
+        check_payload_calls(stock_img, out_img, flat, rep)
     runs = bootcrit.merge([(lo, hi) for _, kind, lo, hi in flat if kind == 'free'])
     proven = 0
     for lo, hi in runs:
@@ -549,6 +551,39 @@ def check_writes(target, stock_img, out_img, profile, spans, rep, table=None, ds
 
 
 LOADER_KINDS = ('loader', 'loaderblob')
+
+
+def check_payload_calls(stock_img, out_img, flat, rep):
+    """Every word a mod wrote into MAIN code or the cave that points into the
+    loader's region (a trampoline's hook literal, a redirected pool word) must
+    point inside the payload the loader in this image copies there, so a hook
+    never jumps into SDRAM nobody filled."""
+    lo_r, hi_r = c850loader.REGION, c850loader.REGION_END
+    seen = {}
+    for mod, kind, lo, hi in flat:
+        if kind not in ('site', 'free'):
+            continue
+        for off in range(lo + (-lo % 4), hi - 3, 4):
+            word = struct.unpack_from('>I', out_img, off)[0]
+            if lo_r <= word & ~0x20000000 < hi_r and out_img[off:off + 4] != stock_img[off:off + 4]:
+                seen.setdefault(off, (mod, off, word))      # a shared trampoline is declared by each hook
+    found = [seen[off] for off in sorted(seen)]
+    if not found:
+        return
+    try:
+        payload = c850loader.installed(out_img)
+    except c850loader.LoaderError:
+        payload = None
+    end = c850loader.PAYLOAD + len(payload) if payload is not None else None
+    bad = [(mod, off, word) for mod, off, word in found
+           if end is None or not c850loader.PAYLOAD <= word & ~0x20000000 < end]
+    for mod, off, word in bad[:SHOWN]:
+        rep.fail('main: %s writes %#x at %#x, which points into the loader region but %s'
+                 % (mod, word, 0x0C000000 + off,
+                    'no loader is installed' if end is None else 'outside the %d-byte payload' % len(payload)))
+    if not bad:
+        rep.ok('main: %d written words call into the payload, all inside the %d bytes the loader copies to %#x'
+               % (len(found), len(payload), c850loader.PAYLOAD))
 
 
 def check_loader(target, stock_img, out_img, flat, rep):

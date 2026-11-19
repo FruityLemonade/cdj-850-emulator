@@ -100,9 +100,41 @@ FreeEnd = collections.namedtuple('FreeEnd', 'delta')
 # after         names of hook mods on the same span whose routines must run
 #               before this one when both are selected; hooks without such a
 #               constraint run in alphabetical order
+# routine       None: the routine is the mod's own assembled blob, placed in
+#               the cave. 'payload:<symbol>': the routine is a symbol of the
+#               shared payload the loader copies to SDRAM (payloadbuild.py);
+#               nothing of the mod goes into the cave but its trampoline (a
+#               hook) or the call itself. Such a mod has no literal and no
+#               imports: the payload is linked at its final address.
 Mod = collections.namedtuple(
-    'Mod', 'what target fw_versions sig start end args literal hook imports after',
-    defaults=(False, (), ()))
+    'Mod', 'what target fw_versions sig start end args literal hook imports after routine',
+    defaults=(False, (), (), None))
+
+PAYLOAD_PREFIX = 'payload:'
+
+
+def payload_symbol(mod):
+    """The payload symbol a Mod or PoolRedirect calls, or None for a cave routine."""
+    routine = getattr(mod, 'routine', None)
+    if routine and routine.startswith(PAYLOAD_PREFIX):
+        return routine[len(PAYLOAD_PREFIX):]
+    if routine:
+        raise SystemExit('routine %r: only payload:<symbol> is supported' % routine)
+    return None
+
+
+# A rewrite of one function pointer in a literal pool: every mov.l that reads
+# it now reaches a payload symbol instead of the stock function.
+# what, target, fw_versions as in Mod
+# anchor    an Anchor (literal=True) naming one mov.l @(disp,pc) that reads
+#           the pool word; the pool word is the one it loads
+# old       the stock value of the pool word (the function it calls); the
+#           redirect is refused when the word holds anything else
+# routine   'payload:<symbol>', the function called instead. It runs with the
+#           caller's registers and stack exactly as the stock function would,
+#           so it must follow the stock function's ABI; to keep the stock
+#           behaviour it calls (or tail-jumps to) `old`.
+PoolRedirect = collections.namedtuple('PoolRedirect', 'what target fw_versions anchor old routine')
 
 
 # A patch that rewrites bytes the firmware reads as data (the USB descriptors,
@@ -636,6 +668,8 @@ def layout(blob_path, mods):
     combining mods in a different order patches the same bytes."""
     offsets, cur = {}, 0
     for name in sorted(mods):
+        if payload_symbol(mods[name]):
+            continue                # its routine is in the payload, not here
         with open(blob_path(name), 'rb') as f:
             size = len(f.read())
         offsets[name] = cur
@@ -657,7 +691,7 @@ def trampoline_size(key, hooks):
 # The patches of one model's image: its ImageProfile, the routines of the mods
 # (placed in the image, and so laid out together) and the DataPatches (rewrites
 # of bytes already there) and the ImagePatches (whole-image transforms).
-PatchSet = collections.namedtuple('PatchSet', 'profile mods tables images', defaults=({}, {}))
+PatchSet = collections.namedtuple('PatchSet', 'profile mods tables images redirects', defaults=({}, {}, {}))
 
 
 def patch_set(profile, declared):
@@ -665,16 +699,19 @@ def patch_set(profile, declared):
     return PatchSet(profile,
                     {n: p for n, p in declared.items() if isinstance(p, Mod)},
                     {n: p for n, p in declared.items() if isinstance(p, DataPatch)},
-                    {n: p for n, p in declared.items() if isinstance(p, ImagePatch)})
+                    {n: p for n, p in declared.items() if isinstance(p, ImagePatch)},
+                    {n: p for n, p in declared.items() if isinstance(p, PoolRedirect)})
 
 
-def patch_model(sets, blob_path, data, names, model, tag, report=None, spans=None):
+def patch_model(sets, blob_path, data, names, model, tag, report=None, spans=None, payload=None, env=None):
     """patch() with the PatchSet `sets` holds for `model`, then its DataPatches,
-    then its ImagePatches. A mod the model has no patch for is reported as not
-    applied; an image with none gets back as it is."""
+    then its PoolRedirects, then its ImagePatches. A mod the model has no
+    patch for is reported as not applied; an image with none gets back as it
+    is. `payload` ({symbol: address}) is what payload routines and redirects
+    call; `env` (default os.environ) is what ImagePatches read."""
     report = {} if report is None else report
     found = sets.get(model)
-    known = {**found.mods, **found.tables, **found.images} if found else {}
+    known = {**found.mods, **found.tables, **found.images, **found.redirects} if found else {}
     for name in names:
         if name not in known:
             report[name] = ('skipped', 'no patch for %s' % model)
@@ -684,15 +721,59 @@ def patch_model(sets, blob_path, data, names, model, tag, report=None, spans=Non
     out = bytes(data)
     if any(n in found.mods for n in names):
         out = patch(found.profile, lambda name: blob_path(name, model), data, found.mods,
-                    [n for n in names if n in found.mods], tag=tag, report=report, spans=spans)
+                    [n for n in names if n in found.mods], tag=tag, report=report, spans=spans,
+                    payload=payload)
     if any(n in found.tables for n in names):
         out = patch_tables(out, found.tables, [n for n in names if n in found.tables], tag, report, spans)
+    if any(n in found.redirects for n in names):
+        out = patch_redirects(found.profile, out, found.redirects, [n for n in names if n in found.redirects],
+                              payload, tag, report, spans)
     if any(n in found.images for n in names):
-        out = patch_images(out, found.images, [n for n in names if n in found.images], tag, report, spans)
+        out = patch_images(out, found.images, [n for n in names if n in found.images], tag, report, spans, env)
     return out
 
 
-def patch_images(data, images, names, tag, report, spans):
+def patch_redirects(profile, data, redirects, names, payload, tag, report, spans):
+    """Apply the PoolRedirect `redirects[name]` for each name: the pool word
+    its anchor's mov.l reads goes from `old` to the payload symbol's address.
+    A word that already holds that address is 'present'; one that holds
+    anything else, an anchor not found once, or a missing symbol is left out
+    and reported. The written word goes to `spans` as a 4-byte 'site'."""
+    img = Image(profile, data)
+    spans = {} if spans is None else spans
+    reads = literal_pool_reads(img)
+    for name in names:
+        r = redirects[name]
+
+        def skip(why):
+            report[name] = ('skipped', why)
+            print('%s: %s not applied: %s' % (tag, r.what, why))
+        try:
+            new = payload_address(payload, payload_symbol(r))
+            if not r.anchor.literal:
+                raise NotApplied('its anchor does not name a literal load')
+            lit = literal_offset(img, anchor_offset(img, r.anchor))
+        except NotApplied as e:
+            skip(str(e))
+            continue
+        have = img.u32(lit)
+        if have == new:
+            report[name] = ('present', '')
+            print('%s: %s already applied' % (tag, r.what))
+            continue
+        if have != r.old:
+            skip('the pool word at %#x holds %#x, not %#x' % (img.addr_of(lit), have, r.old))
+            continue
+        struct.pack_into(profile.byteorder + 'I', img.d, lit, new)
+        spans.setdefault(name, []).append((lit, 4, 'site'))
+        report[name] = ('applied', '')
+        loads = sorted(img.addr_of(i) for i, off, width in reads if off == lit and width == 4)
+        print('%s: %s: pool word %#x %#x -> %#x (read by %s)'
+              % (tag, r.what, img.addr_of(lit), r.old, new, ', '.join('%#x' % a for a in loads)))
+    return bytes(img.d)
+
+
+def patch_images(data, images, names, tag, report, spans, env=None):
     """Apply the ImagePatch `images[name]` for each name to data, in the order
     given. One that raises NotApplied is left out and reported; one whose
     output is its input is 'present'. Its spans go to `spans` as it names them."""
@@ -701,7 +782,7 @@ def patch_images(data, images, names, tag, report, spans):
     for name in names:
         image = images[name]
         try:
-            new, written = image.apply(out, os.environ)
+            new, written = image.apply(out, os.environ if env is None else env)
         except NotApplied as e:
             report[name] = ('skipped', str(e))
             print('%s: %s not applied: %s' % (tag, image.what, e))
@@ -721,6 +802,8 @@ def patch_images(data, images, names, tag, report, spans):
 def read_blobs(blob_path, mods):
     blobs = {}
     for name in mods:
+        if payload_symbol(mods[name]):
+            continue
         with open(blob_path(name), 'rb') as f:
             blobs[name] = f.read()
     return blobs
@@ -741,6 +824,8 @@ def earlier_segment(img, mods, blobs, offsets):
     the routines of the mods it applied now sit; None when there is none."""
     bases = set()
     for name, mod in mods.items():
+        if name not in blobs:
+            continue
         skip, probe = fixed_part(mod, blobs[name], img.p.byteorder)
         if len(probe) < 8:
             continue
@@ -781,28 +866,62 @@ def hooks_at(mods, key):
     return [n for n in mods if mods[n].hook and site_key(mods[n]) == key]
 
 
-def is_applied(img, mods, name, blob, dest, offsets):
+def payload_address(payload, symbol):
+    """The address of a payload symbol (or of its C form '_symbol')."""
+    if payload is None:
+        raise NotApplied('no payload was built for its routine %s' % symbol)
+    for name in (symbol, '_' + symbol):
+        if name in payload:
+            return payload[name]
+    raise NotApplied('the payload has no symbol %s' % symbol)
+
+
+def routine_address(mods, name, dest, offsets, payload=None):
+    """Where the routine of `name` runs: in the segment at `dest`, or at its
+    payload symbol."""
+    symbol = payload_symbol(mods[name])
+    if symbol is None:
+        return dest + offsets[name]
+    return payload_address(payload, symbol)
+
+
+def cave_base(img):
+    """Where the profile's cave segment starts, found by the shell strings
+    alone (an image patched before no longer has the stock cave bytes)."""
+    try:
+        start = min(handler_offset(img, name) for name in img.p.cave.handlers)
+    except NotApplied:
+        return None
+    return img.p.flash_base + ((start + 3) & ~3)
+
+
+def is_applied(img, mods, name, blob, dest, offsets, payload=None):
     """Whether this engine already patched `name` into the image: its
-    routine sits in the segment at `dest` and the call site is the exact
-    call to it that the engine writes."""
+    routine sits in the segment at `dest` (or is its payload symbol) and the
+    call site is the exact call to it that the engine writes."""
     mod = mods[name]
-    off = img.off_of(dest + offsets[name], required=False)
-    if off is None or not matches_routine(img, mod, blob, off):
+    try:
+        addr = routine_address(mods, name, dest, offsets, payload)
+    except NotApplied:
         return False
+    if not payload_symbol(mod):
+        off = img.off_of(addr, required=False)
+        if off is None or not matches_routine(img, mod, blob, off):
+            return False
     if mod.hook:
         key = site_key(mod)
         target = dest + offsets[key]
         tramp = img.off_of(target, required=False)
-        pool = struct.pack(img.p.byteorder + 'I', dest + offsets[name])
+        pool = struct.pack(img.p.byteorder + 'I', addr)
         size = trampoline_size(key, len(hooks_at(mods, key)))
         if tramp is None or pool not in img.d[tramp:tramp + size]:
             return False
     else:
-        target = dest + offsets[name]
+        target = addr
     return len(find_applied(img, mod, target)) == 1
 
 
-def patch(profile, blob_path, data, mods, names, tag='sigpatch', report=None, spans=None):
+def patch(profile, blob_path, data, mods, names, tag='sigpatch', report=None, spans=None, payload=None):
     """Apply mods[name] for each name in names to data (one image blob), the
     routine bytes for each coming from blob_path(name). Call this once per
     target image with every mod you want in it -- that is what makes the
@@ -820,10 +939,18 @@ def patch(profile, blob_path, data, mods, names, tag='sigpatch', report=None, sp
     `spans`, when given, is filled with {name: [(offset, size, kind)]} for
     every byte range written for that mod: 'free' for routines and
     trampolines placed in erased space, 'site' for the call site that
-    replaces firmware code, 'record' for a load-table entry."""
+    replaces firmware code, 'record' for a load-table entry.
+
+    `payload`, {symbol: address} of the shared payload (payloadbuild.py), is
+    where a mod whose routine is 'payload:<symbol>' calls; nothing of such a
+    mod but its trampoline or call goes into the image here."""
     unknown = [n for n in names if n not in mods]
     if unknown:
         raise SystemExit('%s: unknown mod(s) %s' % (tag, ', '.join(unknown)))
+    for name in names:
+        mod = mods[name]
+        if payload_symbol(mod) and (mod.literal or mod.imports):
+            raise SystemExit('%s: %s calls the payload, so it can have no literal or imports' % (tag, name))
     img = Image(profile, data)
     selected = [n for n in sorted(mods) if n in names]
     report = {} if report is None else report
@@ -842,17 +969,22 @@ def patch(profile, blob_path, data, mods, names, tag='sigpatch', report=None, sp
             skip(name, str(e))
         return bytes(img.d)
 
+    # A segment that holds only trampolines of payload hooks has no routine
+    # to find it by; in a cave it can only be at the cave's start.
+    seen = dest if dest is not None else (cave_base(img) if profile.cave else None)
     sig_off, pending = {}, []
     for name in selected:
-        hits = sig_hits(img, mods[name].sig)
+        # a span moved into a trampoline of an earlier patch is not a site
+        hits = [h for h in sig_hits(img, mods[name].sig)
+                if seen is None or not seen <= img.addr_of(h) < seen + total]
         if len(hits) == 1:
             sig_off[name] = hits[0]
             pending.append(name)
-        elif not hits and dest is not None and is_applied(img, mods, name, blobs[name], dest, offsets):
+        elif not hits and seen is not None and is_applied(img, mods, name, blobs.get(name), seen, offsets, payload):
             report[name] = ('present', '')
             print('%s: %s already applied' % (tag, mods[name].what))
-        elif not hits and dest is not None and mods[name].hook and any(
-                is_applied(img, mods, n, blobs[n], dest, offsets)
+        elif not hits and seen is not None and mods[name].hook and any(
+                is_applied(img, mods, n, blobs.get(n), seen, offsets, payload)
                 for n in hooks_at(mods, site_key(mods[name])) if n != name):
             skip(name, 'its site already carries hooks of an earlier patch')
         else:
@@ -885,11 +1017,14 @@ def patch(profile, blob_path, data, mods, names, tag='sigpatch', report=None, sp
                      '-- narrow start/end to exclude it' % (lit_off, instr_off))
                 break
 
-    routines = {}
+    routines, called = {}, {}
     for name in list(pending):
         mod = mods[name]
         try:
-            routines[name] = routine_bytes(img, mod, blobs[name], sig_off[name])
+            if payload_symbol(mod):
+                called[name] = payload_address(payload, payload_symbol(mod))
+            else:
+                routines[name] = routine_bytes(img, mod, blobs[name], sig_off[name])
         except NotApplied as e:
             pending.remove(name)
             skip(name, str(e))
@@ -908,7 +1043,7 @@ def patch(profile, blob_path, data, mods, names, tag='sigpatch', report=None, sp
             if img.off_of(dest + total - 1, required=False) != src + total - 1:
                 raise SystemExit('the earlier segment is cut short')
         segment = bytearray(img.d[src:src + total])
-        slots = [(offsets[n], len(routines[n])) for n in pending]
+        slots = [(offsets[n], len(routines[n])) for n in pending if n in routines]
         slots += [(offsets[key], trampoline_size(key, len(hooks))) for key, hooks in new_hooks.items()]
         for start, size in slots:
             if not profile.cave and any(b != ERASED for b in segment[start:start + size]):
@@ -919,8 +1054,10 @@ def patch(profile, blob_path, data, mods, names, tag='sigpatch', report=None, sp
         return bytes(img.d)
 
     for name in pending:
-        segment[offsets[name]:offsets[name] + len(routines[name])] = routines[name]
-        spans.setdefault(name, []).append((src + offsets[name], len(routines[name]), 'free'))
+        if name in routines:
+            segment[offsets[name]:offsets[name] + len(routines[name])] = routines[name]
+            spans.setdefault(name, []).append((src + offsets[name], len(routines[name]), 'free'))
+            called[name] = dest + offsets[name]
 
     for key, hooks in new_hooks.items():
         _, start, end = key
@@ -929,7 +1066,7 @@ def patch(profile, blob_path, data, mods, names, tag='sigpatch', report=None, sp
         span_literals = [img.u32(img.off_of((img.addr_of(span_off + 2 * k) & ~3) + 4
                                             + (op & 0xFF) * 4))
                          for k, op in enumerate(span) if is_pcrel_load(op)]
-        code = trampoline(span, span_literals, [dest + offsets[n] for n in hooks],
+        code = trampoline(span, span_literals, [called[n] for n in hooks],
                           img.addr_of(span_off + 2 * len(span)), dest + offsets[key],
                           byteorder=profile.byteorder)
         segment[offsets[key]:offsets[key] + len(code)] = code
@@ -948,9 +1085,9 @@ def patch(profile, blob_path, data, mods, names, tag='sigpatch', report=None, sp
         if mod.hook:
             target = dest + offsets[site_key(mod)]
             print('%s: %s at %#x, hooked on %#x'
-                  % (tag, mod.what, dest + offsets[name], img.addr_of(site_off)))
+                  % (tag, mod.what, called[name], img.addr_of(site_off)))
         else:
-            target = dest + offsets[name]
+            target = called[name]
             print('%s: %s at %#x, called from %#x'
                   % (tag, mod.what, target, img.addr_of(site_off)))
         code = call_site(mod, img.addr_of(site_off),

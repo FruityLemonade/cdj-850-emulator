@@ -48,7 +48,7 @@ flowchart LR
 | `0xFFFFC000` / `0xFFFFC800` | 32 B | SSI0 / SSI1 | Serial Sound Interfaces 0 (right) and 1 (left) feeding PCM blocks to DSP56371 ESAI. |
 
 ### SH-2A Architectural Quirks for Mod Authors
-1. **Big-Endian Only**: Instructions and literal pools are big-endian (`sh4-linux-gnu-as --isa=sh4 -big`).
+1. **Big-Endian Only**: Instructions and literal pools are big-endian (`sh-elf-as -isa=sh2a -big`; the SH-4 assembler rejects SH-2A-only opcodes such as `movi20` and `movu.b`).
 2. **32-Bit SH-2A Instructions**: The firmware uses SH-2A 32-bit instructions extensively:
    - `movi20 #imm20, Rn` (`0000nnnniiii0000` + 16-bit low word) and `movi20s #imm20, Rn` (`<< 8`).
    - 32-bit `mov.b/w/l` and `movu.b/w` with 12-bit displacements (`0011nnnnmmmm0001` + subword).
@@ -157,7 +157,7 @@ MAIN runs a TOPPERS/µITRON-style real-time kernel. Tasks are registered from st
 - **`FUN_0C015BD4` / `FUN_0C015B18`**: Builds / clears a 4-segment audio loop (`0x0C1C1460` / `0x0C7F6674`).
 
 ### Idle Auto-Standby (`FUN_0C0EF844`, table `0x0C18CCDC`)
-- **Seconds counter**: `FUN_0C0EF844` (called from the player/power state machine `FUN_0C0EF8EC`) adds 1 to a u32 at `0x0C1E10B0` on each call and, after 1000 calls, adds 1 to the u16 seconds counter at `0x0C1E10AE`. Measured in the emulator: the standby request lands about 60 s after the count starts, which fits 1000 calls per second.
+- **Seconds counter**: `FUN_0C0EF844` (called by `bsr` from `FUN_0C0EF8C8`, the power/standby part of the 1 ms tick routine `0x0C0B92CC`, which reaches it through its pool word `0x0C0B9310`; **[emu]** one call per increment of the 1 ms tick counter `u32 0x0CE49F54`, see `payload_demo`) adds 1 to a u32 at `0x0C1E10B0` on each call and, after 1000 calls, adds 1 to the u16 seconds counter at `0x0C1E10AE`. Measured in the emulator: the standby request lands about 60 s after the count starts, which fits 1000 calls per second.
 - **Limit**: the request fires when the seconds counter reaches `table[idx]`, a u16 BE at `0x0C18CCDC + 2*idx`, with `idx = (UTILITY byte 0x0C9DA23E >> 4) & 7`. Stock entries: `idx 0` = 0 (AUTO STANDBY OFF, gated out before the compare), `idx 1` = `0x3840` = 14400 s = 4 hours (AUTO STANDBY ON). Indices 2..7 are not used by the UTILITY setting.
 - **Reset**: while the gate fails (`FUN_0C0EF7D6`, or the OFF index), the 6 bytes at `0x0C1E10AE` are cleared through `FUN_0C1106EC`. A TEMPO press in the emulator reset the seconds counter (24 to 8 in the test run), so key activity restarts the count.
 - **Request**: on expiry the state byte `0x0C1E10AC` goes to `4`. State 4 calls `FUN_0C0EEB12(1)`, which sets bit 0 of the status byte at `DAT_0C0EEC90+0x15`; that bit becomes byte 8 of the status page-2 frame (§5).
@@ -424,6 +424,7 @@ The mod framework (`mods/`) supports four patch types on the CDJ-850 (`mods/play
 ### 1. Code Cave in MAIN (`MAIN_PROFILE`)
 Because the unpacked MAIN image (`0x0C000000–0x0C38FFE0`) contains almost no contiguous `0xFF` erased flash and its tail (`0x0C1E8E5C+`) overlaps runtime buffers, CDJ-850 MAIN code hooks are placed in a **1,118-byte code cave** formed by six unreached RTOS debug-shell print handlers (`"show semaphore info"` through `"show message buffer info"`, SHA-256 `891c18aac15fe3179e6b6f72df866a24c9bdb443359cfdd63fe2465e0ee6bba8`).
 - `sigpatch.py` locates this cave by its string references, verifies its stock SHA-256, and places hook trampolines and mod routines inside it.
+- The layout is fixed by the registry (every declared mod, selected or not): routines alphabetically, then one trampoline per hook site sized for all of its registered hooks. With the mods on the branch (`tempo_wide`, `bpm999`, `bpm_probe`, `payload_demo`) the segment is 368 bytes at `0x0C0172B4`, which leaves **748 bytes** of the cave. A hook whose routine is in the payload (section 4 below) costs only its trampoline slot: 14 bytes (padded to 16) when it joins an existing site, 72 bytes (padded to 80) for a new site with a 6-halfword span and no literal loads.
 - **Hook contract (`sigpatch.Mod(hook=True)`)**:
   - `sig` is a list of big-endian 16-bit instruction words (`0xDxxx` PC-relative loads match on opcode + register regardless of displacement).
   - `sig[start:end]` must be at least 12 bytes (6 halfwords) to hold the jump to the trampoline (`mov.l target, r1; jmp @r1; nop; .long target`). If replacing a 32-bit SH-2A instruction (such as `movu.b @(0,r5), r6` = `0x3651, 0x8000`), keep both 16-bit halves inside `sig[start:end]`.
@@ -458,7 +459,37 @@ The cave is small, so larger code goes into SDRAM nobody uses. Traced from the s
 - MAIN's entry calls the start-up clear through the literal at `0x0C000010`. The mod points that literal at a 64-byte stub at `0x0C1E2800`, in the zero-filled statics the clear wipes (inside the packed image, so covered by the bootloader's sum16).
 - The stub copies the blob behind it (header `LDR<`, format, length, sum32, region end, guard address; payload from `0x0DE00020`) to `0x0DE00000` through the uncached mirror, writes the `>LDR` guard at `0x0DF6FFFC`, and `jmp`s to the clear, which returns to the entry as before. It keeps `r3` (loaded in the entry's delay slot) and `PR`, and uses no cave bytes.
 - The blob travels inside the packed MAIN, which may end at `0x3F0000` (section 2), so even a payload that fills the whole region with incompressible bytes fits; the region's 1,507,292 bytes are the limit.
-- Hooks reach code in the payload with an ordinary `mov.l`/`jsr`. `validate.py` accepts the one write to boot code only for a byte-exact stub with a valid blob over zeros; `c850loader.py ram <dump>` checks the guards and payload sum in an SDRAM dump.
+- Hooks reach code in the payload with an ordinary `mov.l`/`jsr`. `validate.py` accepts the one write to boot code only for a byte-exact stub with a valid blob over zeros; `c850loader.py ram <dump>` checks the guards and payload sum in an SDRAM dump (the sum only holds until the payload writes its own `.data`/`.bss`).
+
+**Caches.** The bootloader is the only code that writes `CCR1` (`0xFFFC1000`; MAIN holds no reference to it). Its routine at flash `0x544`, run from on-chip RAM `0xFFF80400`, writes `0x808` (flush instruction and operand cache) and then `0x101` (both caches on; `WT` = 0, so the operand cache is write-back, by the SH7263 manual's `CCR1` layout); its range routines at flash `0x578..` invalidate address-array lines (`0xF0000008`/`0xF0800008`). **[static]** The loader stub writes the payload and the high guard through the uncached mirror (`0x2DE00000`), so the bytes are in SDRAM whatever the cache holds. No stale line can cover the region at that point: the caches were flushed by the bootloader, nothing runs from `0x0DE0xxxx` before the stub (the bootloader's stage 2 runs at `0x0DDEFA20..0x0DDF0C30`), and nothing reads or writes the region through the cached address (canary analysis above), so the instruction fetches and data reads of the payload miss and fill from SDRAM. No invalidate is added. A payload that rewrites its own code at run time would have to invalidate the instruction cache itself. QEMU does not model these caches, so the emulator cannot show a cache problem either way.
+
+#### Writing a payload mod
+
+The shared payload lets several mods bring C or SH-2A assembly that is too big for the cave. `mods/payloadbuild.py` compiles the payload sources of every named mod into **one** image linked at `0x0DE00020`; `patch_main.py`/`patch_update.py` then add the `loader` patch on their own and hand it that image, and the mods' hooks and pool redirects call into it by symbol.
+
+- **Layout of a mod:** `mods/<mod>/cdj850/payload/*.c` (C), `*.s` (assembly, `sh-elf-as -isa=sh2a -big`), `*.S` (assembly through the C preprocessor), next to `patch.py` and `mod.conf`. Reference: [`mods/payload_demo/`](../mods/payload_demo/README.md).
+- **Build:** C with `sh-elf-gcc -m2a-nofpu -mb -mrenesas -O2 -ffreestanding -fno-builtin -nostdlib -fno-common -fstack-usage`, `-I mods/payload/include`. `-mrenesas` matches MAIN's Renesas ABI: callers in MAIN expect `MACH`/`MACL` to survive a call, which GCC's own ABI does not guarantee. Never use the FPU (no `float`/`double`): neither hooks nor redirects save FPU state. Linked with `mods/payload/payload.ld` and the default multilib's `libgcc.a` (integer helpers; GCC emits `divs`/`divu` itself). The m2a-nofpu libgcc does not exist: in GCC 15.3 that multilib fails to build (`libgcc/config/sh/lib1funcs.S`, the `sdivsi3_i4` helpers, uses FPU instructions the assembler rejects for it), so `scripts/build/sh_elf_toolchain.sh` installs the default multilib's integer `libgcc.a` by hand after `make install-gcc`, and `sh-elf-gcc -m2a-nofpu -print-libgcc-file-name` resolves to it. `.text`, `.rodata`, `.data` and `.bss` follow each other from `0x0DE00020`; `.bss` is written into the image as zeros, so the loader's copy clears it (MAIN's start-up never clears the region), and the image ends with the marker word `>PLD`. Every function's frame must stay under 512 bytes (checked). `python3 mods/payloadbuild.py out.bin <mod>...` builds it alone and writes `out.map`.
+- **Header `mods/payload/include/c850.h`:** volatile accessors for the traced MAIN state (`C850_K0..K2`, `C850_PLAYER_STATE`, `C850_PLAY_FRAME`, loop records, cue list, grid context and window entries, LED staging bytes, matrix rows, BPM words, auto-standby counters) and `C850_FN(addr, ret, args)` function pointers for MAIN routines (`c850_audio_send_cmd`, `c850_auto_beat_loop_set`, `c850_grid_find_beat`, `c850_cue_select_from_list`, ...), all cited to sections 4 and 4b. Int and pointer arguments only.
+- **Hook kinds:**
+  - `Mod(..., hook=True, routine='payload:<symbol>')`: the usual trampoline on a span (contract above: `r4` = saved `r0..r7`, `r5` = `r15`); its literal is the symbol's address. In C: `void f(u32 *regs, u32 *sp)`. It may share a site with cave hooks.
+  - `PoolRedirect(anchor=Anchor(sig, index, literal=True), old=<stock function>, routine='payload:<symbol>')`: the 4-byte pool word the anchored `mov.l` loads is changed from `old` (checked) to the symbol's address, so every load of that word calls the payload. The payload function runs in the original's place with the caller's registers and stack, so it keeps the original's ABI and usually ends by calling or tail-calling `old` (GCC turns `return orig(...)` into a `jmp`). Use this for the pool literals section 4b recommends (`0x0C0D9994` CALL, `0x0C0D41BC` cue selection, beat-loop handlers).
+  - A non-hook `Mod` with a payload routine is also accepted (the call site calls the symbol; the routine must repeat the span). Payload routines take no `literal` or `imports`.
+- **Names:** sh-elf gives C symbols a leading `_`; `payload:quant_snap` finds `quant_snap` or `_quant_snap`. All mods share one link, so prefix global names with the mod's name. Static functions are private.
+- **Checks:** `patch_main` refuses a build whose loader does not go in while payload calls do; `$CDJ850_LOADER_PAYLOAD` still feeds the loader a raw file when no named mod has payload sources, and must equal the built payload when one does. `validate.py` fails any written word that points into the loader region outside the installed payload (`main: N written words call into the payload`).
+- **Limits:** 1,507,292 bytes for code and data together; the payload is rebuilt from the named mods for each build, so symbol addresses change between builds (patch from the stock update); hook code runs on the calling task's stack (DisplayTask's hook got `r15` = `0xFFF8C074`, on-chip RAM) and redirected tick routines in the 1 ms timer path, so keep both short and never wait on the RTOS there.
+
+```python
+# mods/my_mod/cdj850/patch.py (C in mods/my_mod/cdj850/payload/my_mod.c)
+from sigpatch import Anchor, Mod, PoolRedirect
+MODS = {
+    'my_mod': Mod(what='...', target='main', fw_versions=('1.13',), args=[], literal=False, hook=True,
+                  sig=[0xD62E, 0x6260, 0x2228, 0x8902, 0xD62A, 0x6061, 0x8154], start=0, end=7,
+                  routine='payload:my_mod_hook'),            # void my_mod_hook(u32 *regs, u32 *sp)
+    'my_mod_call': PoolRedirect(what='...', target='main', fw_versions=('1.13',),
+                                anchor=Anchor(sig=[...], index=3, literal=True),
+                                old=0x0C0D3B1A, routine='payload:my_mod_call'),
+}
+```
 
 ### Reference Mods Included in the Repository
 - **[`mods/tempo_wide/`](../mods/tempo_wide/cdj850/patch.py)**:
@@ -466,6 +497,7 @@ The cave is small, so larger code goes into SDRAM nobody uses. Traced from the s
   - Applies two `DataPatch` edits (`tempowidemath1`, `tempowidemath2`) in `FUN_0C0D59B8` so USB mode uses the overflow-safe `WIDE` pitch multiplier.
 - **[`mods/bpm999/`](../mods/bpm999/README.md)**: beat-grid tempo clamp 180.0 -> 999.0 (`movi20` at `0x0C0737D6`), sync range upper bound 199.9 -> 999.0 (`0x0C0D1C80`), and a clamp of the staging BPM word to 999 hooked at `display_stage_bpm`'s tail (`0x0C0642AA..0x0C0642B8`).
 - **[`mods/bpm_probe/`](../mods/bpm_probe/README.md)** (hardware probe, off): BPM 199 and frame digits 75..99 on the same hook.
+- **[`mods/payload_demo/`](../mods/payload_demo/README.md)** (reference, off): a C hook in the payload on the `display_stage_bpm` tail and a pool redirect of the 1 ms tick's `0x0C0B9310` to a payload function that counts and tail-jumps to `0x0C0EF8C8`.
 - **[`mods/dsp_probe/`](../mods/dsp_probe/cdj850/patch.py)**:
   - Replaces a main-loop `NOP` (`0x000000`) at Segment 4 `P:$01EA` with `JSR $0080` (`0x0D0080`) and places `nop; nop; rts` (`0x000000, 0x000000, 0x00000C`) at `P:$0080`.
 
@@ -475,8 +507,10 @@ The cave is small, so larger code goes into SDRAM nobody uses. Traced from the s
 # 1. List available CDJ-850 mods
 python3 mods/patch_update.py --model cdj850 --list
 
-# 2. Re-assemble MAIN (.s -> .bin) if you edited SH-2A assembly
+# 2. Re-assemble MAIN (.s -> .bin) if you edited SH-2A assembly (tools/sh-elf, or $CDJ850_SH_ELF=<prefix>)
+scripts/build/sh_elf_toolchain.sh          # once: binutils + GCC into tools/sh-elf
 python3 mods/patch_main.py --assemble
+python3 mods/payloadbuild.py /tmp/payload.bin payload_demo   # payload alone, with its symbol map
 
 # 3. Patch a stock C850MAIN.UPD and run all static + boot-critical checks
 python3 mods/patch_update.py --model cdj850 path/to/C850MAIN.UPD C850MAIN_MOD.UPD tempo_wide dsp_probe
@@ -488,5 +522,5 @@ python3 mods/validate.py --model cdj850 --stock path/to/C850MAIN.UPD C850MAIN_MO
 python3 mods/patch_main.py --model cdj850 --flash extract/cdj850/flash_cdj850.bin /tmp/flash_mod.bin tempowide tempowidemath1 tempowidemath2 dspprobe
 
 # 6. Run the CDJ-850 mod test suite (unit + live QEMU -icount boot verification)
-python3 -m pytest tests/test_cdj850_mods.py
+python3 -m pytest tests/test_cdj850_mods.py tests/test_cdj850_payload.py
 ```
