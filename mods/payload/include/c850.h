@@ -147,7 +147,8 @@ typedef void c850_hook_fn(u32 *regs, u32 *sp);
 #define C850_LEDS_PAGE2_B7      C850_U8(0x0C9D0AEB)  /* bits 0..3 beat-loop 1/2/4/8 */
 
 /* ---- Settings record (section 4b.6) ---- */
-#define C850_SETTINGS           0x0C9DA23C           /* 0x58 bytes, flash log at 0x3F8000 */
+#define C850_SETTINGS           0x0C9DA23C           /* 0x58 bytes, flash log at 0x3F8000; never set
+                                                        +0 bit 4, +1 bits 4..6, +0x43 bits 4..7 (log end) */
 
 /* ---- Dot-matrix text rows (section 4b.7) ---- */
 /* row record: [tag, attr0, attr1, attr2, len, text[len]] */

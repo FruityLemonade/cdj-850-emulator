@@ -133,6 +133,16 @@ class Sh2a:
             r[0] &= imm                                         # and #imm,R0
         elif op & 0xFF00 == 0xCB00:
             r[0] |= imm                                         # or #imm,R0
+        elif op & 0xFF00 == 0xCA00:
+            r[0] ^= imm                                         # xor #imm,R0
+        elif op & 0xFE00 == 0x8600:                             # bclr/bset/bst/bld #imm3,Rn (SH-2A)
+            n, bit, one = (op >> 4) & 0xF, 1 << (op & 7), op & 8
+            if op & 0x0100 == 0:
+                self.r[n] = (self.r[n] | bit) if one else (self.r[n] & ~bit & MASK)
+            elif one:
+                self.t = int(bool(self.r[n] & bit))             # bld
+            else:
+                self.r[n] = (self.r[n] | bit) if self.t else (self.r[n] & ~bit & MASK)
         elif op & 0xFF00 == 0x8000:                             # mov.b R0,@(disp,Rn)
             self.store(r[m] + (op & 15), r[0], 1)
         elif op & 0xFF00 == 0x8100:                             # mov.w R0,@(disp,Rn)
@@ -243,6 +253,14 @@ class Sh2a:
                 r[n] = (a - b) & MASK
             elif lo == 0xC:
                 r[n] = (a + b) & MASK
+            elif lo == 0xA:                                     # subc Rm,Rn
+                d = a - b - self.t
+                self.t = int(d < 0)
+                r[n] = d & MASK
+            elif lo == 0xE:                                     # addc Rm,Rn
+                d = a + b + self.t
+                self.t = int(d > MASK)
+                r[n] = d & MASK
             elif lo in (5, 0xD):                                # dmulu.l / dmuls.l
                 prod = a * b if lo == 5 else (signed(a) * signed(b)) & 0xFFFFFFFFFFFFFFFF
                 self.mach, self.macl = prod >> 32 & MASK, prod & MASK
@@ -269,6 +287,10 @@ class Sh2a:
             r[n] = v << 8 & MASK
         elif low == 0x19:
             r[n] = v >> 8
+        elif low == 0x28:
+            r[n] = v << 16 & MASK                               # shll16
+        elif low == 0x29:
+            r[n] = v >> 16                                      # shlr16
         elif low == 0x21:
             r[n] = signed(v) >> 1 & MASK                        # shar
         elif low == 0x24:                                       # rotcl

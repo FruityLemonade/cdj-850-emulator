@@ -177,11 +177,16 @@ class Gdb:
 
 class Deck:
     def __init__(self, usb_image, script=LOAD_SCRIPT, flash=None, gdb_port=None,
-                 log=None, extra_env=None):
+                 log=None, extra_env=None, writable=False):
+        """writable=True: the flash file (a copy the caller owns) and the copy of
+        the stick (self.usb) take the guest's writes (snapshot=off), so settings
+        and ANLZ writes can be read back after close()."""
         flash = flash or ROOT / "extract" / "cdj850" / "flash_cdj850.bin"
         self.tmp = Path(tempfile.mkdtemp(prefix="cdj850trace-"))
         usb = self.tmp / "usb.img"
         shutil.copyfile(usb_image, usb)
+        self.usb = usb
+        snap = "off" if writable else "on"
         self.keysock = "cdj850trace-%d" % os.getpid()
         env = os.environ.copy()
         for k in ("CDJ850_DSP_BOOT_HLE", "CDJ850_PF16_HIGH", "CDJ850_DSP_PLAY_PF"):
@@ -192,8 +197,8 @@ class Deck:
         qs, qc = socket.socketpair()
         args = [qemu_binary(), "-M", "cdj850", "-display", "none", "-monitor", "none",
                 "-serial", "none", "-icount", "shift=2,sleep=off",
-                "-drive", f"if=pflash,format=raw,file={flash},snapshot=on",
-                "-drive", f"if=none,id=usbstk,format=raw,file={usb},snapshot=on",
+                "-drive", f"if=pflash,format=raw,file={flash},snapshot={snap}",
+                "-drive", f"if=none,id=usbstk,format=raw,file={usb},snapshot={snap}",
                 "-device", "usb-storage,drive=usbstk,port=1",
                 "-chardev", f"socket,id=qmp,fd={qc.fileno()}",
                 "-mon", "chardev=qmp,mode=control"]
