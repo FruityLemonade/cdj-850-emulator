@@ -196,4 +196,29 @@ typedef void c850_hook_fn(u32 *regs, u32 *sp);
 #define C850_KEYS_PENDING       C850_U8(0x0C1E10AA)  /* 1 until the power-on keys are read */
 static inline int c850_service_mode(void) { return C850_UPDATE_MODE | C850_KEYS_PENDING; }
 
+/* ---- Shared state-4 tick (docs/cdj850-modding.md sections 4b.9, 4b.10) ----
+ * keys_state4_looping (0x0C0E0F34) runs once per player cycle while a USB
+ * loop plays (pool word 0x0C0D7B98, read only by the tail jump at
+ * 0x0C0D79A6). One pool word can point at one routine, so every mod that
+ * wants that tick redirects the word to the same symbol, c850_loop_tick (the
+ * second redirect then finds it 'present'). Each such mod ships a source
+ * payload/loop_tick.c that only expands C850_LOOP_TICK_DEFINE: weak, identical
+ * definitions of the tick and of a no-op for every hook, so the link keeps
+ * one tick, and a mod's own (strong) hook replaces its no-op. The tick calls
+ * the hooks in this order, then the stock handler. Hooks: loop_resize_state4
+ * (mods/loop_resize), quant_loops_drift_tick (mods/quant_loops). */
+#define C850_STATE4_KEYS        C850_FN(0x0C0E0F34, void, (void))
+#define C850_LOOP_TICK_DEFINE                                                   \
+    void loop_resize_state4(void) __attribute__((weak));                        \
+    void loop_resize_state4(void) {}                                            \
+    void quant_loops_drift_tick(void) __attribute__((weak));                    \
+    void quant_loops_drift_tick(void) {}                                        \
+    void c850_loop_tick(void) __attribute__((weak));                            \
+    void c850_loop_tick(void)                                                   \
+    {                                                                           \
+        loop_resize_state4();                                                   \
+        quant_loops_drift_tick();                                               \
+        C850_STATE4_KEYS();                                                     \
+    }
+
 #endif /* C850_H */

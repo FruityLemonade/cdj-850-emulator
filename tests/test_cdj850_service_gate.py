@@ -73,6 +73,16 @@ def all_mods():
     names = sorted(set(PS.mods) | set(PS.tables) | set(PS.redirects) | set(PS.entries))
     report, spans = {}, {}
     out = patch_main.patch(stock, names, "cdj850", report, spans)
+    # a redirect of a word another applied redirect already points at the same symbol (the
+    # shared state-4 tick c850_loop_tick, c850.h) finds it 'present': it shares that span
+    for n, r in report.items():
+        if r[0] == "present" and n in PS.redirects:
+            sym, old = sigpatch.payload_symbol(PS.redirects[n]), PS.redirects[n].old
+            twins = [m for m, x in PS.redirects.items() if m != n and report.get(m, ("",))[0] == "applied"
+                     and sigpatch.payload_symbol(x) == sym and x.old == old]
+            assert twins and spans[twins[0]][0][0] == spans.get(n, spans[twins[0]])[0][0], (n, twins)
+            spans[n] = spans[twins[0]]
+            report[n] = ("applied", "shared with %s" % twins[0])
     bad = {n: r for n, r in report.items() if r[0] != "applied"}
     assert not bad, bad
     folders = patch_main.payload_folders(names, "cdj850")

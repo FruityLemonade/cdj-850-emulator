@@ -9,9 +9,11 @@
  *   loop_resize_call           0x0C0D9994 (cue_call_prev_next, r4 = 0 CALL <,
  *                              1 CALL >), the two CALL branches of
  *                              player_handle_tempo_and_time_buttons.
- *   loop_resize_state4         0x0C0D7B98 (keys_state4_looping), once per
- *                              player cycle in state 4: follows the out in
- *                              effect, sends a halving that waited.
+ *   loop_resize_state4         hook of the shared tick c850_loop_tick
+ *                              (0x0C0D7B98, keys_state4_looping; c850.h,
+ *                              loop_tick.c), once per player cycle in state 4:
+ *                              follows the out in effect, sends a halving
+ *                              that waited.
  *   loop_resize_memory_button  0x0C0D9714 (memory_button): MEMORY stores the
  *                              loop that plays.
  *
@@ -396,10 +398,10 @@ void loop_resize_call(int next)
         loop_resize_ignored++;
 }
 
-/* Pool 0x0C0D7B98 (keys_state4_looping, 0x0C0E0F34): the state-4 key
- * handler, tail-jumped to by player_key_dispatch_by_state once per player
- * cycle in state 4. Sends a deferred halving once the loop has wrapped. */
-#define LR_STATE4_KEYS C850_FN(0x0C0E0F34, void, (void))
+/* Hook of the shared state-4 tick c850_loop_tick (pool 0x0C0D7B98,
+ * keys_state4_looping 0x0C0E0F34, c850.h): runs once per player cycle in
+ * state 4, before the stock handler. Sends a deferred halving once the loop
+ * has wrapped. */
 void loop_resize_state4(void)
 {
     loop_resize_ticks++;
@@ -413,8 +415,8 @@ void loop_resize_state4(void)
             lr_resize(in, lr_pend_old, lr_pend_out, lr_pend_q);
         }
     }
-    LR_STATE4_KEYS();
 }
+
 
 /* Pool 0x0C0D9714 (memory_button, 0x0C0D4172). memory_cue_add stores a loop
  * from the out record (0x0C7F64B0 and its M/S/F at 0x0C7F64B8), which a

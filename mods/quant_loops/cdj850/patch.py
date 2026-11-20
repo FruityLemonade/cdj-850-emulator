@@ -4,7 +4,7 @@
 Only while a beat grid of the loaded USB track is in RAM (the grid gave the
 deck's tempo, the same proof bpm_decimals uses); otherwise every routine
 passes the stock values through. Code is C in payload/quant_loops.c (shared
-SDRAM payload, mods/payloadbuild.py); the patches are seven pool-word
+SDRAM payload, mods/payloadbuild.py); the patches are eight pool-word
 redirects, no hook, no cave bytes. Section 4b.9 of docs/cdj850-modding.md
 has the trace.
 
@@ -22,6 +22,14 @@ has the trace.
   a snapped in pending the payload leaves the refresh out.
 * quant_loops_loop_in: pool 0x0C0DFA80 (FUN_0C0059D2), read only at
   0x0C0DF95E in the LOOP IN path: the in sector moves to the nearest beat.
+* quant_loops_drift: pool 0x0C0D7B98 (keys_state4_looping, 0x0C0E0F34), read
+  only by the tail jump at 0x0C0D79A6 in player_key_dispatch_by_state (state
+  4), to the shared tick c850_loop_tick (mods/payload/include/c850.h; the
+  same word and symbol as loop_resize_tick, so with both mods the second is
+  'present'). Once per player cycle while a loop plays the payload counts the
+  wraps and moves the out of the next pass so that the sum of the pass
+  lengths follows the exact grid length (whole frames alternate), then the
+  stock handler runs.
 * quant_loops_loop_out / _loop_out2: pools 0x0C0E0090 and 0x0C0E02C0
   (audio_send_cmd), read only in the LOOP OUT paths: the out sector (param 5
   of cmd 1 / mode 3) moves to the nearest beat after the loop in.
@@ -82,4 +90,12 @@ MODS = {
         'quant loops: LOOP OUT on the nearest grid beat after the loop in (second path)',
         [0xE703, 0x8F05, 0xE401, 0xD361, 0x430B, 0xE502, 0xA65C, 0x7F10], 3,
         AUDIO_SEND_CMD, 'quant_loops_loop_out'),
+    # 0x0C0D79A6: mov.l @(0x0C0D7B98),r3; jmp @r3; lds.l @r15+,pr (state 4 ->
+    # keys_state4_looping), the four handlers after it, and the jsr/n of the default.
+    # The same word and symbol as loop_resize_tick (the shared tick, c850.h).
+    'quant_loops_drift': _redirect(
+        'quant loops: loop drift correction (per-pass out on the grid length, state-4 tick)',
+        [0xD37C, 0x432B, 0x4F26, 0xD37B, 0x432B, 0x4F26, 0xD37B, 0x432B, 0x4F26, 0xD37A, 0x432B,
+         0x4F26, 0xD37A, 0x432B, 0x4F26, 0xD379, 0x434B], 0,
+        0x0C0E0F34, 'c850_loop_tick'),
 }

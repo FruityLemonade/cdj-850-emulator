@@ -13,9 +13,11 @@ Section 4b.10 of docs/cdj850-modding.md has the trace.
 
 * loop_resize_tick: pool 0x0C0D7B98 (keys_state4_looping, 0x0C0E0F34), read
   only by the mov.l at 0x0C0D79A6 in player_key_dispatch_by_state (tail jump,
-  state 4). The payload follows which loop out is in effect and sends a
-  halving that had to wait for the next loop pass (playhead past the new
-  out), then tail-calls the stock handler.
+  state 4), to the shared tick c850_loop_tick (mods/payload/include/c850.h;
+  the same word and symbol as quant_loops_drift). Its hook loop_resize_state4
+  follows which loop out is in effect and sends a halving that had to wait
+  for the next loop pass (playhead past the new out); the stock handler runs
+  after the hooks.
 * loop_resize_memory: pool 0x0C0D9714 (memory_button, 0x0C0D4172), read only
   at 0x0C0D9664. In a resized loop the out record (0x0C7F64B0 + M/S/F) gets
   the effective out for the call, so MEMORY stores the resized loop.
@@ -48,7 +50,7 @@ MODS = {
         'loop resize: follow the loop out and send deferred halvings (state-4 key handler)',
         [0xD37C, 0x432B, 0x4F26, 0xD37B, 0x432B, 0x4F26, 0xD37B, 0x432B, 0x4F26, 0xD37A, 0x432B,
          0x4F26, 0xD37A, 0x432B, 0x4F26, 0xD379, 0x434B], 0,
-        0x0C0E0F34, 'loop_resize_state4'),
+        0x0C0E0F34, 'c850_loop_tick'),
     # 0x0C0D9660: movrt r11; mov.l @(..),r6; mov.l @(0x0C0D9714),r2; jsr @r2; mov.l r11,@r6;
     # bra 0x0C0D9B3E
     'loop_resize_memory': _redirect(

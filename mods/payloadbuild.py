@@ -286,6 +286,11 @@ def build(mods, model='cdj850', keep=None):
         mapfile = os.path.join(work, 'payload.ld.map')
         _run([pre + 'ld', '-EB', '-T', LINKER_SCRIPT, '--orphan-handling=error', '-Map', mapfile,
               '-o', elf, *objs, libgcc()], work)
+        # the link must leave no relocation (payload.ld discards the empty
+        # dynamic-relocation section sh-elf ld reserves for weak symbols)
+        relocs = _run([pre + 'readelf', '-r', elf], work)
+        if 'There are no relocations' not in relocs:
+            raise PayloadError('the linked payload still has relocations:\n%s' % relocs)
         binary = os.path.join(work, 'payload.bin')
         _run([pre + 'objcopy', '-O', 'binary', elf, binary], work)
         with open(binary, 'rb') as f:
@@ -293,7 +298,7 @@ def build(mods, model='cdj850', keep=None):
         symbols = {}
         for line in _run([pre + 'nm', '-n', elf], work).splitlines():
             m = re.match(r'([0-9a-f]{8}) ([A-Za-z]) (\S+)$', line)
-            if m and m.group(2) in 'TtDdBbRrAa':
+            if m and m.group(2) in 'TtDdBbRrAaWV':      # W/V: weak (c850.h shared tick)
                 symbols[m.group(3)] = int(m.group(1), 16)
     check(blob, symbols, stack, limits)
     text = map_text(symbols, mods, stack)

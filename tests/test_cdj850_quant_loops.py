@@ -36,7 +36,7 @@ FLASH = ROOT / "extract" / "cdj850" / "flash_cdj850.bin"
 BAKEN = ROOT / "tools" / "baken" / "baken"
 BASE = 0x0C000000
 MODS = ["quant_loops", "quant_loops_auto_send", "quant_loops_auto_send2", "quant_loops_auto_keep",
-        "quant_loops_loop_in", "quant_loops_loop_out", "quant_loops_loop_out2"]
+        "quant_loops_loop_in", "quant_loops_loop_out", "quant_loops_loop_out2", "quant_loops_drift"]
 AUDIO_SEND_CMD = 0x0C0D7464
 # (pool word, stock value, instructions that read it, payload symbol)
 POOLS = [
@@ -50,6 +50,8 @@ POOLS = [
     (0x0C0E0090, AUDIO_SEND_CMD, [0x0C0DFE32, 0x0C0DFE5E, 0x0C0DFEB8, 0x0C0DFEC2, 0x0C0E0022,
                                   0x0C0E002C, 0x0C0E0076, 0x0C0E0080], "quant_loops_loop_out"),
     (0x0C0E02C0, AUDIO_SEND_CMD, [0x0C0E0138, 0x0C0E0142, 0x0C0E018E, 0x0C0E0198], "quant_loops_loop_out"),
+    # the shared state-4 tick (c850.h), the same word and symbol as loop_resize_tick
+    (0x0C0D7B98, 0x0C0E0F34, [0x0C0D79A6], "c850_loop_tick"),
 ]
 GRID_CTX = 0x0C9D24FC
 BASE_TENTHS = 0x0C9D23EC
@@ -200,12 +202,12 @@ def test_static_pool_words_outside_the_boot_critical_closure():
         assert not closure.hit(o, o + 4), hex(pool)
         for a in loaders:
             assert not closure.hit(a - BASE, a - BASE + 2), hex(a)
-    # nothing else changes in the code that reaches the seven words (auto_beat_loop_set, its
+    # nothing else changes in the code that reaches the eight words (auto_beat_loop_set, its
     # resize helper and the play-state key handler that holds LOOP IN / LOOP OUT)
     for lo, hi in ((0x0C0E5590, 0x0C0E630C), (0x0C0DEB50, 0x0C0E0F34)):
         diff = [a for a in range(lo, hi) if stock[a - BASE] != out[a - BASE]]
         assert all(any(pool <= a < pool + 4 for pool, *_ in POOLS) for a in diff), [hex(a) for a in diff]
-    assert len([a for a in range(0x0C0D0000, 0x0C0F0000) if stock[a - BASE] != out[a - BASE]]) <= 28
+    assert len([a for a in range(0x0C0D0000, 0x0C0F0000) if stock[a - BASE] != out[a - BASE]]) <= 32
 
 
 @needs_main
@@ -635,6 +637,24 @@ def build_stick(path):
     return image
 
 
+
+def _free_port():
+    import socket
+    s = socket.socket()
+    s.bind(("127.0.0.1", 0))
+    port = s.getsockname()[1]
+    s.close()
+    return port
+
+
+def _drift_gdb(syms):
+    """(gdb port, address of quant_loops_drift_on) when the payload has the drift correction:
+    this test checks exact out frames, so it runs with the correction off (it moves the out of
+    every pass by up to a frame; tests/test_cdj850_loop_drift.py covers it)."""
+    a = payloadbuild.lookup(syms, "quant_loops_drift_on") if syms else None
+    return (_free_port(), a) if a else (None, None)
+
+
 def drive(stick, flash=None, syms=None):
     """Boot, play each track and press the plan; returns {grid bpm100: {scenario: values}}."""
     sys.path.insert(0, str(ROOT / "scripts" / "debug"))
@@ -689,8 +709,14 @@ def drive(stick, flash=None, syms=None):
             time.sleep(1.5)
         return d.rb(STATE_USB)
 
-    with tr.Deck(stick, flash=flash) as d:
+    port, drift_on = _drift_gdb(syms)
+    with tr.Deck(stick, flash=flash, gdb_port=port) as d:
+        if port:
+            g = tr.Gdb(port)
+            g._send("c")
         d.wait_line("mode=0x0a", "[Q128]", timeout=300)
+        if port:
+            assert g.poke32(drift_on, 0) == "OK"
         for k in range(3):
             time.sleep(1.5)
             for _ in range(4):
