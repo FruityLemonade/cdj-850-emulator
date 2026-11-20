@@ -4,10 +4,11 @@
 panel_keys_to_internal_words sets u8 0x0C1E109A to 1/2 when RELOOP is held at power-on
 (firmware update from USB/CD) and clears u8 0x0C1E10AA (1 in .data) once it has looked at
 the power-on keys. While either is nonzero no mod may act: every hook trampoline runs only
-its moved stock span, and every PoolRedirect goes through a generated gate in the payload
-(__gate_<symbol>) that jumps to the stock function.
+its moved stock span, and every PoolRedirect and EntryRedirect goes through a generated gate in
+the payload (__gate_<symbol>) that jumps to the stock function (for an EntryRedirect: to the
+payload's copy of the moved entry, which goes on in the stock function).
 
-These tests enumerate every hook Mod and every PoolRedirect the cdj850 registry declares,
+These tests enumerate every hook Mod, PoolRedirect and EntryRedirect the cdj850 registry declares,
 build one image with all of them, and check that each payload entry and each cave routine
 is reached only through a gate, running the gates on the SH-2A interpreter.
 """
@@ -52,12 +53,15 @@ def test_profile_gate_is_the_traced_service_bytes():
 def test_every_registry_patch_is_gateable():
     """Every routine patch is a hook (gated by its trampoline) and every redirect has one
     stock function per symbol (one gate); nothing else calls mod code."""
-    assert PS.mods and PS.redirects
+    assert PS.mods and PS.redirects and PS.entries
     assert all(m.hook for m in PS.mods.values()), [n for n, m in PS.mods.items() if not m.hook]
     olds = {}
     for name, r in PS.redirects.items():
         sym = sigpatch.payload_symbol(r)
         assert olds.setdefault(sym, r.old) == r.old, name
+    for name, e in PS.entries.items():
+        sym = sigpatch.payload_symbol(e)
+        assert olds.setdefault(sym, sigpatch.stock_symbol(e)) == sigpatch.stock_symbol(e), name
     # DataPatches and the loader are the only other kinds; they hold no code a gate could stop
     assert set(PS.images) == {"loader"}
 
@@ -66,7 +70,7 @@ def test_every_registry_patch_is_gateable():
 def all_mods():
     """MAIN with every cdj850 patch the registry has (all mod folders), and the payload."""
     stock = MAIN.read_bytes()
-    names = sorted(set(PS.mods) | set(PS.tables) | set(PS.redirects))
+    names = sorted(set(PS.mods) | set(PS.tables) | set(PS.redirects) | set(PS.entries))
     report, spans = {}, {}
     out = patch_main.patch(stock, names, "cdj850", report, spans)
     bad = {n: r for n, r in report.items() if r[0] != "applied"}
@@ -114,6 +118,31 @@ def test_every_redirect_points_at_its_gate_and_the_gate_picks_stock_in_service_m
             cpu.r[4:8] = [0x11, 0x22, 0x33, 0x44]
             cpu.pr, cpu.r[15] = 0x0C0FFFF0, 0x0DF00F00
             end, _ = _run_until(cpu, gate, {real, r.old})
+            assert end == want, (name, flags, hex(end))
+            # the callee sees the caller's arguments, stack and return address
+            assert cpu.r[4:8] == [0x11, 0x22, 0x33, 0x44] and cpu.pr == 0x0C0FFFF0 and cpu.r[15] == 0x0DF00F00
+
+
+@needs_toolchain
+@needs_main
+def test_every_entry_redirect_jumps_to_its_gate_and_the_gate_picks_the_moved_entry_in_service_mode(all_mods):
+    stock, out, p, spans = all_mods
+    for name, e in sorted(PS.entries.items()):
+        sym = sigpatch.payload_symbol(e)
+        gate = payloadbuild.lookup(p.symbols, payloadbuild.gate_name(sym))
+        real = payloadbuild.lookup(p.symbols, sym)
+        moved = payloadbuild.lookup(p.symbols, sigpatch.stock_symbol(e))
+        (off, size, kind), = spans[name]
+        entry = BASE + off
+        assert kind == "site" and stock[off:off + size] == e.old
+        assert out[off:off + size] == sigpatch.entry_jump(entry, gate), name
+        # the moved entry runs the replaced bytes and goes on behind them in MAIN
+        assert p.blob[moved - L.PAYLOAD:moved - L.PAYLOAD + size] == e.old
+        for flags, want in (((0, 0), real), ((1, 0), moved), ((2, 0), moved), ((0, 1), moved), ((1, 1), moved)):
+            cpu = _cpu(out, p, flags)
+            cpu.r[4:8] = [0x11, 0x22, 0x33, 0x44]
+            cpu.pr, cpu.r[15] = 0x0C0FFFF0, 0x0DF00F00
+            end, _ = _run_until(cpu, entry, {real, moved})
             assert end == want, (name, flags, hex(end))
             # the callee sees the caller's arguments, stack and return address
             assert cpu.r[4:8] == [0x11, 0x22, 0x33, 0x44] and cpu.pr == 0x0C0FFFF0 and cpu.r[15] == 0x0DF00F00
@@ -187,7 +216,7 @@ def test_every_word_into_mod_code_is_a_gate_or_a_gated_trampoline(all_mods):
                     checked += 1
                     in_tramp = any(lo <= BASE + o < hi for lo, hi in tramp_ranges)
                     assert w in gates or in_tramp, (name, hex(BASE + o), hex(w))
-    assert checked >= len(PS.redirects) + len(PS.mods)
+    assert checked >= len(PS.redirects) + len(PS.entries) + len(PS.mods)
 
 
 @needs_toolchain

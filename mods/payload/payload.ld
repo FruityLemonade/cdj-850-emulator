@@ -43,5 +43,6 @@ SECTIONS
 
     /DISCARD/ : {
         *(.comment) *(.note .note.*) *(.eh_frame .eh_frame_hdr) *(.stack)
+        *(.debug .debug_*)          /* libgcc's soft-float helpers carry DWARF */
     }
 }

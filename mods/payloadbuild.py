@@ -138,8 +138,10 @@ def gate_bytes(model):
 
 
 def redirect_gates(mods, model):
-    """{symbol: stock function} of every PoolRedirect the mod folders declare
-    for `model`; the payload gets a gate in front of each symbol."""
+    """{symbol: stock function} of every PoolRedirect and EntryRedirect the
+    mod folders declare for `model`; the payload gets a gate in front of each
+    symbol. The stock function of a PoolRedirect is its address; that of an
+    EntryRedirect is the payload symbol of the moved entry (`stock`)."""
     import modelfw
     import sigpatch
     out = {}
@@ -147,14 +149,41 @@ def redirect_gates(mods, model):
         if not os.path.exists(os.path.join(HERE, mod, model, 'patch.py')):
             continue
         for name, patch in modelfw.mod_patch(mod, model).MODS.items():
-            if not isinstance(patch, sigpatch.PoolRedirect):
+            if isinstance(patch, sigpatch.PoolRedirect):
+                old = patch.old
+            elif isinstance(patch, sigpatch.EntryRedirect):
+                old = sigpatch.stock_symbol(patch)
+            else:
                 continue
             symbol = sigpatch.payload_symbol(patch)
-            if out.get(symbol, patch.old) != patch.old:
-                raise PayloadError('%s is redirected from two stock functions (%#x, %#x): one gate cannot '
-                                   'return to both' % (symbol, out[symbol], patch.old))
-            out[symbol] = patch.old
+            if out.get(symbol, old) != old:
+                raise PayloadError('%s is redirected from two stock functions (%s, %s): one gate cannot '
+                                   'return to both' % (symbol, _show(out[symbol]), _show(old)))
+            out[symbol] = old
     return out
+
+
+def _show(old):
+    return old if isinstance(old, str) else '%#x' % old
+
+
+def stack_limits(mods, model):
+    """{(mod, source file name): frame limit} of the sources whose mod allows
+    frames over STACK_LIMIT (PAYLOAD_STACK_LIMITS in its patch.py), for code
+    that runs only on a private stack of the mod's own."""
+    import modelfw
+    out = {}
+    for mod in mods:
+        if os.path.exists(os.path.join(HERE, mod, model, 'patch.py')):
+            for src, limit in getattr(modelfw.mod_patch(mod, model), 'PAYLOAD_STACK_LIMITS', {}).items():
+                out[(mod, src)] = limit
+    return out
+
+
+def mod_include(mod, model):
+    """The include/ folder of a mod's payload sources (its own headers), or None."""
+    folder = os.path.join(HERE, mod, model, 'payload', 'include')
+    return folder if os.path.isdir(folder) else None
 
 
 def gate_source(gates, defined, gate):
@@ -166,6 +195,10 @@ def gate_source(gates, defined, gate):
         real = symbol if symbol in defined else '_' + symbol
         if real not in defined:
             raise PayloadError('redirected symbol %s is defined by no payload source' % symbol)
+        if isinstance(old, str):
+            old = old if old in defined else '_' + old
+            if old not in defined:
+                raise PayloadError('the stock entry %s of %s is defined by no payload source' % (old, symbol))
         lines += ['\t.global %s' % gate_name(symbol), '\t.type %s, @function' % gate_name(symbol),
                   '\t.align 2', '%s:' % gate_name(symbol)]
         for j in range(len(gate)):
@@ -175,17 +208,21 @@ def gate_source(gates, defined, gate):
                   '\tmov.l\t.Lmod%d, r1' % k, '\tjmp\t@r1', '\tnop',
                   '.Lstock%d:' % k, '\tmov.l\t.Lold%d, r1' % k, '\tjmp\t@r1', '\tnop', '\t.align 2']
         lines += ['.Lg%d_%d:\t.long\t%#010x' % (k, j, a) for j, a in enumerate(gate)]
-        lines += ['.Lmod%d:\t.long\t%s' % (k, real), '.Lold%d:\t.long\t%#010x' % (k, old),
+        lines += ['.Lmod%d:\t.long\t%s' % (k, real),
+                  '.Lold%d:\t.long\t%s' % (k, old if isinstance(old, str) else '%#010x' % old),
                   '\t.size %s, . - %s' % (gate_name(symbol), gate_name(symbol))]
     return '\n'.join(lines) + '\n'
 
 
 def _digest(mods, model):
     h = hashlib.sha256()
-    h.update(repr((sorted(redirect_gates(mods, model).items()), gate_bytes(model))).encode())
+    h.update(repr((sorted(redirect_gates(mods, model).items()), gate_bytes(model),
+                   sorted(stack_limits(mods, model).items()))).encode())
     h.update(tool_prefix().encode())
-    for path in [LINKER_SCRIPT] + sorted(glob.glob(os.path.join(INCLUDE, '*'))) + \
-            [p for m in mods for p in sources(m, model)]:
+    # every file of the mods' payload folders: sources and their own headers
+    own = [p for m in mods for p in sorted(glob.glob(os.path.join(HERE, m, model, 'payload', '**', '*'),
+                                                      recursive=True)) if os.path.isfile(p)]
+    for path in [LINKER_SCRIPT] + sorted(glob.glob(os.path.join(INCLUDE, '*'))) + own:
         h.update(path.encode())
         with open(path, 'rb') as f:
             h.update(f.read())
@@ -214,19 +251,24 @@ def build(mods, model='cdj850', keep=None):
         work = keep or tmp
         os.makedirs(work, exist_ok=True)
         pre = tool_prefix()
-        objs, stack = [], {}
+        objs, stack, limits = [], {}, {}
+        allowed = stack_limits(mods, model)
         for k, src in enumerate(files):
             mod = os.path.relpath(src, HERE).split(os.sep)[0]
             obj = os.path.join(work, '%02d_%s_%s.o' % (k, mod, os.path.basename(src).replace('.', '_')))
+            inc = ['-I', INCLUDE] + (['-I', mod_include(mod, model)] if mod_include(mod, model) else [])
             if src.endswith('.s'):
-                _run([pre + 'as', *ASFLAGS, '-I', INCLUDE, '-o', obj, src], work)
+                _run([pre + 'as', *ASFLAGS, *inc, '-o', obj, src], work)
             else:
-                _run([pre + 'gcc', *CFLAGS, '-I', INCLUDE, '-c', '-o', obj, src], work)
+                _run([pre + 'gcc', *CFLAGS, *inc, '-c', '-o', obj, src], work)
                 su = obj[:-2] + '.su'
                 if os.path.exists(su):
                     for line in open(su):
                         where, size, _ = line.rstrip('\n').split('\t')
-                        stack['%s:%s' % (mod, where.split(':')[-1])] = int(size)
+                        key = '%s:%s' % (mod, where.split(':')[-1])
+                        stack[key] = int(size)
+                        if (mod, os.path.basename(src)) in allowed:
+                            limits[key] = allowed[(mod, os.path.basename(src))]
             objs.append(obj)
         gates, gate = redirect_gates(mods, model), gate_bytes(model)
         if gates and gate:
@@ -253,7 +295,7 @@ def build(mods, model='cdj850', keep=None):
             m = re.match(r'([0-9a-f]{8}) ([A-Za-z]) (\S+)$', line)
             if m and m.group(2) in 'TtDdBbRrAa':
                 symbols[m.group(3)] = int(m.group(1), 16)
-    check(blob, symbols, stack)
+    check(blob, symbols, stack, limits)
     text = map_text(symbols, mods, stack)
     if keep:
         with open(os.path.join(keep, 'payload.map'), 'w') as f:
@@ -262,8 +304,11 @@ def build(mods, model='cdj850', keep=None):
     return _CACHE[key]
 
 
-def check(blob, symbols, stack):
-    """The rules of a payload image, in addition to what the linker checks."""
+def check(blob, symbols, stack, limits=None):
+    """The rules of a payload image, in addition to what the linker checks.
+    `limits` {function: bytes} raises STACK_LIMIT for the functions of a
+    source its mod declares in PAYLOAD_STACK_LIMITS (a private stack)."""
+    limits = limits or {}
     start, end = symbols.get('__payload_start'), symbols.get('__payload_end')
     if start != BASE:
         raise PayloadError('the payload starts at %#x, not %#x' % (start or 0, BASE))
@@ -274,9 +319,10 @@ def check(blob, symbols, stack):
     bss = blob[symbols['__bss_start'] - BASE:symbols['__bss_end'] - BASE]
     if any(bss):
         raise PayloadError('.bss is not zero in the image')
-    big = {f: n for f, n in stack.items() if n > STACK_LIMIT}
+    big = {f: n for f, n in stack.items() if n > limits.get(f, STACK_LIMIT)}
     if big:
-        raise PayloadError('stack frames over %d bytes: %s' % (STACK_LIMIT, big))
+        raise PayloadError('stack frames over %d bytes (or their mod\'s PAYLOAD_STACK_LIMITS): %s'
+                           % (STACK_LIMIT, big))
 
 
 def lookup(symbols, name):

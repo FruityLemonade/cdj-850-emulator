@@ -62,7 +62,7 @@ PY = str(ROOT / ".venv" / "bin" / "python") if (ROOT / ".venv" / "bin" / "python
 STOCK_UPD = ROOT / "C850MAIN.UPD"
 STOCK_FLASH = ROOT / "extract" / "cdj850" / "flash_cdj850.bin"
 DEFAULT_MODS = ["auto_standby", "bpm999", "bpm_decimals", "quant_loops", "loop_resize", "hot_cues",
-                "tempo_wide"]
+                "tempo_wide", "flac"]
 SERVICE_USB = "0:+usb,0:+reloop,8000:-usb,8000:-reloop"    # service manual mode 4
 MAIN_BASE = 0x0C000000
 RUN_VERSION = 0x0CE6D242       # the running version the updater compares (0x0C08EE7C)
@@ -276,8 +276,11 @@ def boot_and_play(work, flash, stick, tag, mod_ranges, want, modded, payload_ent
             check(tag + ": no loader payload in 0x0DE00000", problems and guard != L.GUARD_LO
                   and want["payload"] not in region, "first word %#010x" % guard)
         got = ram_ranges(d, mod_ranges)
+        # the stub and blob sit in statics MAIN's start-up clears and then uses (the
+        # loader has copied them to 0x0DE00000 by then): not compared
+        blob_lo = L.BLOB_ADDR - MAIN_BASE
         bad = [hex(MAIN_BASE + a) for a, b in mod_ranges if got[a] != want["image"][a:b]
-               and not (L.BLOB_ADDR - MAIN_BASE <= a < L.BLOB_ADDR - MAIN_BASE + 0x4000)]
+               and not (blob_lo <= a < blob_lo + want["blob_len"])]
         check(tag + ": %d mod-written ranges of MAIN in SDRAM are %s" % (len(mod_ranges), "modded" if modded else "stock"),
               not bad, bad[:6])
         time.sleep(1.5)
@@ -377,6 +380,7 @@ def main(argv=None):
     hdr = L.BLOB_ADDR - MAIN_BASE + L.STUB_SIZE
     pay_len = struct.unpack_from(">I", mod_img, hdr + 8)[0]
     pay_blob = mod_img[hdr + L.HEADER:hdr + L.HEADER + pay_len]
+    blob_len = max(0x4000, L.STUB_SIZE + L.HEADER + pay_len + 8)    # stub, header, payload (padded)
     keep = work / "payload.build"
     built = payloadbuild.build([m for m in a.mods if payloadbuild.sources(m, "cdj850")], "cdj850", keep=str(keep))
     assert built.blob == pay_blob, "the payload in the update is not what payloadbuild makes for --mods"
@@ -436,7 +440,8 @@ def main(argv=None):
 
     # 4. boot the modded deck
     summary["modded"] = boot_and_play(work, flash, grid_stick, "4-modded", ranges,
-                                      {"image": mod_img, "payload": pay_blob, "bss": pay_bss}, True,
+                                      {"image": mod_img, "payload": pay_blob, "bss": pay_bss,
+                                       "blob_len": blob_len}, True,
                                       payload_entry=None if a.no_gdb else key_filter)
     check("modded: running version is the mod label %s" % label, summary["modded"]["version"].startswith(label),
           summary["modded"]["version"])
@@ -476,7 +481,8 @@ def main(argv=None):
 
     # 6. boot the rolled-back deck
     summary["stock"] = boot_and_play(work, flash, grid_stick, "6-stock", ranges,
-                                     {"image": stock_img, "payload": mod_img[PAYLOAD_SRC:PAYLOAD_SRC + 256]}, False)
+                                     {"image": stock_img, "payload": mod_img[PAYLOAD_SRC:PAYLOAD_SRC + 256],
+                                      "blob_len": blob_len}, False)
     hist = bytes.fromhex(summary["stock"]["history_name"])
     check("stock: settings +0x22 left at 0x5A by hot_cues survives the rollback and is harmless "
           "(HISTORY name reads %r, deck boots and plays)" % hist.split(b"\0")[0].decode("latin1"),

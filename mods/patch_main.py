@@ -48,9 +48,9 @@ A mod can also ship C and SH-2A assembly for the shared payload,
 mods/<mod>/<model>/payload/ (payloadbuild.py). When any patch of such a mod is
 named, the payload of every such mod named is built, the `loader` patch is
 added (it copies the payload to SDRAM at boot), and the hooks
-(Mod(routine='payload:<symbol>')) and pool redirects (PoolRedirect) of the
-mods call into it by symbol. $CDJ850_LOADER_PAYLOAD, which hands the loader a
-raw payload file, is still honoured when no named mod has payload sources;
+(Mod(routine='payload:<symbol>')), pool redirects (PoolRedirect) and entry
+redirects (EntryRedirect) of the mods call into it by symbol.
+$CDJ850_LOADER_PAYLOAD, which hands the loader a raw payload file, is still honoured when no named mod has payload sources;
 with them, it must hold exactly the payload they build.
 """
 import os
@@ -98,7 +98,7 @@ def mods_for(model):
     """Every patch of `model`: its routines, the rewrites of bytes the firmware already has, its
     whole-image transforms (the CDJ-850 loader) and the mods of its DSP program."""
     found = PATCH_SETS.get(model)
-    own = {**found.mods, **found.tables, **found.images, **found.redirects} if found else {}
+    own = {**found.mods, **found.tables, **found.images, **found.redirects, **found.entries} if found else {}
     return {**own, **dsp_mods_for(model)}
 
 
@@ -149,7 +149,7 @@ def patch(data, names, model=modelfw.DEFAULT_MODEL, report=None, spans=None):
             built = payloadbuild.build(folders, model)
         except payloadbuild.PayloadError as e:
             found = PATCH_SETS[model]
-            uses = [n for n in names if n in found.redirects
+            uses = [n for n in names if n in found.redirects or n in found.entries
                     or (n in found.mods and sigpatch.payload_symbol(found.mods[n]))]
             for n in uses + [LOADER]:
                 report[n] = ('skipped', 'payload not built: %s' % str(e).splitlines()[0])

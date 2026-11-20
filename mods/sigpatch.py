@@ -121,7 +121,7 @@ GATE_PREFIX = '__gate_'                # payloadbuild.gate_name()
 
 
 def payload_symbol(mod):
-    """The payload symbol a Mod or PoolRedirect calls, or None for a cave routine."""
+    """The payload symbol a Mod, PoolRedirect or EntryRedirect calls, or None for a cave routine."""
     routine = getattr(mod, 'routine', None)
     if routine and routine.startswith(PAYLOAD_PREFIX):
         return routine[len(PAYLOAD_PREFIX):]
@@ -142,6 +142,42 @@ def payload_symbol(mod):
 #           so it must follow the stock function's ABI; to keep the stock
 #           behaviour it calls (or tail-jumps to) `old`.
 PoolRedirect = collections.namedtuple('PoolRedirect', 'what target fw_versions anchor old routine')
+
+
+# A jump at the entry of a stock function that is called by bsr or through a
+# pointer, so no pool word can be redirected: its first bytes (`old`) become
+#     mov.l @(disp,pc),r0; jmp @r0; nop; (nop); .long <payload address>
+# and every call of the function lands in the payload with the caller's
+# registers (r0 aside), stack and pr.
+# what, target, fw_versions as in Mod
+# anchor    an Anchor (literal=False) naming the function's first halfword;
+#           give a sig of the stock code behind `old` and a negative index, so
+#           a patched image is still found
+# old       the stock bytes at the entry, exactly as long as the jump (12 bytes
+#           at a 4-aligned entry, 10 otherwise), none of them a branch or a
+#           pc-relative load
+# routine   'payload:<symbol>', the function called instead (stock ABI)
+# stock     'payload:<symbol>' of the moved entry: payload code that runs `old`
+#           and jumps to the entry + len(old), i.e. the stock function. The
+#           routine calls it for the stock behaviour, and with a profile gate
+#           the jump goes to the payload's gate __gate_<routine>, which jumps
+#           to it in the service modes (payloadbuild.py).
+EntryRedirect = collections.namedtuple('EntryRedirect', 'what target fw_versions anchor old routine stock')
+
+
+def stock_symbol(entry):
+    """The payload symbol of an EntryRedirect's moved entry."""
+    if not entry.stock.startswith(PAYLOAD_PREFIX):
+        raise SystemExit('stock %r: only payload:<symbol> is supported' % entry.stock)
+    return entry.stock[len(PAYLOAD_PREFIX):]
+
+
+def entry_jump(at, target, byteorder='>'):
+    """mov.l @(disp,pc),r0; jmp @r0; nop; nop up to the literal; the literal."""
+    lit = (at + 6 + 3) & ~3
+    ops = [0xD000 | (lit - ((at & ~3) + 4)) // 4, 0x402B, 0x0009]
+    ops += [0x0009] * ((lit - at - 6) // 2)
+    return struct.pack(byteorder + '%dH' % len(ops), *ops) + struct.pack(byteorder + 'I', target)
 
 
 # A patch that rewrites bytes the firmware reads as data (the USB descriptors,
@@ -713,7 +749,8 @@ def trampoline_size(key, hooks, gate=()):
 # The patches of one model's image: its ImageProfile, the routines of the mods
 # (placed in the image, and so laid out together) and the DataPatches (rewrites
 # of bytes already there) and the ImagePatches (whole-image transforms).
-PatchSet = collections.namedtuple('PatchSet', 'profile mods tables images redirects', defaults=({}, {}, {}))
+PatchSet = collections.namedtuple('PatchSet', 'profile mods tables images redirects entries',
+                                  defaults=({}, {}, {}, {}))
 
 
 def patch_set(profile, declared):
@@ -722,18 +759,19 @@ def patch_set(profile, declared):
                     {n: p for n, p in declared.items() if isinstance(p, Mod)},
                     {n: p for n, p in declared.items() if isinstance(p, DataPatch)},
                     {n: p for n, p in declared.items() if isinstance(p, ImagePatch)},
-                    {n: p for n, p in declared.items() if isinstance(p, PoolRedirect)})
+                    {n: p for n, p in declared.items() if isinstance(p, PoolRedirect)},
+                    {n: p for n, p in declared.items() if isinstance(p, EntryRedirect)})
 
 
 def patch_model(sets, blob_path, data, names, model, tag, report=None, spans=None, payload=None, env=None):
     """patch() with the PatchSet `sets` holds for `model`, then its DataPatches,
-    then its PoolRedirects, then its ImagePatches. A mod the model has no
+    then its PoolRedirects and EntryRedirects, then its ImagePatches. A mod the model has no
     patch for is reported as not applied; an image with none gets back as it
     is. `payload` ({symbol: address}) is what payload routines and redirects
     call; `env` (default os.environ) is what ImagePatches read."""
     report = {} if report is None else report
     found = sets.get(model)
-    known = {**found.mods, **found.tables, **found.images, **found.redirects} if found else {}
+    known = {**found.mods, **found.tables, **found.images, **found.redirects, **found.entries} if found else {}
     for name in names:
         if name not in known:
             report[name] = ('skipped', 'no patch for %s' % model)
@@ -750,6 +788,9 @@ def patch_model(sets, blob_path, data, names, model, tag, report=None, spans=Non
     if any(n in found.redirects for n in names):
         out = patch_redirects(found.profile, out, found.redirects, [n for n in names if n in found.redirects],
                               payload, tag, report, spans)
+    if any(n in found.entries for n in names):
+        out = patch_entries(found.profile, out, found.entries, [n for n in names if n in found.entries],
+                            payload, tag, report, spans)
     if any(n in found.images for n in names):
         out = patch_images(out, found.images, [n for n in names if n in found.images], tag, report, spans, env)
     return out
@@ -802,6 +843,69 @@ def patch_redirects(profile, data, redirects, names, payload, tag, report, spans
         loads = sorted(img.addr_of(i) for i, off, width in reads if off == lit and width == 4)
         print('%s: %s: pool word %#x %#x -> %#x (read by %s)'
               % (tag, r.what, img.addr_of(lit), r.old, new, ', '.join('%#x' % a for a in loads)))
+    return bytes(img.d)
+
+
+def patch_entries(profile, data, entries, names, payload, tag, report, spans):
+    """Apply the EntryRedirect `entries[name]` for each name: the stock bytes
+    `old` at the function's entry become entry_jump() to the payload symbol
+    (to its gate __gate_<symbol> with a profile gate). An entry that already
+    holds that jump is 'present'; one that holds anything else, an anchor not
+    found once, a missing symbol, or `old` that cannot be moved is left out
+    and reported. The jump goes to `spans` as a 'site'."""
+    img = Image(profile, data)
+    spans = {} if spans is None else spans
+    reads = literal_pool_reads(img)
+    for name in names:
+        e = entries[name]
+
+        def skip(why):
+            report[name] = ('skipped', why)
+            print('%s: %s not applied: %s' % (tag, e.what, why))
+        try:
+            symbol = payload_symbol(e)
+            payload_address(payload, stock_symbol(e))
+            if profile.gate:
+                gated = GATE_PREFIX + symbol
+                if not payload or gated not in payload:
+                    raise NotApplied('the payload has no service-mode gate %s for it' % gated)
+                symbol = gated
+            new = payload_address(payload, symbol)
+            if e.anchor.literal:
+                raise NotApplied('its anchor names a literal load, not the entry')
+            off = anchor_offset(img, e.anchor) + e.anchor.delta
+        except NotApplied as ex:
+            skip(str(ex))
+            continue
+        at = img.addr_of(off)
+        code = entry_jump(at, new, profile.byteorder)
+        if len(code) != len(e.old):
+            skip('the jump at %#x takes %d bytes, old has %d' % (at, len(code), len(e.old)))
+            continue
+        ops = struct.unpack(profile.byteorder + '%dH' % (len(e.old) // 2), e.old)
+        moved = [op for op in ops if op & 0xF000 in (0x9000, 0xA000, 0xB000, 0xD000)   # pc-relative, bra, bsr
+                 or op & 0xF900 == 0x8900 or op & 0xFF00 == 0xC700                    # bt/bf, mova
+                 or op & 0xF0DF == 0x0003 or op & 0xF0FF in (0x400B, 0x402B, 0x404B)    # braf/bsrf, jsr, jmp, jsr/n
+                 or op in (0x000B, 0x002B, 0x006B) or op & 0xF0FF == 0x007B]          # rts, rte, rts/n, rtv/n
+        if moved:
+            skip('old holds %s, which cannot run elsewhere' % ', '.join('%#06x' % op for op in moved))
+            continue
+        have = bytes(img.d[off:off + len(code)])
+        if have == code:
+            report[name] = ('present', '')
+            print('%s: %s already applied' % (tag, e.what))
+            continue
+        if have != e.old:
+            skip('the entry at %#x holds %s, not %s' % (at, have.hex(), e.old.hex()))
+            continue
+        pool = [img.addr_of(i) for i, lit, width in reads if lit < off + len(code) and off < lit + width]
+        if pool:
+            skip('the entry at %#x is read as a literal from %s' % (at, ', '.join('%#x' % a for a in pool)))
+            continue
+        img.d[off:off + len(code)] = code
+        spans.setdefault(name, []).append((off, len(code), 'site'))
+        report[name] = ('applied', '')
+        print('%s: %s: entry %#x jumps to %#x' % (tag, e.what, at, new))
     return bytes(img.d)
 
 
