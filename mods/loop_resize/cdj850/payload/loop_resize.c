@@ -27,7 +27,8 @@
  * own 8-beat reference.
  *
  * Lengths:
- *   grid     (a rekordbox grid gave the deck's tempo, as in quant_loops) the
+ *   grid     (quantize on, c850_ui.h, and a rekordbox grid gave the deck's
+ *            tempo, as in quant_loops) the
  *            loop is q sixteenths of a beat on the grid, counted from the
  *            loop in (the in on a beat or a 1/16 step of it: exact grid
  *            frames; otherwise in + the grid duration). < gives q/2, > 2q;
@@ -41,6 +42,7 @@
  * Integer only (no FPU). Products stay below 2^32 (ms * 75 for ms < 57e6).
  */
 #include "c850.h"
+#include "c850_ui.h"
 
 #define LR_CA90             C850_U32(0x0CE6CA90)   /* 8-beat reference of the beat resize */
 #define LR_GRID_WINDOW_OK   C850_U32(C850_GRID_CTX + 0x70)
@@ -133,14 +135,15 @@ u32 loop_resize_grid_ms(int i, u32 p)
     return t0 + (r * (lr_beat_ms(i, (p >> 4) + 1u) - t0) + 8u) / 16u;
 }
 
-/* The grid gave the deck's tempo (quant_loops_grid_ok). */
+/* Quantize is on and the grid gave the deck's tempo (quant_loops_grid_ok).
+ * Quantize off (BEAT SELECT + LOOP IN with quant_loops): frame mode. */
 static int lr_grid_ok(int i)
 {
     u32 base = C850_BPM_BASE_TENTHS;
     u32 n = lr_window_n();
     int j;
 
-    if (C850_IS_USB_MODE != 1 || n == 0 || LR_GRID_WINDOW_OK == 0 || base == 0)
+    if (!c850_ui_quantize() || C850_IS_USB_MODE != 1 || n == 0 || LR_GRID_WINDOW_OK == 0 || base == 0)
         return 0;
     for (j = i - 8; j <= i + 8; j++) {
         u32 t;

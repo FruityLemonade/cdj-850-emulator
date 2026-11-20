@@ -799,14 +799,17 @@ def patch_model(sets, blob_path, data, names, model, tag, report=None, spans=Non
 def patch_redirects(profile, data, redirects, names, payload, tag, report, spans):
     """Apply the PoolRedirect `redirects[name]` for each name: the pool word
     its anchor's mov.l reads goes from `old` to the payload symbol's address.
-    A word that already holds that address is 'present'; one that holds
-    anything else, an anchor not found once, or a missing symbol is left out
-    and reported. The written word goes to `spans` as a 4-byte 'site'. With a
+    A word that already holds that address is 'present', or 'applied' (shared)
+    when another of `names` wrote it in this call: two mods may redirect one
+    word to one routine (c850_ui_keys, the shared key filter chain). A word
+    that holds anything else, an anchor not found once, or a missing symbol is
+    left out and reported. The written word goes to `spans` as a 4-byte 'site'. With a
     profile gate the word points at the payload's gate for the symbol
     (__gate_<symbol>), never at the routine itself."""
     img = Image(profile, data)
     spans = {} if spans is None else spans
     reads = literal_pool_reads(img)
+    written = {}                       # pool word offset -> the name that wrote it here
     for name in names:
         r = redirects[name]
 
@@ -830,6 +833,10 @@ def patch_redirects(profile, data, redirects, names, payload, tag, report, spans
             skip(str(e))
             continue
         have = img.u32(lit)
+        if have == new and lit in written:
+            report[name] = ('applied', 'shared with %s' % written[lit])
+            print('%s: %s: pool word %#x shared with %s' % (tag, r.what, img.addr_of(lit), written[lit]))
+            continue
         if have == new:
             report[name] = ('present', '')
             print('%s: %s already applied' % (tag, r.what))
@@ -838,6 +845,7 @@ def patch_redirects(profile, data, redirects, names, payload, tag, report, spans
             skip('the pool word at %#x holds %#x, not %#x' % (img.addr_of(lit), have, r.old))
             continue
         struct.pack_into(profile.byteorder + 'I', img.d, lit, new)
+        written[lit] = name
         spans.setdefault(name, []).append((lit, 4, 'site'))
         report[name] = ('applied', '')
         loads = sorted(img.addr_of(i) for i, off, width in reads if off == lit and width == 4)

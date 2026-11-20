@@ -110,7 +110,12 @@ def test_every_redirect_points_at_its_gate_and_the_gate_picks_stock_in_service_m
         sym = sigpatch.payload_symbol(r)
         gate = payloadbuild.lookup(p.symbols, payloadbuild.gate_name(sym))
         real = payloadbuild.lookup(p.symbols, sym)
-        (off, size, kind), = spans[name]
+        # a word another redirect already pointed at the same routine (c850_ui_keys: hot_cues and
+        # quant_loops_keys) is 'applied' shared and writes no span of its own
+        owner = name if name in spans else next(n for n, o in PS.redirects.items()
+                                                if n in spans and o.anchor == r.anchor and o.old == r.old
+                                                and sigpatch.payload_symbol(o) == sym)
+        (off, size, kind), = spans[owner]
         assert (size, kind) == (4, "site") and u32(stock, off) == r.old
         assert u32(out, off) == gate, "%s: pool word %#x is not the gate" % (name, BASE + off)
         for flags, want in (((0, 0), real), ((1, 0), r.old), ((2, 0), r.old), ((0, 1), r.old), ((1, 1), r.old)):
@@ -224,13 +229,13 @@ def test_gate_thunk_bytes():
     """The generated gate for a symbol: reads both service bytes, jmp to the stock
     function when either is set, else to the routine; r0, r1 and T only."""
     p = payloadbuild.build(["hot_cues"], "cdj850")
-    gate = payloadbuild.lookup(p.symbols, "__gate_hot_cues_keys")
+    gate = payloadbuild.lookup(p.symbols, "__gate_c850_ui_keys")
     off = gate - L.PAYLOAD
     ops = struct.unpack(">14H", p.blob[off:off + 28])
     assert ops == (0xD106, 0x6110, 0x6013, 0xD106, 0x6110, 0x201B, 0x2008, 0x8B02,
                    0xD104, 0x412B, 0x0009, 0xD104, 0x412B, 0x0009)
     lits = struct.unpack(">4I", p.blob[off + 28:off + 44])
-    assert lits == (UPDATE_MODE, KEYS_PENDING, payloadbuild.lookup(p.symbols, "hot_cues_keys"), 0x0C0DD492)
+    assert lits == (UPDATE_MODE, KEYS_PENDING, payloadbuild.lookup(p.symbols, "c850_ui_keys"), 0x0C0DD492)
 
 
 def test_trampoline_gate_layout_is_unchanged_without_a_gate():

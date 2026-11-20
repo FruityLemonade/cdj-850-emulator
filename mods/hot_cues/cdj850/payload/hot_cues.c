@@ -3,8 +3,9 @@
  * hot_cues: BEAT 1/2/4 as hot cues A/B/C on USB tracks with a rekordbox ANLZ
  * (see ../patch.py, ../../README.md and docs/cdj850-modding.md section 4b.11).
  *
- *   BEAT SELECT + RELOOP  toggles hot-cue mode (settings record byte +0x22, the
- *                         last byte of the HISTORY name field, saved to flash).
+ *   BEAT SELECT + RELOOP  toggles hot-cue mode (the mod flags byte of
+ *                         c850_ui.h, settings record +0x22, saved to flash) and
+ *                         flashes HOT CUE ON / HOT CUE OFF on the display.
  *                         BEAT SELECT alone and RELOOP alone stay stock.
  *   pad (BEAT 1/2/4)      set slot: jump to it (CALL path; playing stays playing,
  *                         paused/cued stays cued at the cue); a loop slot arms the
@@ -18,8 +19,10 @@
  * files, no ANLZ) every key is stock.
  *
  * Entry points (redirected pool words, ../patch.py):
- *   hot_cues_keys       0x0C0ED038 (FUN_0C0DD492) inside panel_keys_to_internal_words,
- *                       right after K0..K2 are rebuilt: key filter.
+ *   c850_ui_keys        0x0C0ED038 (FUN_0C0DD492) inside panel_keys_to_internal_words,
+ *                       right after K0..K2 are rebuilt: the shared key filter chain
+ *                       (payload/common/c850_ui.c), which calls hot_cues_key_filter.
+ *   c850_ui_flash_hook  tail of display_stage_bpm: the HOT CUE ON/OFF flash.
  *   hot_cues_tick       0x0C0EC838 (FUN_0C0EB388), first call of FUN_0C0EC73C (state
  *                       tick, before the key handlers): actions, PLAY, availability.
  *   hot_cues_select     0x0C0D41BC and 0x0C0D3CC8 (cue_select_from_list) in
@@ -34,21 +37,13 @@
  * for stock). Everything runs on playertask.
  */
 #include "c850.h"
+#include "c850_ui.h"
 
 /* ---- MAIN state and routines (section 4b.11) ---- */
-/* Hot-cue mode lives in the settings record (section 4b.6). No bit of the
- * flag bytes is free: byte +1 bits 4..6, byte +0 bit 4 and byte +0x43 bits
- * 4..7 must be 0 in a valid record (the boot scan at 0x0C08EF60 ends the
- * log at the first record that has one set: erased flash). The mode is the
- * last byte of the 32-byte HISTORY name field (+3..+0x22, a NUL-terminated
- * string the firmware reads with strlen/strcmp and sets with memset +
- * strncpy): HC_MODE_ON there, behind the name's NUL, means on. A name
- * change (factory reset, a new name) clears it: mode off. */
-#define HC_NAME             (C850_SETTINGS + 3)
-#define HC_MODE_BYTE        C850_U8(C850_SETTINGS + 0x22)
-#define HC_MODE_ON          0x5A
-#define HC_SETTINGS_SAVE    C850_FN(0x0C08E9B0, int, (int kind, u32 record))
-#define HC_D156             C850_U8(0x0CE6D156)          /* toggled with D154 by BEAT SELECT */
+/* Hot-cue mode is C850_UI_FLAG_HOT_CUES of the mod flags byte (c850_ui.h):
+ * the last byte of the 32-byte HISTORY name field of the settings record
+ * (section 4b.6; no flag bit of the record is free). A name change (factory
+ * reset, a new name) clears it: mode off. */
 /* FUN_0C0746BC(track): the DB record (+0x1B8) of the loaded track number, as
  * the cue list loader FUN_0C0D23E8 takes it; +4 is the file's path, the key
  * of the ANLZ calls. 0 = none (not USB, no DB track). */
@@ -64,7 +59,6 @@
 #define HC_SELECT_STOCK     C850_FN(0x0C0D275A, int, (int src, int dir, int x))
 #define HC_CUE_LIST_CHANGED C850_FN(0x0C0D5978, void, (void))
 #define HC_WAI_FLG          C850_FN(0x0C0C9E7C, int, (int flg, u32 ptn, int mode, u32 *out, int tmo))
-#define HC_JOG              C850_FN(0x0C0DD492, u32, (void))
 #define HC_TICK_STOCK       C850_FN(0x0C0EB388, void, (void))
 
 /* ANLZ context (*0x0CE649D0): the hot-cue tag of the current file */
@@ -106,9 +100,6 @@ volatile u32 hot_cues_mask;          /* set slots (bit n-1 = hot cue n) at the l
 volatile u32 hot_cues_leds;          /* waits with the LED inputs faked */
 volatile u32 hot_cues_owned;         /* key presses kept from the stock handlers */
 
-static u16 hc_kt[3];                 /* K0..K2 as the remap built them (true held state) */
-static u16 hc_own[3];                /* held bits hidden from the stock handlers */
-static u8 hc_bs_ok, hc_bs_d154, hc_bs_d156;   /* D154/D156 before the BEAT SELECT press */
 static u8 hc_queue[3];               /* per pad: 1 trigger, 2 delete */
 static u8 hc_had_key;
 static u32 hc_h1, hc_h2;             /* hashes of the loaded file (ANLZ cache key) */
@@ -150,20 +141,9 @@ u32 hot_cues_effective_out(u32 in)
     return C850_LOOP_OUT_FRAME;
 }
 
-/* The HISTORY name ends before the mode byte. */
-static int hc_name_short(void)
-{
-    u32 k;
-
-    for (k = 0; k < 0x1F; k++)
-        if (C850_U8(HC_NAME + k) == 0)
-            return 1;
-    return 0;
-}
-
 int hot_cues_mode(void)
 {
-    return HC_MODE_BYTE == HC_MODE_ON && hc_name_short();
+    return c850_ui_flag(C850_UI_FLAG_HOT_CUES);
 }
 
 #define HC_PLAY_TRIES 8
@@ -241,59 +221,39 @@ static int hc_state_ok(u32 st)
 
 static void hc_toggle_mode(void)
 {
-    if (!hc_name_short()) {           /* a 31-character name holds the byte */
+    int on = !hot_cues_mode();
+
+    if (c850_ui_set_flag(C850_UI_FLAG_HOT_CUES, on)) {
+        hot_cues_toggles++;
+    } else {                          /* a 31-character name holds the byte */
         hot_cues_failed++;
-        return;
+        on = !on;
     }
-    HC_MODE_BYTE = hot_cues_mode() ? 0 : HC_MODE_ON;
-    HC_SETTINGS_SAVE(2, C850_SETTINGS);
-    hot_cues_toggles++;
+    c850_ui_flash(on ? "HOT CUE ON" : "HOT CUE OFF");
 }
 
-u32 hot_cues_keys(void)
+/* Called by c850_ui_keys (the shared filter on pool 0x0C0ED038) with the
+ * true held words k, the new presses p, and the keys taken so far. */
+static void hot_cues_key_filter(const u16 *k, const u16 *p, u16 *own)
 {
-    u32 r = HC_JOG();
-    u16 k0 = C850_K0, k1 = C850_K1, k2 = C850_K2;
-    u16 p0 = k0 & ~hc_kt[0], p1 = k1 & ~hc_kt[1];
+    u16 p1 = p[1];
     int i;
 
-    hc_kt[0] = k0;
-    hc_kt[1] = k1;
-    hc_kt[2] = k2;
-    hc_own[0] &= k0;                  /* a released key is free again */
-    hc_own[1] &= k1;
-    hc_own[2] &= k2;
-    if (hot_cues_on && C850_UI_LOCK == 0) {
-        if (p0 & C850_K0_BEAT_SELECT) {
-            /* stock toggles D154/D156 on this press (player_keys_latch_prev) */
-            hc_bs_d154 = C850_BEAT_FRACTION_MODE;
-            hc_bs_d156 = HC_D156;
-            hc_bs_ok = 1;
-        }
-        if (!(k0 & C850_K0_BEAT_SELECT))
-            hc_bs_ok = 0;
-        if ((p0 & C850_K0_RELOOP) && (k0 & C850_K0_BEAT_SELECT)) {
-            hc_toggle_mode();
-            if (hc_bs_ok) {           /* undo the fraction toggle of this BEAT SELECT */
-                C850_BEAT_FRACTION_MODE = hc_bs_d154;
-                HC_D156 = hc_bs_d156;
-            }
-            hc_own[0] |= C850_K0_RELOOP | C850_K0_BEAT_SELECT;
-            hot_cues_owned++;
-        }
-        if ((p1 & HC_K1_BEATS) && hot_cues_mode() && C850_IS_USB_MODE == 1 && hc_ctx_current()) {
-            hc_own[1] |= p1 & HC_K1_BEATS;
-            hot_cues_owned++;
-            for (i = 0; i < 3; i++)
-                if (p1 & (C850_K1_BEAT1 << i))
-                    hc_queue[i] = (k1 & C850_K1_BEAT8) ? 2 : 1;
-        }
+    if (!hot_cues_on)
+        return;
+    if (c850_ui_shift(k, p, own, C850_K0_RELOOP)) {
+        hc_toggle_mode();
+        hot_cues_owned++;
     }
-    C850_K0 = k0 & ~hc_own[0];
-    C850_K1 = k1 & ~hc_own[1];
-    C850_K2 = k2 & ~hc_own[2];
-    return r;
+    if ((p1 & HC_K1_BEATS) && hot_cues_mode() && C850_IS_USB_MODE == 1 && hc_ctx_current()) {
+        own[1] |= p1 & HC_K1_BEATS;
+        hot_cues_owned++;
+        for (i = 0; i < 3; i++)
+            if (p1 & (C850_K1_BEAT1 << i))
+                hc_queue[i] = (k[1] & C850_K1_BEAT8) ? 2 : 1;
+    }
 }
+C850_UI_KEY_FILTER(hot_cues_key_filter);
 
 /* ---- actions (from hot_cues_tick) ---- */
 
@@ -508,11 +468,11 @@ void hot_cues_tick(void)
      * the next, wait, again; at most HC_PLAY_TRIES presses. */
     if (hc_play_down) {
         hc_play_down = 0;
-        if (!(hc_kt[0] & C850_K0_PLAY))
+        if (!(c850_ui_kt[0] & C850_K0_PLAY))
             C850_K0 &= ~C850_K0_PLAY;
         hc_play_wait = HC_PLAY_GAP;
     } else if (hc_play) {
-        if (C850_PLAYER_STATE != C850_STATE_CUED || (hc_kt[0] & C850_K0_PLAY)) {
+        if (C850_PLAYER_STATE != C850_STATE_CUED || (c850_ui_kt[0] & C850_K0_PLAY)) {
             hc_play = 0;              /* playing (or the DJ took over) */
         } else if (hc_play_wait == 0 || --hc_play_wait == 0) {
             C850_K0 |= C850_K0_PLAY;

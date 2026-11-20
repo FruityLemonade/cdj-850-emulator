@@ -3,6 +3,21 @@
 Default off. Only on USB tracks whose beat grid gave the deck's tempo (rekordbox analysis);
 without a grid (BPM counter, CD, unanalysed file) every loop is exactly stock.
 
+## Quantize on/off on the deck
+**Hold BEAT SELECT, press LOOP IN.** That switches quantize; the display shows `QUANTIZE ON` or
+`QUANTIZE OFF` for 1.5 s (in the playing view on the title line, in the browser/INFO views as a
+single middle line), then the rows come back. The setting is saved in flash and survives a
+restart; a fresh deck (or a factory reset / HISTORY name change) starts with quantize **on**.
+
+- Quantize off: every loop path below is stock, and `loop_resize` resizes in frames instead of
+  on the grid.
+- LOOP IN alone and BEAT SELECT alone stay stock. The BEAT SELECT press of the combo does not
+  leave fraction mode toggled (the toggle is undone), and neither key reaches the stock handlers
+  until it is released.
+- The switch is the mod flags byte of `payload/include/c850_ui.h` (settings record `+0x22`,
+  shared with `hot_cues`); a 31-character HISTORY name leaves no room for it, and the combo then
+  only shows the unchanged state.
+
 | Press | Stock | With quant_loops |
 |---|---|---|
 | BEAT 1/2/4/8 (auto beat loop) | in = the playhead, out = in + beats x 4500 / whole BPM (frames; 4 beats at 128 BPM = 140) | in = the grid beat at or before the playhead (the playhead stays inside the loop, phase kept), out = the grid time of beat in + N, so variable-tempo grids are exact |
@@ -33,15 +48,16 @@ Interaction with stock features (checked in the emulator, see the test):
 
 ## Use
     .venv/bin/python mods/patch_update.py --model cdj850 C850MAIN.UPD C850MAIN_MOD.UPD quant_loops
-Switch: `CDJ_MAIN_QUANT_LOOPS=1` (and its six sibling `CDJ_MAIN_QUANT_LOOPS_*` knobs in
-`mod.conf`, all one row: `quant_loops` on the command line brings all seven patches).
-There is no on-deck toggle. A future QUANTIZE toggle would set or clear the payload word
-`quant_loops_on` (1 = snap); every routine checks it first.
+Switch: `CDJ_MAIN_QUANT_LOOPS=1` (and its eight sibling `CDJ_MAIN_QUANT_LOOPS_*` knobs in
+`mod.conf`, all one row: `quant_loops` on the command line brings all nine patches). The payload
+word `quant_loops_on` (1 = the mod may snap) and the on-deck switch above are both checked first by
+every routine.
 
 ## How
-Seven pool-word redirects into the shared payload (`cdj850/payload/quant_loops.c`, about
-3.0 KB), no hook, no cave bytes. Each word and every instruction that reads it is outside
-the boot-critical closure (`mods/bootcrit.py`). See `docs/cdj850-modding.md` section 4b.9.
+Eight pool-word redirects and one display hook into the shared payload
+(`cdj850/payload/quant_loops.c`, about 3.0 KB, and the shared `payload/common/c850_ui.c`), no
+cave bytes but one 8-byte trampoline slot. Each word and every instruction that reads it is
+outside the boot-critical closure (`mods/bootcrit.py`). See `docs/cdj850-modding.md` section 4b.9.
 
 | Patch | Pool word (stock value) | Read at | Payload |
 |---|---|---|---|
@@ -52,6 +68,8 @@ the boot-critical closure (`mods/bootcrit.py`). See `docs/cdj850-modding.md` sec
 | `quant_loops_loop_in` | `0x0C0DFA80` (`FUN_0C0059D2`) | `0x0C0DF95E` | `quant_loops_loop_in`: in sector to the nearest beat |
 | `quant_loops_loop_out` | `0x0C0E0090` (`audio_send_cmd`) | LOOP OUT code only | `quant_loops_loop_out`: out sector of cmd 1/mode 3 |
 | `quant_loops_loop_out2` | `0x0C0E02C0` (`audio_send_cmd`) | LOOP OUT code only | same, other branch |
+| `quant_loops_keys` | `0x0C0ED038` (`FUN_0C0DD492`) | `0x0C0ECEFC` | `c850_ui_keys`, the shared key filter chain (also `hot_cues`'): BEAT SELECT + LOOP IN |
+| `quant_loops_flash` | hook, tail of `display_stage_bpm` (`0x0C0642AA`, the shared `bpm999` span) | DisplayTask | `c850_ui_flash_hook`: `QUANTIZE ON/OFF` on the matrix, rows put back after 1.5 s |
 
 The grid is read from the window in RAM (`0x0C9D24FC`, read-only, never paged; `bpm_decimals`'
 redirect of `grid_find_beat` is not involved), and only when the base BPM word equals what

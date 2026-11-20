@@ -261,9 +261,23 @@ def _payload():
     return payloadbuild.build(["loop_resize"], "cdj850")
 
 
-def _mem(p, entries, base=None, usb=1, state=4, active=1, frac=0, tracklen=100000):
+SETTINGS = 0x0C9DA23C                                   # settings record (c850_ui.h flags at +0x22)
+
+
+def _settings(flags=0):
+    """The settings record as a fresh deck has it, with the mod flags byte (0 = quantize on)."""
+    rec = bytearray(0x58)
+    rec[0:3] = b"\xC3\x02\x10"
+    rec[3:10] = b"HISTORY"
+    rec[0x23:0x2B] = b"TAG LIST"
+    rec[0x22] = flags
+    return bytes(rec)
+
+
+def _mem(p, entries, base=None, usb=1, state=4, active=1, frac=0, tracklen=100000, flags=0):
     mem = Memory()
     mem.add(0x0DE00020, p.blob)
+    mem.add(SETTINGS, _settings(flags))                   # mod flags byte +0x22: quantize
     mem.add(0x0DDFE000, bytes(0x2000))                    # stack, out pointers, stub log
     ctx = bytearray(0x7C + 8 * 1000)
     struct.pack_into(">I", ctx, 0x70, 1 if entries else 0)

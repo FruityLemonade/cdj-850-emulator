@@ -39,8 +39,11 @@ FLASH = ROOT / "extract" / "cdj850" / "flash_cdj850.bin"
 BAKEN = ROOT / "tools" / "baken" / "baken"
 BASE = 0x0C000000
 MODS = ["hot_cues", "hot_cues_tick", "hot_cues_select", "hot_cues_select2", "hot_cues_leds", "hot_cues_anlz"]
+# the HOT CUE ON/OFF flash: a hook on the shared display_stage_bpm span (tests/test_cdj850_quant_loops.py
+# covers the flash routine itself)
+SHOW = ["hot_cues_flash"]
 # (pool word, stock value, the instruction that reads it, payload symbol)
-POOLS = [(0x0C0ED038, 0x0C0DD492, 0x0C0ECEFC, "hot_cues_keys"),
+POOLS = [(0x0C0ED038, 0x0C0DD492, 0x0C0ECEFC, "c850_ui_keys"),
          (0x0C0EC838, 0x0C0EB388, 0x0C0EC73E, "hot_cues_tick"),
          (0x0C0D41BC, 0x0C0D275A, 0x0C0D3F5C, "hot_cues_select"),
          (0x0C0D3CC8, 0x0C0D275A, 0x0C0D3B94, "hot_cues_select"),
@@ -125,7 +128,7 @@ ALL_FOLDERS = ["bpm_decimals", "hot_cues", "loop_resize", "payload_demo", "quant
 @needs_main
 @needs_toolchain
 def test_composes_with_the_branch_mods():
-    names = ALL_MODS + MODS
+    names = ALL_MODS + MODS + SHOW
     report = {}
     out = patch_main.patch(MAIN.read_bytes(), names, "cdj850", report)
     assert all(report[n][0] == "applied" for n in names), report
@@ -301,9 +304,10 @@ def _call(p, mem, name, *args, stack=()):
 
 
 def _keys(p, mem, k0=0, k1=0, k2=0):
-    """The remap built k0..k2; hot_cues_keys filters them. Returns the words stock then sees."""
+    """The remap built k0..k2; c850_ui_keys (with hot_cues_key_filter) filters them. Returns the words stock
+    then sees."""
     mem.write(K0, struct.pack(">HHH", k0, k1, k2))
-    assert _call(p, mem, "hot_cues_keys") == 0x55
+    assert _call(p, mem, "c850_ui_keys") == 0x55
     return struct.unpack(">HHH", mem.read(K0, 6))
 
 
@@ -736,7 +740,7 @@ def test_live_hot_cues_with_every_branch_mod(tmp_path):
         pytest.skip("QMP socket descriptor inheritance requires POSIX")
     stick = build_stick(tmp_path)
     flash = tmp_path / "flash.bin"
-    flash.write_bytes(patch_main.patch_flash(FLASH.read_bytes(), ALL_MODS + MODS, "cdj850"))
+    flash.write_bytes(patch_main.patch_flash(FLASH.read_bytes(), ALL_MODS + MODS + SHOW, "cdj850"))
     syms = payloadbuild.build(ALL_FOLDERS, "cdj850").symbols
     r = drive(stick, flash, syms, tmp_path)
     print("hot_cues live:", json.dumps(r))

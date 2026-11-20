@@ -104,14 +104,15 @@ def test_cave_reservation_and_room_left():
     ps = patch_main.PATCH_SETS["cdj850"]
     offsets, total = sigpatch.layout(lambda n: patch_main.blob_path(n, "cdj850"), ps.mods, ps.profile.gate)
     assert "payload_demo" not in offsets and "bpm_decimals" not in offsets
-    # 384 without the service gate; the gate adds 24 bytes to each of the two trampolines
-    # (display_stage_bpm with its 4 hooks, tempo_wide's TEMPO site): 64 bytes with the 16-byte padding
-    assert total == 448
-    assert sigpatch.layout(lambda n: patch_main.blob_path(n, "cdj850"), ps.mods)[1] == 384
+    # 416 without the service gate; the gate adds 24 bytes to each of the two trampolines
+    # (display_stage_bpm with its 6 hooks, tempo_wide's TEMPO site): 48 bytes with the 16-byte padding.
+    # hot_cues_flash and quant_loops_flash (one routine, c850_ui_flash_hook) took 32 of the 416.
+    assert total == 464
+    assert sigpatch.layout(lambda n: patch_main.blob_path(n, "cdj850"), ps.mods)[1] == 416
     if MAIN.is_file():
         img = sigpatch.Image(ps.profile, MAIN.read_bytes())
         start, end = sigpatch.find_cave(img)
-        assert end - ((start + 3) & ~3) - total == 668
+        assert end - ((start + 3) & ~3) - total == 652
 
 
 @needs_toolchain
@@ -214,9 +215,10 @@ def test_patch_update_adds_the_loader_and_validate_accepts_all_mods_combined(tmp
     assert "patch_main: payload of bpm_decimals, flac, hot_cues, loop_resize, payload_demo, quant_loops" in r.stdout
     assert "PASS main: loader: entry literal" in r.stdout
     # payload_demo's hook literal and redirect, bpm_decimals' hook literal and redirect,
-    # quant_loops' seven redirects, loop_resize's three redirects, hot_cues' six redirects,
+    # quant_loops' seven redirects and flash hook literal, loop_resize's three redirects, hot_cues'
+    # six redirects (the key word c850_ui_keys, shared with quant_loops_keys) and flash hook literal,
     # flac's entry redirect and seven redirects
-    assert "PASS main: 28 written words call into the payload" in r.stdout
+    assert "PASS main: 30 written words call into the payload" in r.stdout
     v = _run(ROOT / "mods" / "validate.py", "--model", "cdj850", "--stock", C850, out)
     assert v.returncode == 0, v.stdout + v.stderr
     assert "all checks passed" in v.stdout

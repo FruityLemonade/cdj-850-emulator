@@ -5,7 +5,7 @@ Default off. Adds a hot-cue mode to the beat-loop buttons, backed by the rekordb
 
 | On the deck | Hot-cue mode on | Hot-cue mode off |
 |---|---|---|
-| hold BEAT SELECT, press RELOOP | toggles the mode (saved to flash, survives a restart) | same |
+| hold BEAT SELECT, press RELOOP | toggles the mode (saved to flash, survives a restart); the display shows `HOT CUE ON` / `HOT CUE OFF` for 1.5 s | same |
 | BEAT SELECT alone / RELOOP alone | stock (fraction mode / RELOOP-EXIT) | stock |
 | BEAT 1 / 2 / 4, slot set | jump to hot cue A / B / C | stock beat loops |
 | BEAT 1 / 2 / 4, slot empty | record the position into the slot and write the ANLZ | stock |
@@ -31,8 +31,13 @@ Default off. Adds a hot-cue mode to the beat-loop buttons, backed by the rekordb
 - **Fallback.** Without a loaded USB track whose ANLZ is in the ANLZ cache (CD, no ANLZ file,
   not a DB track) the BEAT buttons are stock in hot-cue mode too; the mode only changes the LEDs
   and buttons where it can act.
-- **The mode** is stored in the settings record at `+0x22` (`0x0C9DA25E`), the last byte of the
-  32-byte HISTORY name field, as `0x5A` behind the name's NUL. Docs section 4b.6: the flag bits
+- **The mode** is bit `0x08` of the mod flags byte (`payload/include/c850_ui.h`), stored in the
+  settings record at `+0x22` (`0x0C9DA25E`), the last byte of the 32-byte HISTORY name field,
+  behind the name's NUL: `0x5A` = hot cues on (what earlier builds wrote, still read the same),
+  `0x5B` = hot cues on and quantize off (`quant_loops`), `0x53` = quantize off only, 0 = neither.
+- **Keys and display** go through the shared `payload/common/c850_ui.c`: the key filter chain on
+  pool `0x0C0ED038` (`c850_ui_keys`, which `quant_loops` also redirects to) and the display flash
+  hook on the tail of `display_stage_bpm` (`hot_cues_flash`). Docs section 4b.6: the flag bits
   that look spare (byte `+1` bits 4..6) are the settings log's end marker; a record with them set
   is ignored at boot. A HISTORY name change (factory reset) clears the mode.
 

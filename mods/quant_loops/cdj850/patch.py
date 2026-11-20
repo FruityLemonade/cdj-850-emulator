@@ -4,9 +4,10 @@
 Only while a beat grid of the loaded USB track is in RAM (the grid gave the
 deck's tempo, the same proof bpm_decimals uses); otherwise every routine
 passes the stock values through. Code is C in payload/quant_loops.c (shared
-SDRAM payload, mods/payloadbuild.py); the patches are seven pool-word
-redirects, no hook, no cave bytes. Section 4b.9 of docs/cdj850-modding.md
-has the trace.
+SDRAM payload, mods/payloadbuild.py) plus the shared payload/common/c850_ui.c
+(PAYLOAD_COMMON); the patches are eight pool-word redirects and one hook on a
+shared span, no cave bytes. Section 4b.9 of docs/cdj850-modding.md has the
+trace.
 
 * quant_loops: pool 0x0C0E5D4C, read only by the mov.l at
   0x0C0E5C0E in auto_beat_loop_set's USB new-loop path (FUN_0C073954, track
@@ -26,10 +27,29 @@ has the trace.
   (audio_send_cmd), read only in the LOOP OUT paths: the out sector (param 5
   of cmd 1 / mode 3) moves to the nearest beat after the loop in.
 
+* quant_loops_keys: pool 0x0C0ED038 (FUN_0C0DD492), read only at 0x0C0ECEFC
+  in panel_keys_to_internal_words: the shared key filter chain c850_ui_keys
+  (hot_cues redirects the same word to the same routine; the second finds it
+  there). It calls quant_loops_key_filter: BEAT SELECT + LOOP IN switches
+  quantize (saved in the settings record, c850_ui.h); off = every path stock.
+* quant_loops_flash: hook (c850_ui_flash_hook) on the tail of
+  display_stage_bpm, 0x0C0642AA..0x0C0642B8 (the shared bpm999 /
+  bpm_decimals span), after bpm_decimals: QUANTIZE ON / QUANTIZE OFF on the
+  dot matrix for 1.5 s.
+
 Every pool word and every instruction that reads it is outside the
 boot-critical closure (mods/bootcrit.py; tests/test_cdj850_quant_loops.py).
 """
-from sigpatch import Anchor, PoolRedirect
+from sigpatch import Anchor, Mod, PoolRedirect
+
+PAYLOAD_COMMON = ('c850_ui',)
+
+# Tail of display_stage_bpm, as in mods/bpm999/cdj850/patch.py.
+BPM_SITE = dict(
+    sig=[0xD62E, 0x6260, 0x2228, 0x8902, 0xD62A, 0x6061, 0x8154],
+    start=0,
+    end=7,
+)
 
 
 def _redirect(what, sig, index, old, routine):
@@ -82,4 +102,20 @@ MODS = {
         'quant loops: LOOP OUT on the nearest grid beat after the loop in (second path)',
         [0xE703, 0x8F05, 0xE401, 0xD361, 0x430B, 0xE502, 0xA65C, 0x7F10], 3,
         AUDIO_SEND_CMD, 'quant_loops_loop_out'),
+    # 0x0C0ECEF8: the hot_cues key-filter word (mods/hot_cues/cdj850/patch.py)
+    'quant_loops_keys': _redirect(
+        'quant loops: BEAT SELECT + LOOP IN switches quantize (shared key filter)',
+        [0xD44E, 0x2AD1, 0xDE4E, 0x4E0B, 0x2401, 0xD94E], 2,
+        0x0C0DD492, 'c850_ui_keys'),
+    'quant_loops_flash': Mod(
+        what='quant loops: QUANTIZE ON / OFF on the display after a toggle',
+        target='main',
+        fw_versions=('1.13',),
+        args=[],
+        literal=False,
+        hook=True,
+        after=('bpm_decimals',),
+        routine='payload:c850_ui_flash_hook',
+        **BPM_SITE,
+    ),
 }

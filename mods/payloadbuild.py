@@ -16,6 +16,11 @@ rodata, data, then .bss as zeros and the end marker ">PLD") and a map of its
 global symbols. Hooks (sigpatch.Mod(routine='payload:<symbol>')) and pool
 redirects (sigpatch.PoolRedirect) name those symbols.
 
+Shared sources: mods/payload/common/<name>.c holds code several mods use (for
+example c850_ui.c: the key filter chain, the settings flags byte, the display
+flash). A mod names what it needs in PAYLOAD_COMMON in its patch.py; the build
+compiles each named file once, after the mods' own sources.
+
 Symbol names: sh-elf prefixes C names with '_'. A lookup tries the name as
 given first and then with the '_' in front, so a mod names the C function
 `quant_snap` as 'payload:quant_snap'. Global names must be unique across
@@ -54,6 +59,7 @@ sys.path.insert(0, HERE)
 
 LINKER_SCRIPT = os.path.join(HERE, 'payload', 'payload.ld')
 INCLUDE = os.path.join(HERE, 'payload', 'include')
+COMMON = os.path.join(HERE, 'payload', 'common')
 
 BASE = 0x0DE00020                  # c850loader.PAYLOAD
 END = 0x0DF6FFFC                   # c850loader.GUARD_HI_ADDR
@@ -180,6 +186,23 @@ def stack_limits(mods, model):
     return out
 
 
+def common_sources(mods, model):
+    """The shared sources (mods/payload/common/<name>.c) the mod folders name in
+    PAYLOAD_COMMON for `model`, each once, sorted."""
+    import modelfw
+    names = set()
+    for mod in mods:
+        if os.path.exists(os.path.join(HERE, mod, model, 'patch.py')):
+            names.update(getattr(modelfw.mod_patch(mod, model), 'PAYLOAD_COMMON', ()))
+    out = []
+    for name in sorted(names):
+        path = os.path.join(COMMON, name + '.c')
+        if not os.path.isfile(path):
+            raise PayloadError('PAYLOAD_COMMON names %s, but there is no %s' % (name, path))
+        out.append(path)
+    return out
+
+
 def mod_include(mod, model):
     """The include/ folder of a mod's payload sources (its own headers), or None."""
     folder = os.path.join(HERE, mod, model, 'payload', 'include')
@@ -222,6 +245,7 @@ def _digest(mods, model):
     # every file of the mods' payload folders: sources and their own headers
     own = [p for m in mods for p in sorted(glob.glob(os.path.join(HERE, m, model, 'payload', '**', '*'),
                                                       recursive=True)) if os.path.isfile(p)]
+    own += common_sources(mods, model)
     for path in [LINKER_SCRIPT] + sorted(glob.glob(os.path.join(INCLUDE, '*'))) + own:
         h.update(path.encode())
         with open(path, 'rb') as f:
@@ -241,6 +265,7 @@ def build(mods, model='cdj850', keep=None):
     files = [p for m in mods for p in sources(m, model)]
     if not files:
         raise PayloadError('none of %s ships payload sources for %s' % (', '.join(mods) or 'no mods', model))
+    files += common_sources(mods, model)
     key = (_digest(mods, model), keep)
     if key in _CACHE:
         return _CACHE[key]
@@ -254,7 +279,7 @@ def build(mods, model='cdj850', keep=None):
         objs, stack, limits = [], {}, {}
         allowed = stack_limits(mods, model)
         for k, src in enumerate(files):
-            mod = os.path.relpath(src, HERE).split(os.sep)[0]
+            mod = 'common' if os.path.dirname(src) == COMMON else os.path.relpath(src, HERE).split(os.sep)[0]
             obj = os.path.join(work, '%02d_%s_%s.o' % (k, mod, os.path.basename(src).replace('.', '_')))
             inc = ['-I', INCLUDE] + (['-I', mod_include(mod, model)] if mod_include(mod, model) else [])
             if src.endswith('.s'):

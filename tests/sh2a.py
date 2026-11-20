@@ -88,6 +88,9 @@ class Sh2a:
         if op & 0xF00F == 0x0000:                               # movi20 #imm20,Rn
             r[n] = signed((op >> 4 & 15) << 16 | self.word(pc + 2), 20) & MASK
             return pc + 4
+        if op & 0xF00F == 0x0001:                               # movi20s #imm20<<8,Rn
+            r[n] = (signed((op >> 4 & 15) << 16 | self.word(pc + 2), 20) << 8) & MASK
+            return pc + 4
         if op & 0xF00F == 0x3001:                               # mov(u).b/w/l with disp12
             ext = self.word(pc + 2)
             kind, disp = ext >> 12, ext & 0xFFF

@@ -20,10 +20,16 @@ Section 4b.10 of docs/cdj850-modding.md has the trace.
   at 0x0C0D9664. In a resized loop the out record (0x0C7F64B0 + M/S/F) gets
   the effective out for the call, so MEMORY stores the resized loop.
 
+The grid mode follows the on-deck quantize switch (payload/common/c850_ui.c,
+PAYLOAD_COMMON; quant_loops toggles it): with quantize off every resize is
+in frames.
+
 The pool words and the instructions that read them are outside the
 boot-critical closure (mods/bootcrit.py; tests/test_cdj850_loop_resize.py).
 """
 from sigpatch import Anchor, PoolRedirect
+
+PAYLOAD_COMMON = ('c850_ui',)
 
 
 def _redirect(what, sig, index, old, routine):

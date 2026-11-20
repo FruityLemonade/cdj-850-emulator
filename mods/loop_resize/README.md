@@ -7,8 +7,8 @@ playing, CD) CALL ◀/▶ are the stock memory-cue buttons, unchanged.
 
 | Loop | CALL ◀ / CALL ▶ |
 |---|---|
-| a rekordbox grid gave the deck's tempo (same gate as `quant_loops`), and the loop is q/16 grid beats long (within one frame) | q/2 or 2q sixteenths of a beat on the grid, counted from the in: out = the grid time of in + q'/16 beats (piecewise over the grid, so variable-tempo grids are exact; an in on a beat or a 1/16 step of one gives the exact grid frame, an in off the grid gets in + the grid duration) |
-| no grid, or a length that is not a whole number of 1/16 beats | out = in + len/2 or in + 2 len (frames) |
+| quantize on (`quant_loops`' BEAT SELECT + LOOP IN switch; on unless switched off), a rekordbox grid gave the deck's tempo (same gate as `quant_loops`), and the loop is q/16 grid beats long (within one frame) | q/2 or 2q sixteenths of a beat on the grid, counted from the in: out = the grid time of in + q'/16 beats (piecewise over the grid, so variable-tempo grids are exact; an in on a beat or a 1/16 step of one gives the exact grid frame, an in off the grid gets in + the grid duration) |
+| quantize off, no grid, or a length that is not a whole number of 1/16 beats | out = in + len/2 or in + 2 len (frames) |
 
 Limits: 1/16 beat (1 frame without grid) and 32 beats; a press at a limit is ignored. A
 doubled out past the track end is clamped to tracklen - 1 (the next ▶ is then ignored).

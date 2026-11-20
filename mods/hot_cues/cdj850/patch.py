@@ -1,14 +1,18 @@
 # SPDX-License-Identifier: GPL-2.0-or-later
 """hot_cues on the CDJ-850 MAIN 1.13: BEAT 1/2/4 as hot cues A/B/C.
 
-Six pool-word redirects, no hook, no cave bytes; the code is C in
-payload/hot_cues.c (shared SDRAM payload, mods/payloadbuild.py). Section
-4b.11 of docs/cdj850-modding.md has the trace; ../README.md the behaviour.
+Six pool-word redirects and one hook on a shared span, no cave bytes; the
+code is C in payload/hot_cues.c and the shared payload/common/c850_ui.c
+(PAYLOAD_COMMON; shared SDRAM payload, mods/payloadbuild.py). Section 4b.11
+of docs/cdj850-modding.md has the trace; ../README.md the behaviour.
 
 * hot_cues: pool 0x0C0ED038 (FUN_0C0DD492), read only by the mov.l at
   0x0C0ECEFC in panel_keys_to_internal_words, right after K0..K2 are rebuilt
-  from the panel: the key filter (BEAT SELECT + RELOOP toggles the mode; in
-  hot-cue mode BEAT 1/2/4/8 are kept from the stock handlers and queued).
+  from the panel: the shared key filter chain c850_ui_keys, which calls
+  hot_cues_key_filter (BEAT SELECT + RELOOP toggles the mode; in hot-cue mode
+  BEAT 1/2/4/8 are kept from the stock handlers and queued). quant_loops
+  redirects the same word to the same routine; whichever goes in second finds
+  it already there.
 * hot_cues_tick: pool 0x0C0EC838 (FUN_0C0EB388), read only at 0x0C0EC73E, the
   first call of the state tick FUN_0C0EC73C (before every key handler): runs
   a queued jump/record/delete, gives PLAY after a jump that was playing, and
@@ -24,11 +28,24 @@ payload/hot_cues.c (shared SDRAM payload, mods/payloadbuild.py). Section
 * hot_cues_anlz: pool 0x0C0C195C (FUN_0C0C5960), read only at 0x0C0C17CE in
   the ANLZ hot-cue setter FUN_0C0C166C: empties the slot for a delete and keeps
   the PCOB count/length right before the section write.
+* hot_cues_flash: hook (c850_ui_flash_hook) on the tail of display_stage_bpm,
+  0x0C0642AA..0x0C0642B8, the span bpm999 and bpm_decimals use (shared
+  trampoline), after bpm_decimals: shows HOT CUE ON / HOT CUE OFF on the
+  dot matrix for 1.5 s after a toggle and puts the rows back.
 
 Every pool word, the instructions that read them and the routines called are
 outside the boot-critical closure (mods/bootcrit.py; tests/test_cdj850_hot_cues.py).
 """
-from sigpatch import Anchor, PoolRedirect
+from sigpatch import Anchor, Mod, PoolRedirect
+
+PAYLOAD_COMMON = ('c850_ui',)
+
+# Tail of display_stage_bpm, as in mods/bpm999/cdj850/patch.py.
+BPM_SITE = dict(
+    sig=[0xD62E, 0x6260, 0x2228, 0x8902, 0xD62A, 0x6061, 0x8154],
+    start=0,
+    end=7,
+)
 
 
 def _redirect(what, sig, index, old, routine):
@@ -43,7 +60,7 @@ MODS = {
     'hot_cues': _redirect(
         'hot cues: key filter after the panel key remap',
         [0xD44E, 0x2AD1, 0xDE4E, 0x4E0B, 0x2401, 0xD94E], 2,
-        0x0C0DD492, 'hot_cues_keys'),
+        0x0C0DD492, 'c850_ui_keys'),
     # 0x0C0EC73A: mov.l r1,@-r15; movmu.l r11,@-r15; mov.l @(0x0C0EC838),r3; jsr/n @r3;
     # mov.l @(..),r6; mov.b @r6,r0
     'hot_cues_tick': _redirect(
@@ -70,4 +87,15 @@ MODS = {
         'hot cues: delete and PCOB count in the ANLZ hot-cue write',
         [0x64A3, 0x65C3, 0xDE63, 0x4E0B, 0x67B3, 0xA001], 2,
         0x0C0C5960, 'hot_cues_anlz_write'),
+    'hot_cues_flash': Mod(
+        what='hot cues: HOT CUE ON / OFF on the display after a toggle',
+        target='main',
+        fw_versions=('1.13',),
+        args=[],
+        literal=False,
+        hook=True,
+        after=('bpm_decimals',),
+        routine='payload:c850_ui_flash_hook',
+        **BPM_SITE,
+    ),
 }

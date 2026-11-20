@@ -28,6 +28,12 @@ SECTIONS
 
     .rodata : ALIGN(4) {
         *(.rodata .rodata.*)
+        . = ALIGN(4);
+        /* key filters (C850_UI_KEY_FILTER, c850_ui.h), between c850_ui.c's two
+           sentinel words in .c850_ui_filters.a and .c850_ui_filters.z */
+        KEEP(*(.c850_ui_filters.a))
+        KEEP(*(.c850_ui_filters))
+        KEEP(*(.c850_ui_filters.z))
     } > payload
 
     .data : ALIGN(4) {

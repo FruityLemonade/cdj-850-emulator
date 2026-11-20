@@ -18,6 +18,11 @@
  *             out record 0x0C7F64B0 from 0x0C0F025A); stock passes the
  *             current play sector 0x0C7F645C.
  *
+ * Quantize switch: BEAT SELECT + LOOP IN toggles it (the mod flags byte of
+ * c850_ui.h, saved to flash, default on) and flashes QUANTIZE ON / QUANTIZE
+ * OFF on the display. Off: every path below is stock (loop_resize also
+ * leaves the grid then).
+ *
  * Entry points (all redirected pool words, see ../patch.py):
  *   quant_loops_auto_in    FUN_0C073954 (track -> tracklen slot) in the USB
  *                          new-loop path of auto_beat_loop_set: runs after
@@ -34,6 +39,9 @@
  *                          to the nearest beat.
  *   quant_loops_loop_out   audio_send_cmd in the USB LOOP OUT path: snaps the
  *                          out sector of cmd 1 / 3 to the nearest beat after in.
+ *   c850_ui_keys           0x0C0ED038, the shared key filter chain
+ *                          (payload/common/c850_ui.c): quant_loops_key_filter.
+ *   c850_ui_flash_hook     tail of display_stage_bpm: the QUANTIZE ON/OFF flash.
  *
  * Precision: whole frames (1/75 s). ms -> frames rounds to the nearest frame
  * (quant_loops_ms_to_frames); a half-frame build would change that function
@@ -43,6 +51,7 @@
  * (15.9 h), beats * 6000000 for beats <= 8.
  */
 #include "c850.h"
+#include "c850_ui.h"
 
 /* ---- MAIN state and routines used here (section 4b.2 / 4b.9) ---- */
 #define QL_IN_SECTOR        C850_S16(0x0C7F6468)   /* ring sector the loop in is taken from */
@@ -61,9 +70,38 @@
 #define QL_NONE   (-1)      /* no beat (lead-in before the first beat) */
 #define QL_AWAY   (-2)      /* the window in RAM does not cover the position */
 
-/* Run-time switch. 1 = snap (the build knob CDJ850_QUANT_LOOPS turns the
- * whole mod on); a future on-deck QUANTIZE toggle would clear/set this. */
+/* Run-time switch. 1 = the mod may snap (the build knob CDJ850_QUANT_LOOPS
+ * turns the whole mod on); 0 = stock and no toggle. Snapping also needs the
+ * on-deck quantize switch (ql_on). */
 volatile u32 quant_loops_on = 1;
+
+volatile u32 quant_loops_toggles;    /* evidence: BEAT SELECT + LOOP IN presses that switched */
+volatile u32 quant_loops_toggle_failed;  /* presses that could not save (31-character name) */
+
+static int ql_on(void)
+{
+    return quant_loops_on && c850_ui_quantize();
+}
+
+/* Called by c850_ui_keys (the shared filter on pool 0x0C0ED038) with the
+ * true held words k, the new presses p, and the keys taken so far. BEAT
+ * SELECT + LOOP IN switches quantize; LOOP IN alone stays stock. */
+static void quant_loops_key_filter(const u16 *k, const u16 *p, u16 *own)
+{
+    int on;
+
+    if (!quant_loops_on || !c850_ui_shift(k, p, own, C850_K0_LOOP_IN))
+        return;
+    on = !c850_ui_quantize();
+    if (c850_ui_set_flag(C850_UI_FLAG_QUANT_OFF, !on)) {
+        quant_loops_toggles++;
+    } else {
+        quant_loops_toggle_failed++;
+        on = !on;
+    }
+    c850_ui_flash(on ? "QUANTIZE ON" : "QUANTIZE OFF");
+}
+C850_UI_KEY_FILTER(quant_loops_key_filter);
 
 /* Pending grid out of the auto loop being set (quant_loops_auto_in ->
  * quant_loops_auto_send); consumed by the next send through the redirect. */
@@ -185,7 +223,7 @@ int quant_loops_grid_ok(int i)
     u32 n = quant_loops_window_n();
     int j;
 
-    if (!quant_loops_on || C850_IS_USB_MODE != 1 || n == 0 || QL_GRID_WINDOW_OK == 0 || base == 0)
+    if (!ql_on() || C850_IS_USB_MODE != 1 || n == 0 || QL_GRID_WINDOW_OK == 0 || base == 0)
         return 0;
     for (j = i - 8; j <= i + 8; j++) {
         u32 t;
@@ -388,7 +426,7 @@ void quant_loops_loop_in(void)
     u32 pos, in;
 
     QL_NEXT_SECTOR();
-    if (C850_IS_USB_MODE != 1 || !quant_loops_on)
+    if (C850_IS_USB_MODE != 1 || !ql_on())
         return;
     s = QL_IN_SECTOR;
     if (s < 0 || s >= 2400)
@@ -412,7 +450,7 @@ void quant_loops_loop_in(void)
 /* Pools 0x0C0E0090 and 0x0C0E02C0 (audio_send_cmd) in the LOOP OUT path. */
 void quant_loops_loop_out(int cmd, int flag, u32 a3, int mode, int sector, int a6, int a7, int src)
 {
-    if ((cmd & 0xFF) == 1 && (mode & 0xFF) == 3 && C850_IS_USB_MODE == 1 && quant_loops_on) {
+    if ((cmd & 0xFF) == 1 && (mode & 0xFF) == 3 && C850_IS_USB_MODE == 1 && ql_on()) {
         int s = sector & 0xFFFF, t;
         u32 pos, in, out;
         if (s < 2400) {
