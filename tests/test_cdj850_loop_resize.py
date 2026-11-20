@@ -39,7 +39,7 @@ POOL, STOCK, READERS = 0x0C0D9994, 0x0C0D3B1A, [0x0C0D98AC, 0x0C0D98EA]
 STATE4_KEYS, MEMORY_BUTTON = 0x0C0E0F34, 0x0C0D4172
 # (pool word, stock value, instructions that read it, payload symbol)
 POOLS = [(POOL, STOCK, READERS, "loop_resize_call"),
-         (0x0C0D7B98, STATE4_KEYS, [0x0C0D79A6], "loop_resize_state4"),
+         (0x0C0D7B98, STATE4_KEYS, [0x0C0D79A6], "c850_loop_tick"),
          (0x0C0D9714, MEMORY_BUTTON, [0x0C0D9664], "loop_resize_memory_button")]
 BEAT_HANDLER4 = 0x0C0E5390
 GRID_CTX = 0x0C9D24FC
@@ -517,7 +517,7 @@ def test_halving_past_the_new_out_waits_for_the_next_pass():
     for pos, sent in ((330, False), (342, False), (202 + 18, False), (202 + 17, True)):
         mem.put32(PLAY_FRAME_ADDR, pos)
         mem.write(LOG, bytes(16))
-        _call(p, mem, "loop_resize_state4")
+        _call(p, mem, "c850_loop_tick")
         log = [mem.u32(LOG + 4 * i) for i in range(2)]
         # the stock state-4 handler always runs last (log 3); a send logs 2 first and is overwritten
         assert log[0] == 3
@@ -536,9 +536,9 @@ def test_halving_past_the_new_out_waits_for_the_next_pass():
     _press(p, mem, 0)
     mem.write(PLAYER_STATE, bytes([3] * 4))
     mem.put32(PLAY_FRAME_ADDR, 205)
-    _call(p, mem, "loop_resize_state4")
+    _call(p, mem, "c850_loop_tick")
     mem.write(PLAYER_STATE, bytes([4] * 4))
-    _call(p, mem, "loop_resize_state4")
+    _call(p, mem, "c850_loop_tick")
     assert _sym(p, mem, "count") == 0
 
 
@@ -640,6 +640,24 @@ def build_stick(path):
                     str(path / "stick"), str(image), str(BAKEN)],
                    check=True, capture_output=True, text=True, timeout=300)
     return image
+
+
+
+def _free_port():
+    import socket
+    s = socket.socket()
+    s.bind(("127.0.0.1", 0))
+    port = s.getsockname()[1]
+    s.close()
+    return port
+
+
+def _drift_gdb(syms):
+    """(gdb port, address of quant_loops_drift_on) when the payload has the drift correction:
+    this test checks exact out frames, so it runs with the correction off (it moves the out of
+    every pass by up to a frame; tests/test_cdj850_loop_drift.py covers it)."""
+    a = payloadbuild.lookup(syms, "quant_loops_drift_on") if syms else None
+    return (_free_port(), a) if a else (None, None)
 
 
 def drive(stick, flash=None, syms=None, stock=False, tracks=TITLES, log=None):
@@ -780,10 +798,17 @@ def drive(stick, flash=None, syms=None, stock=False, tracks=TITLES, log=None):
     # the playlist lists NOGRID, QVAR, Q12796, Q128: load the first, or rotate to Q128 alone
     script = tr.LOAD_SCRIPT if tracks != ("Q128",) else \
         "6000:usb:200,7600:rot+2,9000:enter:200,10600:rot+3,12000:enter:200"
-    with tr.Deck(stick, flash=flash, script=script, log=log) as d:
+    port, drift_on = _drift_gdb(syms)
+    with tr.Deck(stick, flash=flash, script=script, log=log, gdb_port=port) as d:
+        if port:
+            g = tr.Gdb(port)
+            g._send("c")
         start = 0
         while not all(x in res for x in tracks):
             i, line = d.wait_line("mode=0x0a", timeout=300, start=start)
+            if port:
+                assert g.poke32(drift_on, 0) == "OK"
+                port = None
             start = i + 1
             m = re.search(r"attr=\S+ \[([^\]]*)\]", line)
             title = m.group(1) if m else ""

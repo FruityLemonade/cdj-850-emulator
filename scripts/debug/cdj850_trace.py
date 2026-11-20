@@ -166,6 +166,14 @@ class Gdb:
         self.s.sendall(b"\x03")
         return self._recv()
 
+    def poke32(self, addr, value):
+        """Write a big-endian word while the guest runs (it was continued with "c"): interrupt,
+        write, continue. Returns the stub's reply to the write ("OK")."""
+        self.stop()
+        r = self.cmd("M%x,4:%08x" % (addr, value & 0xFFFFFFFF))
+        self._send("c")
+        return r
+
     def detach(self):
         try:
             self._send("D")

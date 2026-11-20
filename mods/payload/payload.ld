@@ -50,5 +50,10 @@ SECTIONS
     /DISCARD/ : {
         *(.comment) *(.note .note.*) *(.eh_frame .eh_frame_hdr) *(.stack)
         *(.debug .debug_*)          /* libgcc's soft-float helpers carry DWARF */
+        /* sh-elf ld reserves a dynamic-relocation section for references to
+         * weak symbols (the shared tick, c850.h C850_LOOP_TICK_DEFINE) even in
+         * this static link; it stays empty (payloadbuild checks the image has
+         * no relocations left) */
+        *(.rela.dyn) *(.rela.text)
     }
 }

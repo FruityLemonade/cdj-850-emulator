@@ -42,10 +42,14 @@
  *   c850_ui_keys           0x0C0ED038, the shared key filter chain
  *                          (payload/common/c850_ui.c): quant_loops_key_filter.
  *   c850_ui_flash_hook     tail of display_stage_bpm: the QUANTIZE ON/OFF flash.
+ *   quant_loops_drift_tick hook of the shared state-4 tick c850_loop_tick
+ *                          (0x0C0D7B98, keys_state4_looping; c850.h,
+ *                          loop_tick.c): the per-pass drift correction below.
  *
  * Precision: whole frames (1/75 s). ms -> frames rounds to the nearest frame
- * (quant_loops_ms_to_frames); a half-frame build would change that function
- * and the sector arithmetic below (half_frame, see the README).
+ * (quant_loops_ms_to_frames). The rounding of a loop's length does not add up
+ * over the passes: the drift correction (end of this file) alternates the
+ * pass lengths so that their sum follows the exact grid length.
  *
  * Integer only (no FPU). Products stay below 2^32: ms * 75 for ms < 57e6
  * (15.9 h), beats * 6000000 for beats <= 8.
@@ -113,6 +117,11 @@ static u32 ql_pending_out8;
 
 /* Evidence for tests: last values and counters. */
 volatile u32 quant_loops_last_in;        /* last snapped in frame (auto / LOOP IN) */
+/* In frame of the last loop quant_loops made (auto beat loop or LOOP OUT on
+ * a USB grid track), all ones = none. The drift correction takes on only a
+ * loop with this in: a hot-cue or memory loop loaded from the stick plays
+ * (and is saved back) exactly as stored, as on a stock deck. */
+volatile u32 quant_loops_drift_owner = 0xFFFFFFFFu;
 volatile u32 quant_loops_last_out;       /* last out frame (auto / LOOP OUT) */
 volatile u32 quant_loops_last_pos;       /* stock position the snap started from */
 volatile u32 quant_loops_auto_count;     /* auto loops given a grid out */
@@ -397,6 +406,7 @@ void quant_loops_auto_send(int cmd, int flag, u32 frame, int resize, int a5, int
             QL_CA90 = ql_pending_out8;
             quant_loops_auto_count++;
             quant_loops_last_out = frame;
+            quant_loops_drift_owner = quant_loops_last_in;
         }
     }
     c850_audio_send_cmd(cmd, flag, frame, resize, a5, a6, a7, src);
@@ -457,6 +467,7 @@ void quant_loops_loop_out(int cmd, int flag, u32 a3, int mode, int sector, int a
             pos = QL_SECTOR_FRAME(s);
             in = C850_LOOP_IN_FRAME;
             out = quant_loops_out_point(in, pos);
+            quant_loops_drift_owner = in;
             quant_loops_last_pos = pos;
             quant_loops_last_out = out;
             if (out != pos) {
@@ -473,3 +484,273 @@ void quant_loops_loop_out(int cmd, int flag, u32 a3, int mode, int sector, int a
     }
     c850_audio_send_cmd(cmd, flag, a3, mode, sector, a6, a7, src);
 }
+
+/* ---- drift: per-pass loop length correction (docs 4b.9, "Loop drift") ----
+ *
+ * A loop's points are whole frames, so a loop of q/16 grid beats is L =
+ * q * 28125 / BPMx100 frames (constant tempo) but plays n = out - in whole
+ * frames per pass. Each wrap jumps back n instead of L: the track drifts
+ * against the grid by n - L per pass (5..8 ms at 128 BPM), and an EXIT keeps
+ * the sum. This tick counts the wraps and keeps e = sum(n) - passes * L,
+ * and after each wrap sets the out for the next pass to in + round(L - e)
+ * (Bresenham): passes alternate between floor(L) and ceil(L) frames and |e|
+ * stays within half a frame (6.7 ms) after the second wrap, however long the
+ * loop plays. The first pass keeps the out the loop was made with.
+ *
+ * Only loops quant_loops made (quant_loops_drift_owner: an auto beat loop or
+ * LOOP IN/OUT, also after loop_resize changed its out, since the in stays);
+ * hot-cue and memory loops from the stick are never moved, so recording one
+ * back saves the stored out. Of those, only loops the grid can name: the in on the grid (as quant_loops_auto_in
+ * and loop_resize find it) and a length within one frame of q/16 beats,
+ * 1 <= q <= 512, at least QL_DRIFT_MIN frames. Everything else is left alone.
+ *
+ * The out moves through the stock resize (auto_beat_loop_set, its state-4
+ * branch FUN_0C0E5668 -> FUN_0C00A4CC -> audio cmd 6 with the resize flag,
+ * exactly what a BEAT button does inside a loop), with CA90 set for one call
+ * so that FUN_0C0E5668 gives the wanted out (as loop_resize does). Called
+ * directly, not through FUN_0C0E5390 (that one also resets display state,
+ * FUN_0C06A244); the bytes the call writes besides the loop records (beat
+ * LED 0x0C1E1088, 0x0CE6D155/0x0CE6D156, CA90) are put back.
+ */
+#define QL_DRIFT_MIN        12u      /* frames: shorter loops are not corrected */
+#define QL_DRIFT_SLACK      6u       /* frames a tick may lag the playhead at a wrap */
+#define QL_MAX_Q            512u     /* 32 beats in 1/16 beats */
+#define QL_AUTO_BEAT_LOOP   C850_FN(0x0C0E570A, u32, (u32 beats))  /* auto_beat_loop_set */
+#define QL_BEAT_LOCK        C850_U8(0x0CE6D26A)    /* 0xFF: FUN_0C0E5390 does nothing */
+#define QL_D155             C850_U8(0x0CE6D155)
+#define QL_D156             C850_U8(0x0CE6D156)
+
+/* Run-time switch (1 = correct; 0 = loops play the out they were given). */
+volatile u32 quant_loops_drift_on = 1;
+
+/* Evidence for tests (the loop being tracked). */
+volatile u32 quant_loops_drift_ticks;      /* tick calls */
+volatile u32 quant_loops_drift_loops;      /* loops taken on (reset with a grid length) */
+volatile u32 quant_loops_drift_passes;     /* wraps counted in this loop */
+volatile u32 quant_loops_drift_sum;        /* sum of their lengths (frames) */
+volatile s32 quant_loops_drift_err;        /* sum - passes * L, in 1/den frames */
+volatile u32 quant_loops_drift_num;        /* L = num / den frames, 0 = not tracked */
+volatile u32 quant_loops_drift_den;
+volatile u32 quant_loops_drift_q;          /* loop length in 1/16 beats */
+volatile u32 quant_loops_drift_moves;      /* outs moved (all loops) */
+volatile u32 quant_loops_drift_refused;    /* moves the stock resize did not take */
+volatile u32 quant_loops_drift_lost;       /* tracking dropped (a jump that is no wrap) */
+
+/* Which out plays: the request 0x0C7F64DC when it changed after the record
+ * 0x0C7F64B0 last did, else the record (loop_resize.c, lr_track: a resize
+ * writes the request, a new loop / RELOOP / EXIT the record). */
+static u32 qd_dc, qd_b0, qd_fresh;
+static u32 qd_in, qd_out, qd_last, qd_want, qd_have;
+static u32 qd_expect;                     /* an out we asked for that the request has not shown yet */
+
+static void qd_track(void)
+{
+    u32 dc = C850_LOOP_OUT_REQUEST, b0 = C850_LOOP_OUT_FRAME;
+    int dch = dc != qd_dc, bch = b0 != qd_b0;
+
+    if (bch)
+        qd_fresh = 0;
+    else if (dch)
+        qd_fresh = 1;
+    qd_dc = dc;
+    qd_b0 = b0;
+}
+
+u32 quant_loops_effective_out(u32 in)
+{
+    return qd_fresh && qd_dc > in ? qd_dc : qd_b0;
+}
+
+/* Grid time (ms) of position p sixteenths of a beat after beat i. */
+u32 quant_loops_grid_ms(int i, u32 p)
+{
+    u32 t0 = quant_loops_beat_ms_after(i, p >> 4), r = p & 15u;
+
+    if (r == 0)
+        return t0;
+    return t0 + (r * (quant_loops_beat_ms_after(i, (p >> 4) + 1u) - t0) + 8u) / 16u;
+}
+
+/* Out frame of a loop q/16 beats long from in, which is step s (0..15) of
+ * beat i, or off the grid (s = 16: in + the grid duration). */
+static u32 qd_grid_out(int i, u32 s, u32 in, u32 q)
+{
+    if (s < 16u)
+        return quant_loops_ms_to_frames(quant_loops_grid_ms(i, s + q));
+    return in + quant_loops_ms_to_frames(quant_loops_grid_ms(i, q) - C850_GRID_TIME_MS(i));
+}
+
+static u32 qd_tz(u32 q)
+{
+    u32 n = 0;
+
+    while (q && !(q & 1u)) {
+        q >>= 1;
+        n++;
+    }
+    return n;
+}
+
+/*
+ * The exact length of the loop [in, out) on the grid: L = *num / *den frames
+ * and its q (1/16 beats). 0 when the grid cannot name it. Constant tempo over
+ * the loop: den = BPMx100 and num = q * 28125 (q/16 beats * 60/BPM s * 75);
+ * a tempo change inside it: den = 1000 and num = the grid duration in ms * 75.
+ */
+u32 quant_loops_drift_length(u32 in, u32 out, u32 *num, u32 *den)
+{
+    int i = quant_loops_beat_at_or_before(in);
+    u32 n = quant_loops_window_n();
+    u32 s, lo, hi, q, best = 0, d_best = 2, p0, bpm, j, last;
+
+    if (i < 0 || out <= in || out - in < QL_DRIFT_MIN || !quant_loops_grid_ok(i))
+        return 0;
+    for (s = 0; s < 16u; s++)
+        if (quant_loops_ms_to_frames(quant_loops_grid_ms(i, s)) == in)
+            break;
+    lo = 1;
+    hi = QL_MAX_Q;
+    while (lo < hi) {                     /* first q with grid out >= out */
+        u32 mid = (lo + hi) >> 1;
+        if (qd_grid_out(i, s, in, mid) < out)
+            lo = mid + 1;
+        else
+            hi = mid;
+    }
+    for (q = lo > 1 ? lo - 1 : lo; q <= lo; q++) {
+        u32 f = qd_grid_out(i, s, in, q), d = f > out ? f - out : out - f;
+        if (d < d_best || (d == d_best && best && qd_tz(q) > qd_tz(best))) {
+            d_best = d;
+            best = q;
+        }
+    }
+    if (!best)
+        return 0;
+    p0 = s < 16u ? s : 0;
+    bpm = C850_GRID_BPM100(i);
+    last = (u32)i + (p0 + best + 15u) / 16u;
+    for (j = (u32)i + 1u; j <= last && j < n; j++)
+        if (C850_GRID_BPM100(j) != bpm)
+            break;
+    if (bpm != 0 && (j > last || j >= n)) {
+        *num = best * 28125u;
+        *den = bpm;
+    } else {
+        *num = (quant_loops_grid_ms(i, p0 + best) - quant_loops_grid_ms(i, p0)) * 75u;
+        *den = 1000u;
+    }
+    return best;
+}
+
+/* The out of the next pass after a wrap: in + round(L - e) frames. */
+u32 quant_loops_drift_next(u32 num, u32 den, s32 err)
+{
+    s32 t = (s32)num - err;               /* > 0: L >= QL_DRIFT_MIN frames, |e| < 1 frame */
+
+    return ((u32)t + den / 2u) / den;
+}
+
+/* Move the loop out to nout through the stock resize; 1 = the request took it. */
+static int qd_move(u32 in, u32 nout)
+{
+    u32 frac = C850_BEAT_FRACTION_MODE ? 1u : 0u;
+    u32 ca90 = QL_CA90;
+    u8 beats = C850_AUTO_LOOP_BEATS, d155 = QL_D155, d156 = QL_D156;
+
+    if (QL_BEAT_LOCK == 0xFF)
+        return 0;
+    /* FUN_0C0E5668 with beats 8: out = in + (CA90 - in) / (frac * 15 + 1) */
+    QL_CA90 = in + (nout - in) * (frac * 15u + 1u);
+    QL_AUTO_BEAT_LOOP(8);
+    QL_CA90 = ca90;
+    C850_AUTO_LOOP_BEATS = beats;
+    QL_D155 = d155;
+    QL_D156 = d156;
+    qd_track();                           /* the request is ours: fresh */
+    return C850_LOOP_OUT_REQUEST == nout;
+}
+
+/* Start tracking the loop [in, out) with the playhead at pos. */
+static void qd_reset(u32 in, u32 out, u32 pos)
+{
+    u32 num = 0, den = 1;
+
+    qd_in = in;
+    qd_out = out;
+    qd_last = pos;
+    qd_want = 0;
+    qd_expect = 0;
+    quant_loops_drift_q = quant_loops_drift_length(in, out, &num, &den);
+    quant_loops_drift_num = quant_loops_drift_q ? num : 0;
+    quant_loops_drift_den = den;
+    quant_loops_drift_passes = 0;
+    quant_loops_drift_sum = 0;
+    quant_loops_drift_err = 0;
+    if (quant_loops_drift_q)
+        quant_loops_drift_loops++;
+    qd_have = 1;
+}
+
+/* Hook of the shared state-4 tick c850_loop_tick (c850.h): once per player
+ * cycle while a loop plays, before the stock handler. */
+void quant_loops_drift_tick(void)
+{
+    u32 in, out, pos, n;
+
+    quant_loops_drift_ticks++;
+    qd_track();
+    if (!ql_on() || !quant_loops_drift_on || C850_IS_USB_MODE != 1 ||
+        C850_LOOP_ACTIVE != 1 || C850_PLAYER_STATE != C850_STATE_LOOPING) {
+        qd_have = 0;
+        return;
+    }
+    in = C850_LOOP_IN_FRAME;
+    out = quant_loops_effective_out(in);
+    pos = C850_PLAY_FRAME;
+    if (qd_have && in == qd_in && out != qd_out && out == qd_expect) {
+        qd_out = out;                     /* our move, applied by the audio task later */
+        qd_expect = 0;
+        quant_loops_drift_moves++;
+    }
+    if (in != quant_loops_drift_owner) {
+        quant_loops_drift_owner = 0xFFFFFFFFu;  /* another loop played: ownership ends */
+        qd_have = 0;
+        return;
+    }
+    if (!qd_have || in != qd_in || out != qd_out) {
+        qd_reset(in, out, pos);           /* a new loop, a resize, EXIT/RELOOP */
+        return;
+    }
+    if (!quant_loops_drift_num) {
+        qd_last = pos;
+        return;
+    }
+    if (pos < qd_last) {
+        if (qd_last + QL_DRIFT_SLACK < out || pos > in + QL_DRIFT_SLACK) {
+            quant_loops_drift_lost++;     /* a jump that is no wrap (jog, a seek) */
+            qd_reset(in, out, pos);
+            return;
+        }
+        n = out - in;
+        quant_loops_drift_passes++;
+        quant_loops_drift_sum += n;
+        quant_loops_drift_err += (s32)(n * quant_loops_drift_den) - (s32)quant_loops_drift_num;
+        n = quant_loops_drift_next(quant_loops_drift_num, quant_loops_drift_den, quant_loops_drift_err);
+        qd_want = n != out - in ? in + n : 0;
+    }
+    qd_last = pos;
+    /* only while the playhead is in the first half of the next pass, so the
+     * new out is never behind it (the feeder would jump to in at once) */
+    if (qd_want && pos >= in && pos - in < (qd_want - in) / 2u) {
+        u32 want = qd_want;
+        qd_want = 0;
+        if (qd_move(in, want)) {
+            qd_out = want;
+            quant_loops_drift_moves++;
+        } else {
+            qd_expect = want;             /* counted when it shows up, else refused */
+            quant_loops_drift_refused++;
+        }
+    }
+}
+
