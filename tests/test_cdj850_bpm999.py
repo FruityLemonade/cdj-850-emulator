@@ -473,8 +473,14 @@ def test_live_probe_build_shows_199_and_frames_75_to_99(tmp_path):
                 p.kill()
                 raise
     pages = [f for f in tu._captured_status_pages(capture) if f is not None and f[0] == 1]
+    # Mods stay inert until the service gate opens after the power-on key read, so the first
+    # pages carry the stock "no BPM" word 0xFFFF. Once the probe runs, every page shows 199.
+    words = [(f[8] << 8) | f[9] for f in pages]
+    first = next((i for i, w in enumerate(words) if w != 0xFFFF), len(words))
+    assert set(words[:first]) <= {0xFFFF}, sorted(set(words[:first]))
+    pages = pages[first:]
     assert len(pages) > 100
-    assert {(f[8] << 8) | f[9] for f in pages} == {199}
+    assert set(words[first:]) == {199}
     # The time code rewrites the staging frame byte between display updates, so the TX builder
     # sometimes copies a 0 (about 2% of frames in the emulator). Everything else is 75..99.
     zeros = sum(1 for f in pages if f[7] == 0)
