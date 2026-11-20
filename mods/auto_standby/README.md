@@ -13,7 +13,9 @@ UTILITY AUTO STANDBY stays OFF/ON as before; OFF is still gated out before the l
 - Verified by the emulator: the 1-minute build requests standby about 60 s after idle starts; a TEMPO press restarts the count.
 
 ## Use on the deck
-Flash via the service-mode USB update (`C850MAIN.UPD`, see docs/cdj850-modding.md section 2). Pass a bumped `--version` if installing over stock 1.13.
+Flash via the service-mode USB update (`C850MAIN.UPD`, see docs/cdj850-modding.md section 2). `patch_update.py` labels the file `0.13`, which the updater always writes.
+
+In the service modes the idle counter does not run (the player state is `0x0D`, which the idle gate `FUN_0C0EF7D6` rejects; the seconds counter stayed 0 through a whole emulated USB update), so even a 1-minute timeout cannot cut an update short (docs/cdj850-modding.md section 8.5).
 
 ## Open hardware questions
 - Not run on a real CDJ-850; the 20-minute timeout itself was not timed (only 1-minute and stock 150 s runs in the emulator).

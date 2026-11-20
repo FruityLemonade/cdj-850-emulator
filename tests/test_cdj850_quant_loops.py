@@ -195,7 +195,7 @@ def test_static_pool_words_outside_the_boot_critical_closure():
     for pool, old, loaders, symbol in POOLS:
         o = pool - BASE
         assert struct.unpack_from(">I", stock, o)[0] == old, hex(pool)
-        assert struct.unpack_from(">I", out, o)[0] == payloadbuild.lookup(p.symbols, symbol), hex(pool)
+        assert struct.unpack_from(">I", out, o)[0] == payloadbuild.lookup(p.symbols, payloadbuild.gate_name(symbol)), hex(pool)
         assert reads[pool] == loaders, (hex(pool), [hex(a) for a in reads[pool]])
         assert not closure.hit(o, o + 4), hex(pool)
         for a in loaders:

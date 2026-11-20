@@ -46,9 +46,15 @@ ERASED = 0xFF
 # little-endian one (MAIN's SH7724) -- every halfword and word this module
 # reads or writes in the image goes through it, so a mod's sig/args/literal
 # are always given as the instruction's logical value, never raw bytes.
+#
+# gate: byte addresses in RAM that, when any of them is nonzero, mean the
+# firmware is in a mode where no mod may act (the CDJ-850's service modes):
+# every hook trampoline then runs only its moved span and skips its hooks,
+# and the payload's redirect gates (payloadbuild.py) jump to the stock
+# function. () for a model without such a mode: nothing is generated.
 ImageProfile = collections.namedtuple(
-    'ImageProfile', 'flash_base loadtab_off loadtab_n ram_base ram_end byteorder cave',
-    defaults=('>', None))
+    'ImageProfile', 'flash_base loadtab_off loadtab_n ram_base ram_end byteorder cave gate',
+    defaults=('>', None, ()))
 
 # Code the firmware never runs, found by the strings of its entry points
 # instead of by being erased: an executed-in-place image with no erased run
@@ -111,6 +117,7 @@ Mod = collections.namedtuple(
     defaults=(False, (), (), None))
 
 PAYLOAD_PREFIX = 'payload:'
+GATE_PREFIX = '__gate_'                # payloadbuild.gate_name()
 
 
 def payload_symbol(mod):
@@ -541,13 +548,17 @@ def call_site(mod, site, resume, target, byteorder='>', jump=False):
     return code
 
 
-def trampoline(span, span_literals, hooks, resume, at, byteorder='>'):
+def trampoline(span, span_literals, hooks, resume, at, byteorder='>', gate=()):
     """The code shared by every selected hook mod on one span, placed at `at`
     (4-aligned) and entered by call_site(jump=True):
 
         the span, moved here unchanged except that each mov.l @(disp,pc)
           reads its value (span_literals, in order) from this pool
         mov.l r7..r0,@-r15              the span's r0-r7, r0 at @r15
+        with a gate (ImageProfile.gate), for each gate byte g:
+          mov.l g,r1; mov.b @r1,r1; mov r1,r2 (first) / or r1,r2
+          tst r2,r2; bf <the restore>   any byte nonzero: no hook runs, the
+                                        site behaves exactly as stock
         for each hook:
           mov r15,r5; add #32,r5        r5 = r15 as the span left it
           mov.l hook,r1; jsr @r1
@@ -577,21 +588,32 @@ def trampoline(span, span_literals, hooks, resume, at, byteorder='>'):
     if span[-1] & 0xFD00 == 0x8D00 or span[-1] & 0xF000 == 0xA000 or span[-1] & 0xF0DF == 0x400B:
         raise SystemExit('span ends in a delayed branch without its slot')
 
-    code_len = 2 * (n + 20 + 5 * len(hooks))
+    gate = tuple(gate)
+    gate_ops = 3 * len(gate) + 2 if gate else 0
+    code_len = 2 * (n + 20 + 5 * len(hooks) + gate_ops)
     pool = at + ((code_len + 3) & ~3)
-    lits = [resume] + list(hooks) + list(span_literals)
+    lits = [resume] + list(hooks) + list(gate) + list(span_literals)
 
     def disp(pc, k):
         return (pool + 4 * k - ((pc & ~3) + 4)) // 4
 
     ops = []
-    k = 1 + len(hooks)
+    k = 1 + len(hooks) + len(gate)
     for i, op in enumerate(span):
         if is_pcrel_load(op):
             op = op & 0xFF00 | disp(at + 2 * i, k)
             k += 1
         ops.append(op)
     ops += [0x2F06 | r << 4 for r in range(7, -1, -1)]
+    if gate:
+        for j in range(len(gate)):
+            pc = at + 2 * len(ops)
+            ops += [0xD100 | disp(pc, 1 + len(hooks) + j), 0x6110, 0x6213 if j == 0 else 0x221B]
+        ops += [0x2228]                                   # tst r2,r2
+        skip = 5 * len(hooks) - 1                         # over every hook call, to the restore
+        if skip > 127:
+            raise SystemExit('too many hooks on one span for the gate branch')
+        ops += [0x8B00 | skip]                            # bf <restore>
     for j in range(len(hooks)):
         pc = at + 2 * (len(ops) + 2)
         ops += [0x65F3, 0x7520, 0xD100 | disp(pc, 1 + j), 0x410B, 0x64F3]
@@ -658,7 +680,7 @@ def literal_pool_reads(img):
     return reads
 
 
-def layout(blob_path, mods):
+def layout(blob_path, mods, gate=()):
     """(offset within the shared segment, total segment size) for every mod
     in the registry, in alphabetical order, then for every hook site's
     trampoline (keyed by its hook_sites() key, sized for all of the site's
@@ -676,16 +698,16 @@ def layout(blob_path, mods):
         cur += size + (-size % 16)
     for key, hooks in sorted(hook_sites(mods).items(), key=lambda site: site[1]):
         offsets[key] = cur
-        size = trampoline_size(key, len(hooks))
+        size = trampoline_size(key, len(hooks), gate)
         cur += size + (-size % 16)
     return offsets, cur
 
 
-def trampoline_size(key, hooks):
+def trampoline_size(key, hooks, gate=()):
     sig, start, end = key
     span = sig[start:end]
     return len(trampoline(span, [0] * sum(map(is_pcrel_load, span)),
-                          [0] * hooks, 0, 0))
+                          [0] * hooks, 0, 0, gate=gate))
 
 
 # The patches of one model's image: its ImageProfile, the routines of the mods
@@ -738,7 +760,9 @@ def patch_redirects(profile, data, redirects, names, payload, tag, report, spans
     its anchor's mov.l reads goes from `old` to the payload symbol's address.
     A word that already holds that address is 'present'; one that holds
     anything else, an anchor not found once, or a missing symbol is left out
-    and reported. The written word goes to `spans` as a 4-byte 'site'."""
+    and reported. The written word goes to `spans` as a 4-byte 'site'. With a
+    profile gate the word points at the payload's gate for the symbol
+    (__gate_<symbol>), never at the routine itself."""
     img = Image(profile, data)
     spans = {} if spans is None else spans
     reads = literal_pool_reads(img)
@@ -749,7 +773,15 @@ def patch_redirects(profile, data, redirects, names, payload, tag, report, spans
             report[name] = ('skipped', why)
             print('%s: %s not applied: %s' % (tag, r.what, why))
         try:
-            new = payload_address(payload, payload_symbol(r))
+            symbol = payload_symbol(r)
+            if profile.gate:
+                # the service-mode gate in front of the routine (payloadbuild.py):
+                # stock function while a gate byte is set, the routine otherwise
+                gated = GATE_PREFIX + symbol
+                if not payload or gated not in payload:
+                    raise NotApplied('the payload has no service-mode gate %s for it' % gated)
+                symbol = gated
+            new = payload_address(payload, symbol)
             if not r.anchor.literal:
                 raise NotApplied('its anchor does not name a literal load')
             lit = literal_offset(img, anchor_offset(img, r.anchor))
@@ -913,7 +945,7 @@ def is_applied(img, mods, name, blob, dest, offsets, payload=None):
         target = dest + offsets[key]
         tramp = img.off_of(target, required=False)
         pool = struct.pack(img.p.byteorder + 'I', addr)
-        size = trampoline_size(key, len(hooks_at(mods, key)))
+        size = trampoline_size(key, len(hooks_at(mods, key)), img.p.gate)
         if tramp is None or pool not in img.d[tramp:tramp + size]:
             return False
     else:
@@ -956,7 +988,7 @@ def patch(profile, blob_path, data, mods, names, tag='sigpatch', report=None, sp
     report = {} if report is None else report
     spans = {} if spans is None else spans
     blobs = read_blobs(blob_path, mods)
-    offsets, total = layout(blob_path, mods)
+    offsets, total = layout(blob_path, mods, profile.gate)
 
     def skip(name, reason):
         report[name] = ('skipped', reason)
@@ -1044,7 +1076,7 @@ def patch(profile, blob_path, data, mods, names, tag='sigpatch', report=None, sp
                 raise SystemExit('the earlier segment is cut short')
         segment = bytearray(img.d[src:src + total])
         slots = [(offsets[n], len(routines[n])) for n in pending if n in routines]
-        slots += [(offsets[key], trampoline_size(key, len(hooks))) for key, hooks in new_hooks.items()]
+        slots += [(offsets[key], trampoline_size(key, len(hooks), profile.gate)) for key, hooks in new_hooks.items()]
         for start, size in slots:
             if not profile.cave and any(b != ERASED for b in segment[start:start + size]):
                 raise SystemExit('the space at %#x is taken' % (dest + start))
@@ -1068,7 +1100,7 @@ def patch(profile, blob_path, data, mods, names, tag='sigpatch', report=None, sp
                          for k, op in enumerate(span) if is_pcrel_load(op)]
         code = trampoline(span, span_literals, [called[n] for n in hooks],
                           img.addr_of(span_off + 2 * len(span)), dest + offsets[key],
-                          byteorder=profile.byteorder)
+                          byteorder=profile.byteorder, gate=profile.gate)
         segment[offsets[key]:offsets[key] + len(code)] = code
         for name in hooks:
             spans.setdefault(name, []).append((src + offsets[key], len(code), 'free'))

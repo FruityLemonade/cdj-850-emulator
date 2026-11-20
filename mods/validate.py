@@ -285,6 +285,8 @@ def check_untouched(stock, out, fw, targets, rep):
                  if fw.container == 'c850' else slice(0, LABEL_SIZE))
     for i, (a, b) in enumerate(zip(stock.sections, out.sections)):
         label = a[lbl_slice].decode('latin1').rstrip('\x00 ')
+        if fw.container == 'c850':
+            a, b = c850_label_neutral(a), c850_label_neutral(b)
         if a[lbl_slice] != b[lbl_slice]:
             rep.fail('section %d (%s): label changed' % (i + 1, label))
         if i not in allowed:
@@ -398,6 +400,36 @@ def check_blob_section(i, stock_sec, out_sec, rep):
     return gui_decode.decode(out_sec)[3], gui_decode.decode(stock_sec)[3]
 
 
+def c850_label_neutral(sec):
+    """A CDJ-850 file with its version field (0x60010, 16 bytes) blanked: the
+    one label part a modded file may change (it is outside the summed bytes)."""
+    lo = c850_repack.VERSION_OFF
+    return sec[:lo] + bytes(16) + sec[lo + 16:] if len(sec) >= lo + 16 else sec
+
+
+def check_c850_version(stock_sec, out_sec, name, rep):
+    """The version label against what the service USB update does with it
+    (c850_repack.installs_over, traced at 0x0C08EC44)."""
+    have, want = c850_repack.get_version(stock_sec), c850_repack.get_version(out_sec)
+    if not re.fullmatch(r'[0-9]\.[0-9]{2}', want) or \
+            out_sec[c850_repack.VERSION_OFF + 4:c850_repack.VERSION_OFF + 16] != bytes(12):
+        rep.fail('%s: version field %r is not D.DD padded with NULs' % (name, want))
+        return
+    if out_sec == stock_sec or want == have and out_sec[c850_repack.PACKED_OFF:] == stock_sec[c850_repack.PACKED_OFF:]:
+        return
+    stock_ver = c850_repack.base_version(have)
+    if c850_repack.installs_over(want, stock_ver):
+        rep.ok('%s: version label %s: the service USB update writes it over a deck running %s%s, and the stock '
+               'file %s over it %s' % (name, want, stock_ver,
+                                       ' and over any other modded build' if want[0] < '1' else '',
+                                       stock_ver, 'too' if c850_repack.installs_over(stock_ver, want)
+                                       else 'NOT (skipped)'))
+    else:
+        rep.note('%s: version label %s equals the running %s where the updater compares (first char and the two '
+                 'after the dot): the service USB update skips it on a stock deck (COMPLETE!, nothing written); '
+                 'relabel (patch_update.py default "0.DD")' % (name, want, stock_ver))
+
+
 def check_c850_section(i, stock_sec, out_sec, model, rep):
     name = 'section %d (%s)' % (i + 1, out_sec[c850_repack.LABEL_OFF:c850_repack.PACKED_OFF]
                                 .decode('latin1').rstrip('\x00 '))
@@ -410,8 +442,13 @@ def check_c850_section(i, stock_sec, out_sec, model, rep):
     if stock_sec is not None:
         if stock_sec[:c850_repack.PACKED_OFF] == out_sec[:c850_repack.PACKED_OFF]:
             rep.ok('%s: bytes 0-%#x (boot, recovery, label) identical' % (name, c850_repack.PACKED_OFF))
+        elif (c850_label_neutral(stock_sec)[:c850_repack.PACKED_OFF]
+              == c850_label_neutral(out_sec)[:c850_repack.PACKED_OFF]):
+            rep.ok('%s: bytes 0-%#x (boot, recovery, label) identical but for the version field' %
+                   (name, c850_repack.PACKED_OFF))
         else:
             rep.fail('%s: bytes below %#x differ' % (name, c850_repack.PACKED_OFF))
+        check_c850_version(stock_sec, out_sec, name, rep)
     stream, _, _ = c850_repack.read_packed(out_sec)
     end = c850_repack.STREAM_OFF + len(stream) + 2
     window_end = modelfw.update_window_end(model) or c850_repack.MAIN_END
@@ -961,7 +998,7 @@ def identify(data):
             data[c850_repack.LABEL_OFF:c850_repack.LABEL_OFF + 12] == b'CDJ-850 MAIN'):
         lbl = data[c850_repack.LABEL_OFF:c850_repack.PACKED_OFF].decode('latin1', errors='replace')
         m = re.search(r'(\d+\.\d+)', lbl)
-        return 'cdj850', 'MAIN', (m.group(1) if m else None)
+        return 'cdj850', 'MAIN', (c850_repack.base_version(m.group(1)) if m else None)
     sizes, pos = modelfw.parse_manifest(data)
     labels, at = [], pos
     for size in sizes or [len(data)]:

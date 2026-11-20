@@ -102,13 +102,16 @@ def test_registry_declares_payload_hook_and_redirect():
 def test_cave_reservation_and_room_left():
     """The registry-fixed cave layout: payload hooks take no routine bytes, only trampoline slots."""
     ps = patch_main.PATCH_SETS["cdj850"]
-    offsets, total = sigpatch.layout(lambda n: patch_main.blob_path(n, "cdj850"), ps.mods)
+    offsets, total = sigpatch.layout(lambda n: patch_main.blob_path(n, "cdj850"), ps.mods, ps.profile.gate)
     assert "payload_demo" not in offsets and "bpm_decimals" not in offsets
-    assert total == 384          # 368 + one slot for bpm_decimals on the shared display_stage_bpm site (16)
+    # 384 without the service gate; the gate adds 24 bytes to each of the two trampolines
+    # (display_stage_bpm with its 4 hooks, tempo_wide's TEMPO site): 64 bytes with the 16-byte padding
+    assert total == 448
+    assert sigpatch.layout(lambda n: patch_main.blob_path(n, "cdj850"), ps.mods)[1] == 384
     if MAIN.is_file():
         img = sigpatch.Image(ps.profile, MAIN.read_bytes())
         start, end = sigpatch.find_cave(img)
-        assert end - ((start + 3) & ~3) - total == 732
+        assert end - ((start + 3) & ~3) - total == 668
 
 
 @needs_toolchain
@@ -122,10 +125,10 @@ def test_demo_hook_and_redirect_literals_are_the_symbol_addresses():
     p = payloadbuild.build(["payload_demo"], "cdj850")
     count = payloadbuild.lookup(p.symbols, "payload_demo_count")
     power = payloadbuild.lookup(p.symbols, "payload_demo_tick")
-    # the redirect: one 4-byte site, the pool word now holds the symbol address
+    # the redirect: one 4-byte site, the pool word now holds the service gate in front of the symbol
     assert spans["payload_demo_redirect"] == [(REDIRECT_POOL - BASE, 4, "site")]
     assert u32(stock, REDIRECT_POOL - BASE) == POWER_TICK
-    assert u32(out, REDIRECT_POOL - BASE) == power
+    assert u32(out, REDIRECT_POOL - BASE) == payloadbuild.lookup(p.symbols, "__gate_payload_demo_tick")
     # the hook: the site jumps to the shared trampoline, whose pool calls bpm999's cave routine and
     # then the payload symbol, in that (alphabetical) order
     lit = (BPM_SITE + 6 + 3) & ~3          # call_site(jump=True): mov.l lit,r1; jmp @r1; nop; .long
@@ -299,7 +302,7 @@ def test_live_payload_demo_hook_and_redirect_run(tmp_path):
         p.terminate()
         p.wait(timeout=10)
     print("payload_demo live:", seen)
-    assert first["pool"] == second["pool"] == payloadbuild.lookup(p_built.symbols, "payload_demo_tick")
+    assert first["pool"] == second["pool"] == payloadbuild.lookup(p_built.symbols, "__gate_payload_demo_tick")
     assert 0 < first["bpm"] < second["bpm"], seen
     assert 0 < first["tick"] < second["tick"], seen
     # one redirected call per 1 ms tick (the routine is the tick's own pool call)

@@ -94,7 +94,7 @@ def test_static_pool_words_outside_the_boot_critical_closure():
     for pool, old, reader, symbol in POOLS:
         o = pool - BASE
         assert struct.unpack_from(">I", stock, o)[0] == old, hex(pool)
-        assert struct.unpack_from(">I", out, o)[0] == payloadbuild.lookup(p.symbols, symbol), hex(pool)
+        assert struct.unpack_from(">I", out, o)[0] == payloadbuild.lookup(p.symbols, payloadbuild.gate_name(symbol)), hex(pool)
         assert _pool_readers(stock, pool) == [reader], hex(pool)
         assert not closure.hit(o, o + 4), hex(pool)
         assert not closure.hit(reader - BASE, reader - BASE + 2), hex(reader)
@@ -131,7 +131,7 @@ def test_composes_with_the_branch_mods():
     assert all(report[n][0] == "applied" for n in names), report
     p = payloadbuild.build(ALL_FOLDERS, "cdj850")
     for pool, _, _, symbol in POOLS:
-        assert struct.unpack_from(">I", out, pool - BASE)[0] == payloadbuild.lookup(p.symbols, symbol)
+        assert struct.unpack_from(">I", out, pool - BASE)[0] == payloadbuild.lookup(p.symbols, payloadbuild.gate_name(symbol))
 
 
 @needs_main

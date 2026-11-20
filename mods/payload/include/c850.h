@@ -185,4 +185,15 @@ typedef void c850_hook_fn(u32 *regs, u32 *sp);
 #define c850_power_tick_1ms            C850_FN(0x0C0EF8C8, void, (void))
 #define C850_TICK_MS                   C850_U32(0x0CE49F54) /* +1 per 1 ms tick */
 
+/* ---- Service-mode gate (docs/cdj850-modding.md, "Service mode gate") ----
+ * Nonzero while the deck is in a power-on firmware-update mode (USB/CD
+ * SELECT + RELOOP), or before MAIN has looked at the power-on keys at all.
+ * The framework already enforces it for every entry: each hook trampoline
+ * skips its hooks and each PoolRedirect goes through a generated gate
+ * (payloadbuild.py, __gate_<symbol>) that jumps to the stock function. Payload
+ * code does not need to test it itself; this is for code that wants to. */
+#define C850_UPDATE_MODE        C850_U8(0x0C1E109A)  /* 1/2: RELOOP held at power-on */
+#define C850_KEYS_PENDING       C850_U8(0x0C1E10AA)  /* 1 until the power-on keys are read */
+static inline int c850_service_mode(void) { return C850_UPDATE_MODE | C850_KEYS_PENDING; }
+
 #endif /* C850_H */

@@ -98,7 +98,7 @@ def test_static_sites_and_stock_bytes_outside_the_boot_critical_closure():
     assert hook.to_bytes(4, "big") in out[tramp - BASE:tramp - BASE + 0x80]
     g = GRID_POOL - BASE
     assert struct.unpack(">I", stock[g:g + 4])[0] == GRID_FIND_BEAT
-    assert struct.unpack(">I", out[g:g + 4])[0] == payloadbuild.lookup(p.symbols, "bpm_decimals_find_beat")
+    assert struct.unpack(">I", out[g:g + 4])[0] == payloadbuild.lookup(p.symbols, "__gate_bpm_decimals_find_beat")
     # every byte the mod changes outside the cave and the loader is in one of the two sites,
     # and neither site (nor the code reading the pool word, 0x0C0737B8) is boot-critical
     closure = bootcrit.closure(stock, BASE, byteorder=">")
