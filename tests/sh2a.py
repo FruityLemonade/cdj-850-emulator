@@ -219,6 +219,8 @@ class Sh2a:
                 r[n] = self.load(r[0] + r[m], 1 << (lo - 0xC))
             elif op & 0xF0FF == 0x0029:
                 r[n] = self.t                                   # movt
+            elif op & 0xF0FF == 0x0039:
+                r[n] = self.t ^ 1                               # movrt (SH-2A)
             elif op & 0xF0FF in (0x000A, 0x001A, 0x002A):       # sts mach/macl/pr,Rn
                 r[n] = (self.mach, self.macl, self.pr)[op >> 4 & 3]
             elif lo == 7:                                       # mul.l Rm,Rn
