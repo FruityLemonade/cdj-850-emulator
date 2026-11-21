@@ -1679,7 +1679,7 @@
         {
           "address": "0c0f01dc",
           "type": "PLATE",
-          "text": "audio_build_loop_in_record(sector): builds the loop-in record 0x0C7F6498.. (frame, MSF, ring sector) from the s16 sector 0x0C7F6468 (writer 0x0C0F022A). Called by 0x0C009DB4 for audio cmd 6 and cmd 7/2."
+          "text": "audio_build_loop_in_record(sector): builds the loop-in record 0x0C7F6498.. (frame, MSF, ring sector) from the s16 sector 0x0C7F6468 (writer 0x0C0F022A). Called by 0x0C009DB4 for audio cmd 6 and cmd 7/2. A sector ahead of the playhead works for cmd 6: the feeder plays on to it, then loops in..out (BEAT 4 at frame 301 with the sector of 308: wrap 447 -> 308) [emu]."
         },
         {
           "address": "0c0f6e6c",

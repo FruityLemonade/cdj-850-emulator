@@ -27,8 +27,8 @@
  *   quant_loops_auto_in    FUN_0C073954 (track -> tracklen slot) in the USB
  *                          new-loop path of auto_beat_loop_set: runs after
  *                          D1C0 (in frame) and 0x0C7F6468 are set and before
- *                          beat_loop_out_from_bpm. Snaps the in point back to
- *                          the beat at or before it and computes the grid out.
+ *                          beat_loop_out_from_bpm. Snaps the in point to the
+ *                          nearest beat (behind or ahead) and computes the grid out.
  *   quant_loops_auto_send  audio_send_cmd for the USB new-loop sends of
  *                          auto_beat_loop_set: puts the grid out into the
  *                          cmd 6 (resize flag 0) request, D1C0 and CA90.
@@ -250,43 +250,72 @@ int quant_loops_grid_ok(int i)
  * beats = 1/2/4/8; frac = BEAT SELECT fraction mode (the loop is then beats/16
  * of a beat). Fills *in, *out and *out8 (8 whole beats after in: the
  * reference the beat buttons resize from, CA90). Returns 0 when the grid
- * cannot say (no grid, lead-in, window elsewhere, past the end of the grid):
- * stock then.
+ * cannot say (no grid, window elsewhere, past the end of the grid): stock
+ * then.
  *
- *   whole beats  in = the beat at or before pos, out = the grid time of beat
+ * The in is the point of the grid closest to the playhead, behind or ahead
+ * of it (ties to the earlier one), as LOOP IN snaps. Ahead: the deck plays on
+ * to the in and loops from there, as it does for a LOOP OUT ahead of it.
+ *
+ *   whole beats  in = the beat nearest pos, out = the grid time of beat
  *                in + beats (the in beat's tempo past the window).
- *   fraction     L = beats/16 of that beat's interval; in = the latest
- *                multiple of L after the beat that is at or before pos,
- *                out = in + L (1/2 pressed 3/4 into a beat: in = beat + 1/2,
- *                out = the next beat).
+ *   fraction     L = beats/16 of the interval of the beat at or before pos;
+ *                in = the multiple of L after that beat (up to the next beat)
+ *                nearest pos, out = in + L. 1/2 pressed 1/5 into a beat:
+ *                in = the beat; 2/5 into it: in = beat + 1/2; 4/5: the next beat.
  *
- * Invariant (checked, else 0): in <= pos < out, so the playhead is always
- * inside the new loop.
+ * Invariant (checked, else 0): in < out and pos < out (the playhead is never
+ * past the out of the new loop).
  */
 int quant_loops_auto_points(u32 pos, u32 beats, u32 frac, u32 *in, u32 *out, u32 *out8)
 {
-    int i = quant_loops_beat_at_or_before(pos);
+    u32 n = quant_loops_window_n();
     u32 t_beat, t_in, t_out, fin, fout;
+    int i;
 
-    if (i < 0 || beats == 0 || beats > 16 || !quant_loops_grid_ok(i))
+    if (beats == 0 || beats > 16)
         return 0;
-    t_beat = C850_GRID_TIME_MS(i);
     if (frac) {
-        u32 d = quant_loops_beat_ms_after(i, 1) - t_beat;     /* this beat's interval */
-        u32 k = 16u / beats - 1u;                              /* last sub-beat step */
-        while (k > 0 && quant_loops_ms_to_frames(t_beat + (k * beats * d + 8u) / 16u) > pos)
-            k--;
+        u32 d, k, steps = 16u / beats, best = 0, best_dist = 0xFFFFFFFFu;
+
+        i = quant_loops_beat_at_or_before(pos);
+        if (i == QL_NONE)
+            i = 0;                   /* lead-in: the first beat is the nearest */
+        if (i < 0 || !quant_loops_grid_ok(i))
+            return 0;
+        t_beat = C850_GRID_TIME_MS(i);
+        d = quant_loops_beat_ms_after(i, 1) - t_beat;          /* this beat's interval */
+        for (k = 0; k <= steps; k++) {                         /* k == steps: the next beat */
+            u32 f = quant_loops_ms_to_frames(t_beat + (k * beats * d + 8u) / 16u);
+            u32 dist = f > pos ? f - pos : pos - f;
+            if (dist < best_dist) {
+                best_dist = dist;
+                best = k;
+            }
+        }
+        k = best;
+        if (k == steps) {            /* the next beat is nearest: its interval from there */
+            if ((u32)i + 1u >= n)
+                return 0;
+            i++;
+            t_beat = C850_GRID_TIME_MS(i);
+            d = quant_loops_beat_ms_after(i, 1) - t_beat;
+            k = 0;
+        }
         t_in = t_beat + (k * beats * d + 8u) / 16u;
         t_out = t_beat + ((k + 1u) * beats * d + 8u) / 16u;
     } else {
-        t_in = t_beat;
+        i = quant_loops_beat_nearest(pos);
+        if (i < 0 || !quant_loops_grid_ok(i))
+            return 0;
+        t_beat = t_in = C850_GRID_TIME_MS(i);
         t_out = quant_loops_beat_ms_after(i, beats);
     }
     fin = quant_loops_ms_to_frames(t_in);
     fout = quant_loops_ms_to_frames(t_out);
     if (fout <= fin)
         fout = fin + 1;
-    if (fin > pos || fout <= pos)
+    if (fout <= pos)
         return 0;
     *in = fin;
     *out = fout;
@@ -353,8 +382,8 @@ u32 quant_loops_auto_in(u32 track)
         out = tracklen - 1;
     if (out8 >= tracklen)
         out8 = tracklen - 1;
-    if (out <= pos)
-        return slot;                 /* the track ends inside the beat: stock */
+    if (out <= pos || out <= in)
+        return slot;                 /* the track ends before the loop would: stock */
     len = out - in;
     if (in != pos) {
         int s = -1, cued = C850_PLAYER_STATE == C850_STATE_CUED;
