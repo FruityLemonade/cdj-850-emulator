@@ -4,10 +4,9 @@ Default off. Load a track, press **INFO** and turn the jog down to the BPM item.
 rekordbox tempo of the track, e.g. `128.0 bpm` for a 127.96 BPM grid. With this mod, while a
 beat grid gave the BPM, the same item reads
 
-    128.0 132.25
+    132.25
 
-The left part is the stock number (the DB tempo, without " bpm"). After a space comes the BPM
-the deck is playing right now, with two decimals:
+Only the BPM the deck is playing right now, with two decimals (no DB tempo, no " bpm"):
 
     actual = round(grid BPMx100 at the current beat x (10000 + pitch) / 10000) / 100
 
@@ -19,8 +18,7 @@ the deck is playing right now, with two decimals:
 
 The item is exactly stock when no grid gave the BPM (BPM counter, CD, unanalysed file), and
 outside the loaded-track views. The BPM box, the time readout and its frame digits are not
-touched. The format fits the 100-dot matrix: at most 12 characters (`999.9 999.99`), shorter
-than the earlier `128.0>132.25 bpm` form (16 characters, 85 dots in the emulator's glyph widths).
+touched. The format fits the 100-dot matrix: at most 6 characters (`999.99`).
 
 ## Use
     .venv/bin/python mods/patch_update.py --model cdj850 C850MAIN.UPD C850MAIN_MOD.UPD bpm_decimals
