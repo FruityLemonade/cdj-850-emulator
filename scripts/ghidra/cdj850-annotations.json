@@ -221,6 +221,11 @@
           "text": "With PLAY on PF10 high and RX fill below threshold, enables ESAI receive IRQ and pulls PE4/DSPDREQ low to request the next PCM block from MAIN."
         },
         {
+          "address": "P:000227",
+          "type": "PRE",
+          "text": "Sets ESAI RCR.RIE (bit 22), then clears DSP PE4 at P:$228 to drive the active-low DSPDREQ line to MAIN IRQ7."
+        },
+        {
           "address": "P:0002b9",
           "type": "PLATE",
           "text": "Transfers samples from the ESAI RX ring Y:$15000..$157FF (read index X:$01) into the main sample ring X:$10000..$11FFF (write index X:$03)."
@@ -238,7 +243,7 @@
         {
           "address": "P:000731",
           "type": "PLATE",
-          "text": "Consumes the sample ring X:$10000..$11FFF via X:$04 and writes the ESAI TX ring via X:$06. Includes the speed ramp using X:$1E and X:$1F and the interpolation/time-stretch path."
+          "text": "The entry returns via P:$89C when X:$0C bit 3 is clear. When enabled, consumes the sample ring X:$10000..$11FFF via X:$04 and writes the ESAI TX ring via X:$06. Includes the speed ramp using X:$1E and X:$1F and the interpolation/time-stretch path."
         },
         {
           "address": "P:000c44",
@@ -1252,6 +1257,11 @@
           "text": "SSI DMA channel 2 completion, DEI2 vector 116. Re-enables IRQ7/DSPDREQ priority after the paired SSI PCM transfer."
         },
         {
+          "address": "0c07646c",
+          "type": "PRE",
+          "text": "Writes IPR02 with IRQ7 priority 7 in the DEI2 completion ISR, re-enabling the next DSPDREQ."
+        },
+        {
           "address": "0c076474",
           "type": "PLATE",
           "text": "Builds two 45-longword SSI DMA buffers from interleaved PCM. Each carries leading zero, right/left header 0xCE5C0000/0xCA5A0000, 42 packed sample words and trailing zero. The blocks at 0xFFF86498 and 0xFFF86568 are the sources of DMAC ch1 (ssi0_dma_start) and ch2 (ssi1_dma_start) into SSITDR_0/SSITDR_1."
@@ -1260,6 +1270,11 @@
           "address": "0c076624",
           "type": "PLATE",
           "text": "IRQ7 vector 71, DSPDREQ on PE11. Masks IRQ7 while preparing PCM and arming DMAC ch1/ch2 for SSI0 right and SSI1 left."
+        },
+        {
+          "address": "0c07664c",
+          "type": "PRE",
+          "text": "Writes IPR02 with IRQ7 priority 0 to mask DSPDREQ before preparing the PCM block. The read of IPR02 is at 0x0C076640."
         },
         {
           "address": "0c077570",
@@ -1332,6 +1347,11 @@
           "text": "At boot: memset 0x0CE6D242 (16 bytes), then sprintf the MAIN label at flash 0x060010 into it (1.13 stock, 0.13 for a patch_update.py build). The numeric version 113 at 0x0CE6D240 is a constant (0x0C0B8D86)."
         },
         {
+          "address": "0c0b8eb2",
+          "type": "PRE",
+          "text": "idleTASK tests the ready-task search result from 0x0C0B8ED8. A zero result loops back at 0x0C0B8EB4. This was the most common sampled MAIN PC when a long IRQ7 delivery began during the threaded playback profile."
+        },
+        {
           "address": "0c0b8ed8",
           "type": "PLATE",
           "text": "idle_task_state_scan: for i = 0..16 reads the object pointer table after tick_ms (0x0CE49F58[i + 1]), follows +0x14 to a state word and compares it, and an id byte (0x0CE49CBC), with the values in 0x0CE49C74; returns the bitmask of entries that differ. idleTASK (0x0C0B8EA2) calls it in a loop until it is non-zero, which is why most interrupts land at 0x0C0B8EFA and why it dominates loads from on-chip pool 2 [static + emu]. Empty slots make it load @(0x14, NULL): tens of millions of cached reads of flash 0x00000014 while idle (40M in a 100 s headless boot), harmless."
@@ -1380,6 +1400,11 @@
           "address": "0c0c68fc",
           "type": "PLATE",
           "text": "Template of the RTOS ISR wrapper. Pool-2 objects (0xFFF86638+) hold a copy of these bytes followed by the handler pointers, one per registered interrupt (e.g. at 0xFFF866E0, 0xFFF87BAC, 0xFFF8DC90, 0xFFF8DE9C), and the on-chip vector table at 0xFFF80000 (VBR) points at the copies [emu: on-chip RAM dump]."
+        },
+        {
+          "address": "0c0c6aba",
+          "type": "PRE",
+          "text": "Writes INTC IPR08 (0xFFFE0C04) with CMI0 priority 7 in bits 7:4. IPR08 read as 0x6070 during stock USB playback. CMI0 vector 142 ties IRQ7 vector 71 at priority 7."
         },
         {
           "address": "0c0c8afa",

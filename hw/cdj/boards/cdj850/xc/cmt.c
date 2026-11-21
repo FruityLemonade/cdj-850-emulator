@@ -1,6 +1,7 @@
 /* SPDX-License-Identifier: GPL-2.0-or-later */
 #include "cdj_common.h"
 #include "cmt.h"
+#include "intc.h"
 /*
  * Pioneer CDJ-850 interrupt + compare-match timer core (Renesas SH7263).
  *
@@ -23,8 +24,8 @@
  * [VBR+142*4] holds its tick trampoline, while the previously used 188
  * (an IIC3 slot) holds the default-ignore ISR, so the RTOS tick never ran.
  *
- * Delivery does not consult the INTC storage in board.c: that block exists
- * so the firmware's IPR read-modify-writes read back, nothing more.
+ * CMI0 takes its priority from INTC IPR08[7:4]. Stock MAIN sets it to
+ * 7, so IRQ7 (vector 71) wins a tie against CMI0 (vector 142).
  */
 
 #define CDJ850_CMT_BASE     0xFFFEC000
@@ -32,7 +33,8 @@
 /* Pphi feeds the timers; 66 MHz bus / 2 is the working assumption. */
 #define CDJ850_CMT_PCLK     33333333
 #define CDJ850_CMI0_VECTOR  142
-#define CDJ850_CMI0_LEVEL   8
+#define CDJ850_CMT_CMIE     0x40
+#define CDJ850_CMT_CMF      0x80
 
 /* The queue is per-board (one MAIN CPU); no vmstate versioning beyond v1. */
 #define CDJ850_IRQ_QUEUE_LEN  32
@@ -99,7 +101,6 @@ static void cdj850_irq_pump(void *opaque)
     CPUState *cs;
     unsigned i, best = CDJ850_IRQ_QUEUE_LEN;
 
-    (void)opaque;
     if (!cdj850_irq.cpu) {
         return;
     }
@@ -164,21 +165,16 @@ static void cdj850_irq_pump(void *opaque)
         cdj850_irq.presented++;
         cdj850_irq.present_ns = qemu_clock_get_ns(QEMU_CLOCK_VIRTUAL);
         cpu_interrupt(cs, CPU_INTERRUPT_HARD);
-        /* A vCPU spinning in a self-chained TB does not notice a new
-         * request until it is kicked. */
-        qemu_cpu_kick(cs);
         if (cdj850_irq.debug) {
             info_report("cdj850: present vector %u level %u at %" PRId64 " ms",
                         e->vec, e->level,
                         cdj850_irq.present_ns / 1000000);
         }
-    }
-
-    if (cdj850_irq.cur_valid &&
-        (cs->interrupt_request & CPU_INTERRUPT_HARD)) {
-        /* The presented vector is still standing: keep kicking until it is
-         * taken (a single kick can be lost), and warn if it never is (IMASK
-         * too high is the usual cause). */
+    } else if (opaque && cdj850_irq.cur_valid &&
+               (cs->interrupt_request & CPU_INTERRUPT_HARD)) {
+        /* cpu_interrupt() already signals TCG. Only retry from the timer:
+         * a full kick from an IRQ handler would exit the vCPU loop even
+         * though the next interrupt is already presented for its RTE. */
         int64_t now = qemu_clock_get_ns(QEMU_CLOCK_VIRTUAL);
 
         qemu_cpu_kick(cs);
@@ -201,7 +197,7 @@ static void cdj850_irq_pump(void *opaque)
 
     /* Keep pumping while anything is queued or a presented vector is not
      * yet taken (10 us; at 100 us the GUI board's queue overflowed). */
-    if (cdj850_irq.pump &&
+    if (cdj850_irq.pump && !timer_pending(cdj850_irq.pump) &&
         (cdj850_irq.head != cdj850_irq.tail ||
          (cdj850_irq.cur_valid &&
           (cs->interrupt_request & CPU_INTERRUPT_HARD)))) {
@@ -232,12 +228,9 @@ static void cdj850_raise(SuperHCPU *cpu, uint16_t vec, uint8_t level)
     cdj850_irq.cpu = cpu;
     cpu->env.sh2a_irq_taken = cdj850_irq_taken;
 
-    /* Coalesce: hardware has one pending bit per source, not a FIFO. */
-    for (i = cdj850_irq.head; i != cdj850_irq.tail;
-         i = (i + 1) % CDJ850_IRQ_QUEUE_LEN) {
-        if (cdj850_irq.q[i].used && cdj850_irq.q[i].vec == vec) {
-            return;
-        }
+    /* A request already presented to the CPU is still pending. */
+    if (cdj850_irq_pending(vec)) {
+        return;
     }
 
     next = (cdj850_irq.tail + 1) % CDJ850_IRQ_QUEUE_LEN;
@@ -272,7 +265,7 @@ static void cdj850_raise(SuperHCPU *cpu, uint16_t vec, uint8_t level)
 
     if (!cdj850_irq.pump) {
         cdj850_irq.pump = timer_new_ns(QEMU_CLOCK_VIRTUAL, cdj850_irq_pump,
-                                       NULL);
+                                      &cdj850_irq);
     }
     cdj850_irq_pump(NULL);
 }
@@ -351,7 +344,32 @@ typedef struct {
     uint64_t next_ns;
 } Cdj850Cmt;
 
+static Cdj850Cmt *cdj850_cmt;
 static const int cmt_div[4] = { 8, 32, 128, 512 };
+
+static void cmt_update_irq(Cdj850Cmt *s)
+{
+    unsigned level = (cdj850_intc_reg16(CDJ850_INTC_IPR08)
+                      & CDJ850_IPR08_CMT0_MASK) >> 4;
+    unsigned enabled = CDJ850_CMT_CMIE | CDJ850_CMT_CMF;
+
+    if (!level || (s->cmcsr0 & enabled) != enabled) {
+        cdj850_irq_withdraw(s->cpu, CDJ850_CMI0_VECTOR);
+    } else if (!cdj850_irq_pending(CDJ850_CMI0_VECTOR)) {
+        cdj850_raise(s->cpu, CDJ850_CMI0_VECTOR, level);
+    }
+}
+
+void cdj850_cmt_priority_changed(void)
+{
+    Cdj850Cmt *s = cdj850_cmt;
+
+    if (s) {
+        /* Re-arbitrate any outstanding compare match at its new priority. */
+        cdj850_irq_withdraw(s->cpu, CDJ850_CMI0_VECTOR);
+        cmt_update_irq(s);
+    }
+}
 
 static void cmt_rearm(Cdj850Cmt *s)
 {
@@ -399,10 +417,8 @@ static void cmt_fire(void *opaque)
 {
     Cdj850Cmt *s = opaque;
 
-    s->cmcsr0 |= 0x80;                    /* CMF */
-    if (s->cmcsr0 & 0x40) {               /* CMIE */
-        cdj850_raise(s->cpu, CDJ850_CMI0_VECTOR, CDJ850_CMI0_LEVEL);
-    }
+    s->cmcsr0 |= CDJ850_CMT_CMF;
+    cmt_update_irq(s);
     cmt_rearm(s);
 }
 
@@ -466,11 +482,8 @@ static void cmt_write(void *opaque, hwaddr off, uint64_t val, unsigned size)
         break;
     case 0x02:
         /* CMF is write-0-to-clear; the handler's ack drops the request. */
-        if (!(val & 0x80)) {
-            s->cmcsr0 &= ~0x80;
-            cdj850_ack(s->cpu, CDJ850_CMI0_VECTOR);
-        }
-        s->cmcsr0 = (s->cmcsr0 & 0x80) | (val & 0x7f);
+        s->cmcsr0 = (s->cmcsr0 & val & CDJ850_CMT_CMF) | (val & 0x7f);
+        cmt_update_irq(s);
         cmt_rearm(s);
         break;
     case 0x04: s->cmcnt0 = val; break;
@@ -544,6 +557,7 @@ void cdj850_cmt_init(MemoryRegion *sysmem, SuperHCPU *cpu)
     }
 
     s = g_new0(Cdj850Cmt, 1);
+    cdj850_cmt = s;
     s->cpu = cpu;
     s->timer = timer_new_ns(QEMU_CLOCK_VIRTUAL, cmt_fire, s);
     qemu_register_reset(cdj850_cmt_reset, s);

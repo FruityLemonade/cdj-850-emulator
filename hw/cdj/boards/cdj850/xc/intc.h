@@ -4,6 +4,9 @@
 #define CDJ850_INTC_H
 #include "cdj_common.h"
 
+#define CDJ850_INTC_IPR08 0x404 /* 0xFFFE0C04 */
+#define CDJ850_IPR08_CMT0_MASK 0x00f0u
+
 void cdj850_intc_init(MemoryRegion *sysmem, SuperHCPU *cpu);
 
 /* Drive the pin routed to IRQn (0-7). Edges are latched per ICR1. */
