@@ -1,0 +1,62 @@
+# Sends mod changes on main straight to the CDJ-850 patcher site
+# (FruityLemonade/cdj-850-mods). Its sync_vendor.py copies the tools and mods
+# into the site's vendor/, and the commit is pushed with a deploy key
+# (secret MODS_DEPLOY_KEY, write access to cdj-850-mods only). That push starts
+# the site's pages workflow, which rebuilds the payloads and publishes. The
+# site also checks this repo every hour, so a missed run catches up there.
+name: patcher-sync
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - launcher/**
+      - models/**
+      - mods/**
+      - scripts/firmware/**
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: patcher-sync
+  cancel-in-progress: false
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          path: emulator
+      - uses: actions/checkout@v4
+        with:
+          repository: FruityLemonade/cdj-850-mods
+          ref: main
+          path: site
+          ssh-key: ${{ secrets.MODS_DEPLOY_KEY }}
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Sync and push to the patcher site
+        working-directory: site
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          for attempt in 1 2 3; do
+            result=$(python3 sync_vendor.py ../emulator | tee /dev/stderr | tail -n 1)
+            if [ "$result" != changed ]; then
+              echo "The patcher already has these mods."
+              exit 0
+            fi
+            upstream=$(cat vendor/UPSTREAM)
+            git add -A vendor
+            git commit -q -m "Sync mods from cdj-850-emulator@${upstream:0:7}" \
+              -m "https://github.com/$GITHUB_REPOSITORY/commit/$upstream"
+            git push origin HEAD:main && exit 0
+            # main moved (the hourly sync or a manual push): start again from it.
+            git fetch -q origin main
+            git reset -q --hard origin/main
+          done
+          exit 1
