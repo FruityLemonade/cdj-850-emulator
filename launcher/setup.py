@@ -42,7 +42,7 @@ options:
   --tracks <folder>      a plain folder of music to image instead, analysed by baken
   --decks 1|2            --name <deck name>    --djlink on|off   --audio on|off
   --controller none|<profile>|learn            --relay-port <port>
-                         (these six only for a two-board rig player, not the CDJ-850)
+                         (these six are not used by the CDJ-850)
   --build-dir <dir>      where the QEMU build trees go
   -h, --help
 
@@ -546,8 +546,7 @@ class Setup:
                 baken_bin = "<baken>"
             else:
                 con.warn("no baken: imaging %s as plain files instead -- the deck will still browse" % tracks)
-                con.warn("and play them (a real NXS2 falls back to a plain folder browse when a stick")
-                con.warn("has no rekordbox database at all), just with no waveform, beat grid or BPM")
+                con.warn("and play them, just with no waveform, beat grid or BPM")
                 return self.make_image(tracks, expect_pioneer=False)
         py = self.py_tools
         if not py:

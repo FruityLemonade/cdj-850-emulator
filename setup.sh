@@ -40,7 +40,7 @@
 #   --tracks <folder>      a plain folder of music to image instead, analysed by baken
 #   --decks 1|2            --name <deck name>    --djlink on|off   --audio on|off
 #   --controller none|<profile>|learn            --relay-port <port>
-#                          (these six only for a two-board rig player, not the CDJ-850)
+#                          (these six are not used by the CDJ-850)
 #   --build-dir <dir>      where the QEMU build trees go
 #   -h, --help
 #

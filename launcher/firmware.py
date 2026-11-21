@@ -14,14 +14,14 @@ repository is touched. The output mirrors the repository layout:
   <outdir>/log/<step>.log            each tool's own output
 
 --install then copies the verified images into the model's folder in the
-repository (extract/ for the CDJ-2000NXS2, extract/<model>/ for the others).
+repository (MODEL_EXTRACT: extract/cdj850 for the CDJ-850).
 It refuses if any of them already exists, unless --force is also given, and
 it installs nothing unless every image passed.
 
   usage: scripts/firmware/prepare_firmware.sh [--model <id>] [--install [--force]] [--any-firmware] <update> [outdir]
 
   update     the .UPD file, or for a model whose update is several files
-             (the CDJ-2000) the folder holding them
+             the folder holding them
   --model    a profile in models/ (default: $CDJ_MODEL, else cdj850)
   outdir     must not exist yet, or be empty; default: a new mktemp dir.
              It may not be the repository root or lie inside its extract/,
@@ -52,8 +52,7 @@ from . import model as _model
 from .layout import Layout
 
 # The default model's profile, read once: the update sha256 and the expected
-# images, kept as module attributes for setup.py and the packager, which only
-# ever deal with the CDJ-2000NXS2.
+# images, kept as module attributes for setup.py and the packager.
 _DEFAULT = _model.load(_model.DEFAULT)
 UPD_SHA256 = _DEFAULT.upd_sha256[0]
 EXPECTED = _DEFAULT.expected
