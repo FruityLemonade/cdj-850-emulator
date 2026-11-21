@@ -397,12 +397,24 @@
           "name": "DisplayTask"
         },
         {
+          "address": "0c062f80",
+          "name": "display_stage_status"
+        },
+        {
           "address": "0c062ffc",
           "name": "display_stage_navigation_leds"
         },
         {
+          "address": "0c0634f8",
+          "name": "display_cue_lamp_state"
+        },
+        {
           "address": "0c0637cc",
           "name": "display_stage_playing_address"
+        },
+        {
+          "address": "0c063bce",
+          "name": "display_stage_time_flags"
         },
         {
           "address": "0c063fd6",
@@ -413,6 +425,10 @@
           "name": "display_stage_bpm"
         },
         {
+          "address": "0c0642bc",
+          "name": "display_stage_auto_cue"
+        },
+        {
           "address": "0c0642cc",
           "name": "display_stage_active_cue_column"
         },
@@ -421,12 +437,48 @@
           "name": "display_stage_track_and_time"
         },
         {
+          "address": "0c064768",
+          "name": "display_take_view_request"
+        },
+        {
+          "address": "0c064ca4",
+          "name": "display_tx_text_pass"
+        },
+        {
+          "address": "0c064d10",
+          "name": "display_stage_jog_flags"
+        },
+        {
+          "address": "0c064eb6",
+          "name": "display_stage_header_status"
+        },
+        {
+          "address": "0c064f64",
+          "name": "display_view_reset_list"
+        },
+        {
+          "address": "0c064f9a",
+          "name": "display_stage_list_header"
+        },
+        {
           "address": "0c065d9e",
           "name": "panel_tx_build_status_pages"
         },
         {
+          "address": "0c065e84",
+          "name": "display_header_dirty_check"
+        },
+        {
           "address": "0c065ed0",
           "name": "display_build_0"
+        },
+        {
+          "address": "0c065f18",
+          "name": "display_build_text_header"
+        },
+        {
+          "address": "0c066032",
+          "name": "display_mode_dirty_check"
         },
         {
           "address": "0c066046",
@@ -451,6 +503,26 @@
         {
           "address": "0c06664e",
           "name": "display_pack_saved_cues"
+        },
+        {
+          "address": "0c0676c0",
+          "name": "display_set_jog_markers"
+        },
+        {
+          "address": "0c067e40",
+          "name": "display_pc_mode_pass"
+        },
+        {
+          "address": "0c067f1a",
+          "name": "display_pc_stage_leds"
+        },
+        {
+          "address": "0c068304",
+          "name": "display_pc_stage_bpm"
+        },
+        {
+          "address": "0c068eba",
+          "name": "display_set_row_flag"
         },
         {
           "address": "0c073788",
@@ -721,6 +793,10 @@
           "name": "playertask"
         },
         {
+          "address": "0c0eeb12",
+          "name": "panel_status_set_power_flags"
+        },
+        {
           "address": "0c0eefb0",
           "name": "player_enter_usb_source"
         },
@@ -981,14 +1057,29 @@
           "text": "MAIN display task. Stages status, text, waveform, and saved-cue data for the SCIF1 transmit path to the panel CPU. See the v1.13 SCIF1 replay and display integration plan."
         },
         {
+          "address": "0c062f80",
+          "type": "PLATE",
+          "text": "Status staging pass of DisplayTask (not run in PC mode). Clears S[0x11..0x13], S[0x18], S[0x19], S[0x1B], then sets the FL view legends from nav_view_selector 0x0CE6D0FD: 1 -> S[0x18] bit 2 (BROWSE, TX 0x02 byte 11 0x04), 3 -> S[0x18] bit 3 (TAG LIST, byte 11 0x08), 0 -> S[0x19] bit 7 (INFO, byte 12 0x80); the stagers are skipped in update mode (0x0CE6D11E = 1). These legend bits are separate from the button LEDs in TX 0x02 byte 7."
+        },
+        {
           "address": "0c062ffc",
           "type": "PLATE",
           "text": "Stages navigation indications from 0x0CE6D0FD. TX status 0x02 byte 7 bits 4..7 are BROWSE, TAG LIST, INFO and MENU/UTILITY. Low four bits carry beat-select LEDs."
         },
         {
+          "address": "0c0634f8",
+          "type": "PLATE",
+          "text": "Returns 1 when the CUE indication is lit. Arg 1 = CUE button LED (S[0x11] bit 3, TX 0x02 byte 5 0x08, blinks while paused); arg 0 = FL CUE legend (S[0x19] bit 3, TX 0x02 byte 12 0x08, steady once a cue exists). Callers at 0x0C063172 (LED) and 0x0C06317E (legend). Emulator: legend set on the first CUE press."
+        },
+        {
           "address": "0c0637cc",
           "type": "PLATE",
           "text": "Stages playing-address column count (0..100) for status 0x02 byte 4. Byte 9 bits 1, 0, and 2 carry the slow-warning, fast-warning, and lit-phase flags. Byte 13 bit 0 selects REMAIN."
+        },
+        {
+          "address": "0c063bce",
+          "type": "PLATE",
+          "text": "Stages the time digits and TX 0x02 byte 13 (S[0x1A]). Bit 0 = REMAIN (time_mode_remain). Bits 1..3 are the time-unit legends (always set together when a time field is shown, also with blank 0xFF digits); bit 5 is set only with displayable digits (real, 0xBB overflow, 8s test, zeros) and cleared for blank 0xFF digits; arg 5 clears bits 1..3 and 5. Bits 4, 6, 7 are never written."
         },
         {
           "address": "0c063fd6",
@@ -1026,9 +1117,34 @@
           "text": "Stages binary track number and minute/second/frame digits. Track values 0..99 are numeric, 0xBB is overflow and 0xFF unavailable. M/S/F uses 75 frames per second."
         },
         {
+          "address": "0c064768",
+          "type": "PLATE",
+          "text": "Takes the view request at 0x0C9D0E28 (posted to DisplayTask) into the view context 0x0C9D0AF8: mode word, header bytes 3..8 (C[8], C[9], list count, first visible row) and the message id; saves the previous mode in 0x0C9D1168 and sets the matrix dirty flag on a change."
+        },
+        {
+          "address": "0c064ca4",
+          "type": "PLATE",
+          "text": "Text pass, runs when the panel transaction finished (0x0C9D0AD4 = 1): builds the 0x80 header (display_build_text_header) and the 0x81.. chunks, bumps the text sequence 0x0C9D0AF4 / TX 0x80 byte 1 when the burst changed, stores the chunk count to 0x80 byte 12 (0x0C9D0B15), then appends the 0x70..0x77 waveform and 0x60 saved-cue frames."
+        },
+        {
+          "address": "0c064d10",
+          "type": "PLATE",
+          "text": "Stages the jog flags into both copies S[1] (TX 0x01 byte 2) and S[0xF] (TX 0x02 byte 2): bits 3 and 4 together = VINYL (jog_mode_vinyl), bit 5 = JOG TOUCH lamp."
+        },
+        {
+          "address": "0c064eb6",
+          "type": "PLATE",
+          "text": "Header status code: low five bits of 0x0C9D0B14 (TX 0x80 byte 11). 1 = the USB-source timer 0x0CE6D1F6 reached 0x0C9D0E3A in a view; 2 / 3 = PC mode (0x0CE6D150 == 1 / otherwise); else 0."
+        },
+        {
+          "address": "0c064f9a",
+          "type": "PLATE",
+          "text": "Stages the browse-list header fields of the 0x80 frame: C[8] list-position kind (mode 2 only: 0x0C first item, 0x0B last, 0x0A between), C[9] = mode != 6 && mode != 0x0C, u16 C+0xA item count (CD TOC or USB folder count), u16 C+0xC first visible index = cursor 0x0CE6CAA0[src] - window row 0x0C9D1DD0[src]; row flags via display_set_row_flag; in mode 10 C[0x22] bit 2 = player state != 2 (track ready)."
+        },
+        {
           "address": "0c065d9e",
           "type": "PLATE",
-          "text": "Build both 16-byte MAIN TX status pages. Page 0x01 (zero-based byte indices): bytes 1..3 are jog cue, flags and playhead, byte 4 is track number, bytes 5..7 are M/S/F, bytes 8..9 are BE BPM and bytes 10..11 are BE pitch magnitude. Page 0x02 begins at the tag store at 0x0C065DF6. Each page uses sum8ec at byte 15."
+          "text": "Build both 16-byte MAIN TX status pages. Page 0x01 (zero-based byte indices): bytes 1..3 are jog cue, flags and playhead, byte 4 is track number, bytes 5..7 are M/S/F, bytes 8..9 are BE BPM, bytes 10..11 are BE pitch magnitude, byte 12 is constant 0 and bytes 13..14 copy the unused u16 S+0xC. Page 0x02 begins at the tag store at 0x0C065DF6. Each page uses sum8ec at byte 15."
         },
         {
           "address": "0c065db6",
@@ -1053,32 +1169,57 @@
         {
           "address": "0c065df6",
           "type": "PRE",
-          "text": "MAIN TX status page 0x02. Byte 4 is playing address, bytes 5..7 are LEDs, byte 8 is standby status, byte 9 is warning/phase, byte 10 is active cue, bytes 11..12 carry VFD legends and pitch format, byte 13 bit 0 is REMAIN, and byte 14 holds pitch-range flags. Byte 15 is sum8ec."
+          "text": "MAIN TX status page 0x02. Bytes 1..3 copy the jog fields S[0xE], S[0xF], S[0x10] (cue, flags, playhead; byte 2 is S[0xF], byte 3 is S[0x10] despite the decompiler view), byte 4 is playing address, bytes 5..7 are button LEDs, byte 8 power flags (standby request, update mode), byte 9 warning/phase, byte 10 active cue column, bytes 11..12 FL legends (BROWSE, TAG LIST, MEMORY, MT; A.CUE, CUE, BPM, INFO) and pitch sign/format, byte 13 REMAIN and time legends, byte 14 pitch range and BPM legend. Byte 15 is sum8ec."
+        },
+        {
+          "address": "0c065f18",
+          "type": "PLATE",
+          "text": "Builds the TX 0x80 text header from the view context C = 0x0C9D0AF4: byte 1 sequence C[0], byte 2 display mode (from the mode word C+4 and message id C+0x10), byte 3 C[8], byte 4 C[9], bytes 5..6 BE list count C+0xA, bytes 7..8 BE first visible index C+0xC, bytes 9..10 BE message id (low half of C+0x10), byte 11 C[0x20] status code / row flags, byte 13 C[0x22], byte 14 = 0. Byte 12 (chunk count) is filled by display_tx_text_pass."
         },
         {
           "address": "0c066046",
           "type": "PLATE",
-          "text": "Builds SCIF1 text header 0x80 and numbered text chunks 0x81 onward. Header byte 1 is sequence, byte 2 is mode (0x01 browse, 0x07 dialog, 0x08 single message, 0x0A loaded). Each chunk carries bytes 1..14 of payload."
+          "text": "Builds the numbered text chunks 0x81 onward (display_build_2 for each of the three rows); the 0x80 header itself comes from display_build_text_header (0x0C065F18). Each chunk carries bytes 1..14 of payload."
         },
         {
           "address": "0c0660d4",
           "type": "PLATE",
-          "text": "Serializes three counted text rows: tag, three attribute bytes, byte length, then text. Tag bits 1:0 identify rows 1..3 and bit 5 marks the selected browser row. In loaded mode 0x0A, row 2 attribute 0x07 identifies artist text. The long-title capture carries the full title and artist strings."
+          "text": "Serializes three counted text rows: tag, three attribute bytes, byte length, then text. Tag bits 1:0 identify rows 1..3, bit 5 (with bit 2) marks the selected browser row, bit 4 marks message rows. attr0 is the item type (0x04 audio file, 0x63 folder, 0x02 title, 0x07 artist, 0x0D BPM item). The long-title capture carries the full title and artist strings."
         },
         {
           "address": "0c0662ae",
           "type": "PLATE",
-          "text": "Packs 100 waveform samples from 0x0C9D1199 into frames 0x70..0x77. Data occupies 0x70 bytes 3..14, 0x71..0x76 bytes 1..14, and 0x77 bytes 1..4."
+          "text": "Packs 100 waveform samples from 0x0C9D1199 into frames 0x70..0x77. Data occupies 0x70 bytes 3..14, 0x71..0x76 bytes 1..14, and 0x77 bytes 1..4. 0x70 byte 1 is a sequence (0x0C9D1184) bumped when 0x0C9D1188 says the overview changed, byte 2 is 0; the first zero sample zeroes all later columns. Only in the loaded view with message 0x200."
         },
         {
           "address": "0c0664a8",
           "type": "PLATE",
-          "text": "Sends SCIF1 page 0x60. Bytes 2..14 hold the MSB-first saved cue/loop bitmap. Status 0x02 byte 11 bit 4 carries the MEMORY legend."
+          "text": "Sends SCIF1 page 0x60. Byte 1 is a sequence (0x0C9D1200, +1 per frame); bytes 2..14 hold the MSB-first saved cue/loop bitmap from every fourth byte at 0x0C9D121C, or zeros with no track, while a USB track loads or while the header status code is non-zero. Status 0x02 byte 11 bit 4 carries the MEMORY legend."
         },
         {
           "address": "0c06664e",
           "type": "PLATE",
           "text": "Normalizes saved cue and loop starts to columns 0..99 and packs their positions into the MSB-first bitmap for page 0x60."
+        },
+        {
+          "address": "0c0676c0",
+          "type": "PLATE",
+          "text": "Sets the jog cue marker (arg 2, only if display_cue_lamp_state(0)) and playhead (arg 1) in both staging copies S[0]/S[0xE] and S[2]/S[0x10] and directly in both TX status pages, so the jog ring updates from either page."
+        },
+        {
+          "address": "0c067e40",
+          "type": "PLATE",
+          "text": "DisplayTask pass in PC mode (pc_mode_active 0x0C1E109F, set by player_select_pc), instead of display_stage_status: stages the status pages from the host report 0x0C9D2310 (display_pc_stage_leds, time 0x0C068186, pitch 0x0C06827A, BPM 0x0C068304)."
+        },
+        {
+          "address": "0c067f1a",
+          "type": "PLATE",
+          "text": "PC mode: maps the host report 0x0C9D2310 to LED and FL legend bits. Several host bits set an LED and its legend together (CUE LED S[0x11] bit 3 + CUE legend S[0x19] bit 3; BROWSE LED S[0x13] bit 4 + BROWSE legend S[0x18] bit 2; TAG LIST S[0x13] bit 5 + S[0x18] bit 3; INFO S[0x13] bit 6 + S[0x19] bit 7; VINYL LED S[0x12] bit 5 + jog flags bits 3, 4)."
+        },
+        {
+          "address": "0c068eba",
+          "type": "PLATE",
+          "text": "Per-row flag in TX 0x80 byte 11 bits 5..7 (row 0..2 in arg 2): arg 1 == 1 sets it unless the previous view mode 0x0C9D1168 is 0; otherwise clears it. Emulator: the selected row's bit appears about 1 s after the cursor rests and clears on the next move (likely the start of the panel's long-name scroll)."
         },
         {
           "address": "0c073788",
@@ -1486,6 +1627,11 @@
           "text": "Pool word -> wai_flg, read only at 0x0C0ED1B0 in the playertask loop. Mod hot_cues (hot_cues_leds) redirects it."
         },
         {
+          "address": "0c0eeb12",
+          "type": "PLATE",
+          "text": "Sets S[0x15] (TX 0x02 byte 8): bit 0 = arg bit 0 (auto-standby request, power_state_tick 0x0C0EFAAE), bit 2 = arg bit 2 (firmware-update mode: set by the RELOOP-held boot path 0x0C0ED01C, cleared by the updater at 0x0C08EBD2)."
+        },
+        {
           "address": "0c0ef844",
           "type": "PLATE",
           "text": "Idle auto-standby countdown: counts whole seconds in 0x0C1E10AE and asks for standby at the limit from table 0x0C18CCDC, indexed by (UTILITY byte 0x0C9DA23E >> 4) & 7."
@@ -1616,6 +1762,26 @@
           "text": "C library memset(dst r4, byte r5, n r6), filling backwards from the end in 16-byte longword blocks. 1031 references; most bytes come from large clears (alloc_zeroed, table resets). On the write-allocate operand cache every missed line is first read from SDRAM: 609k write misses in a USB play run. The emulator's CDJ_NATIVE_COPY hook recognises it by its first opcode 0x2FE6 [static + emu]."
         },
         {
+          "address": "0c9d0ae4",
+          "type": "PRE",
+          "text": "u16 S+0xC, sent as TX 0x01 bytes 13..14. No store in MAIN; 0 in all captures (unused)."
+        },
+        {
+          "address": "0c9d0af0",
+          "type": "PRE",
+          "text": "S[0x18], TX 0x02 byte 11: bits 1:0 pitch sign, bit 2 FL BROWSE legend, bit 3 FL TAG LIST legend, bit 4 FL MEMORY legend, bit 7 FL MT legend; bits 5, 6 unused."
+        },
+        {
+          "address": "0c9d0af1",
+          "type": "PRE",
+          "text": "S[0x19], TX 0x02 byte 12: bit 0 FL A.CUE legend, bit 3 FL CUE legend, bits 5:4 pitch decimals, bit 6 BPM legend group (with S[0x1B] bit 3), bit 7 FL INFO legend; bits 1, 2 unused."
+        },
+        {
+          "address": "0c9d0b14",
+          "type": "PRE",
+          "text": "TX 0x80 byte 11: bits 0..4 header status code (display_stage_header_status), bits 5..7 per-row flags for rows 1..3 (display_set_row_flag)."
+        },
+        {
           "address": "0c140b0c",
           "type": "PLATE",
           "text": "MP3 output stage: converts one granule (576 stereo frames, or 288 mono) from float to clipped 16-bit pairs packed in longwords and stores them through the uncached mirror into usb_pcm_decode_buf (0x2DFE0000). 1.27M uncached stores in a short MP3 run."
@@ -1712,8 +1878,16 @@
           "name": "auto_loop_beats"
         },
         {
+          "address": "0c1e108c",
+          "name": "display_menu_level"
+        },
+        {
           "address": "0c1e109a",
           "name": "update_mode"
+        },
+        {
+          "address": "0c1e109f",
+          "name": "pc_mode_active"
         },
         {
           "address": "0c1e10aa",
@@ -1800,8 +1974,20 @@
           "name": "dsp_shi_rx_frame"
         },
         {
+          "address": "0c9d0ac0",
+          "name": "display_tx_last_frame"
+        },
+        {
           "address": "0c9d0ad8",
           "name": "display_status_staging"
+        },
+        {
+          "address": "0c9d0ad9",
+          "name": "display_jog_flags"
+        },
+        {
+          "address": "0c9d0ada",
+          "name": "display_jog_playhead"
         },
         {
           "address": "0c9d0adb",
@@ -1824,6 +2010,22 @@
           "name": "display_whole_bpm"
         },
         {
+          "address": "0c9d0ae4",
+          "name": "display_status_unused_0c"
+        },
+        {
+          "address": "0c9d0ae6",
+          "name": "display_jog_cue_copy"
+        },
+        {
+          "address": "0c9d0ae7",
+          "name": "display_jog_flags_copy"
+        },
+        {
+          "address": "0c9d0ae8",
+          "name": "display_jog_playhead_copy"
+        },
+        {
           "address": "0c9d0ae9",
           "name": "display_leds_loop_in_out"
         },
@@ -1834,6 +2036,10 @@
         {
           "address": "0c9d0aeb",
           "name": "display_beat_navigation_flags"
+        },
+        {
+          "address": "0c9d0aed",
+          "name": "display_power_flags"
         },
         {
           "address": "0c9d0af0",
@@ -1848,16 +2054,92 @@
           "name": "display_time_mode_flags"
         },
         {
+          "address": "0c9d0af3",
+          "name": "display_pitch_range_bpm_flags"
+        },
+        {
+          "address": "0c9d0af4",
+          "name": "display_text_ctx"
+        },
+        {
+          "address": "0c9d0af8",
+          "name": "display_view_mode"
+        },
+        {
+          "address": "0c9d0afc",
+          "name": "display_hdr_list_position_kind"
+        },
+        {
+          "address": "0c9d0afd",
+          "name": "display_hdr_list_level"
+        },
+        {
+          "address": "0c9d0afe",
+          "name": "display_list_count"
+        },
+        {
+          "address": "0c9d0b00",
+          "name": "display_list_top_index"
+        },
+        {
+          "address": "0c9d0b04",
+          "name": "display_message_id"
+        },
+        {
+          "address": "0c9d0b14",
+          "name": "display_hdr_status_row_flags"
+        },
+        {
+          "address": "0c9d0b15",
+          "name": "display_text_frame_count"
+        },
+        {
+          "address": "0c9d0b16",
+          "name": "display_hdr_track_ready"
+        },
+        {
           "address": "0c9d0b18",
           "name": "display_matrix_rows"
+        },
+        {
+          "address": "0c9d0e28",
+          "name": "display_view_request"
+        },
+        {
+          "address": "0c9d1168",
+          "name": "display_prev_view_mode"
+        },
+        {
+          "address": "0c9d1184",
+          "name": "display_waveform_sequence"
+        },
+        {
+          "address": "0c9d1188",
+          "name": "display_waveform_changed"
         },
         {
           "address": "0c9d1199",
           "name": "display_waveform_samples"
         },
         {
+          "address": "0c9d1200",
+          "name": "display_saved_cue_sequence"
+        },
+        {
+          "address": "0c9d121c",
+          "name": "display_saved_cue_bits"
+        },
+        {
           "address": "0c9d1254",
           "name": "display_matrix_dirty"
+        },
+        {
+          "address": "0c9d1dd0",
+          "name": "browse_cursor_row_by_source"
+        },
+        {
+          "address": "0c9d2310",
+          "name": "pc_display_report"
         },
         {
           "address": "0c9d23ec",
@@ -1962,6 +2244,10 @@
         {
           "address": "0ce6ca9d",
           "name": "player_speed_substate"
+        },
+        {
+          "address": "0ce6caa0",
+          "name": "browse_cursor_index_by_source"
         },
         {
           "address": "0ce6d0dd",

@@ -320,7 +320,7 @@ Internal bits (from `0x0C0ECCB4`):
 - `grid_find_beat` (`0x0C0012E4`, `(ctx, time_ms, mode)`): pages the window back/forward until it brackets `time_ms`, binary-searches (`FUN_0C0012B4`). **Returns the index inside the current window** (absolute beat = `ctx+0x78`·500 + index), −1 on error, 0 if before the window. With `lo` = last beat with time ≤ ms and `hi` = the next one: `mode 0` returns `lo` if `ms - t[lo] < t[hi] - ms`, else `hi` (nearest, ties go up); `mode != 0` always returns `hi` (the next beat, even on an exact hit). Read the time as `*(u32*)(0x0C9D257C + idx*8)` (`ctx+0x80`, as `grid_find_beat` and `FUN_0C0012B4` read it; corrected from `0x0C9D2580`) and the BPM×100 as `*(u16*)(0x0C9D257A + idx*8)` **after** the call (it may page). Only caller: `FUN_0C073788` (BPM display).
 
 ### 5. Panel LEDs
-- **Status staging block `S = 0x0C9D0AD8`**, copied to the TX page buffer `0x0C9D07A8` (page 1) / `0x0C9D07B8` (page 2) by `panel_tx_build_status_pages` (`0x0C065D9E`): page 1 bytes 1..7 = `S[0..6]` (**frame digit = `S[6]` = `0x0C9D0ADE`**), 8..9 = `S+8`, 10..11 = `S+10`, 13..14 = `S+0xC`; page 2 byte 1 = `S[0xE]`, 2 = `S[0x10]`, 3 = `S[0xF]`, 4 = `S[0x14]`, **5 = `S[0x11]` (`0x0C9D0AE9`), 6 = `S[0x12]` (`0x0C9D0AEA`), 7 = `S[0x13]` (`0x0C9D0AEB`)**, 8..14 = `S[0x15..0x1B]`. **[emu]** (TX page 2 bytes 5..7 equal `S[0x11..0x13]`).
+- **Status staging block `S = 0x0C9D0AD8`**, copied to the TX page buffer `0x0C9D07A8` (page 1) / `0x0C9D07B8` (page 2) by `panel_tx_build_status_pages` (`0x0C065D9E`): page 1 bytes 1..7 = `S[0..6]` (**frame digit = `S[6]` = `0x0C9D0ADE`**), 8..9 = `S+8`, 10..11 = `S+10`, 13..14 = `S+0xC`; page 2 byte 1 = `S[0xE]`, 2 = `S[0xF]`, 3 = `S[0x10]` (copies of the jog fields `S[0..2]`; corrected from an earlier 2/3 swap), 4 = `S[0x14]`, **5 = `S[0x11]` (`0x0C9D0AE9`), 6 = `S[0x12]` (`0x0C9D0AEA`), 7 = `S[0x13]` (`0x0C9D0AEB`)**, 8..14 = `S[0x15..0x1B]`. **[emu]** (TX page 2 bytes 5..7 equal `S[0x11..0x13]`).
 - **Beat-loop LEDs = page 2 byte 7 bits 0..3** (`0x01` = 1 … `0x08` = 8), **RELOOP = page 2 byte 6 bit 0**, LOOP IN/OUT = byte 5 `0x20/0x40`. Written at the end of `display_stage_navigation_leds` (`0x0C062FFC`, tail `0x0C063484..`): low nibble = `0xF` if `0x0CE6D154 == 0` (all lit) else 0; if `0x0C1E1088` (beats) ≠ 0 it sets that bit and byte 6 bit 0, and blinks the active bit (timers `0x0CE6C9A4` / `0x0CE6C9A0`). **[emu]**: playing `0x4F`; BEAT 4 loop `0x4B`/`0x4F` (bit 2 blinking); byte 6 `0x20` → `0x21` in a loop.
 - **Override point:** after the `bsr display_stage_navigation_leds` at `0x0C062FEE` (in `FUN_0C062F80`), rewrite `S[0x13] & 0x0F` (and `S[0x12]` bit 0). `panel_tx_build_status_pages` itself is boot-critical; do not hook it.
 
@@ -451,38 +451,93 @@ Unpacked by MAIN `0x0C0D610C` against the button tables at `0x0C194EA4` / `0x0C1
 
 MAIN's `DisplayTask` (`0x0C061454`) and panel TX builders (`0x0C065D9E..0x0C06664E`) send four families of 16-byte frames (all checksummed at byte `15` via `sum8ec(0..14)`):
 
-1. **Status Page `0x01` (first frame of a window, built at `0x0C065D9E`)**:
-   - Byte `1`: Jog CUE marker position (`1..85` segments, `0` = off; built at `0x0C0EC224`).
-   - Byte `2`: Jog flags (`0x08` = `VINYL` lamp, `0x20` = `JOG TOUCH` lamp, `0x40` = audio memory blink; built at `0x0C064D10`).
-   - Byte `3`: Jog playhead marker (`1..135` segments around the ring, `0`/`0x88` = blank; built at `0x0C0EC350`).
+Status staging `S = 0x0C9D0AD8` (see §4b.5). The two status pages alternate as the first frame of a window (`irq5_pnl_xbusy_isr` toggles the selector). The FL legends on the glass and the panel button LEDs are **separate bits**: MAIN sets both from the same state, but a legend bit is what the panel lights on the FL tube. In PC mode (`player_select_pc` sets `u8 0x0C1E109F`; `DisplayTask` then runs `display_pc_mode_pass` `0x0C067E40` instead of `FUN_0C062F80`) `display_pc_stage_leds` (`0x0C067F1A`) maps the host's report at `0x0C9D2310` to the same pairs (e.g. one host bit sets both the BROWSE LED `S[0x13]` bit 4 and the BROWSE legend `S[0x18]` bit 2), which cross-checks the legend bits below **[static]**.
+
+1. **Status Page `0x01` (built at `0x0C065D9E`)**:
+   - Byte `1`: Jog CUE marker position (`1..85` segments, `0` = off; built at `0x0C0EC224`). `S[0]`, mirrored in page 2 byte 1.
+   - Byte `2`: Jog flags `S[1]`, mirrored in page 2 byte 2: `0x08` **and** `0x10` = `VINYL` (both set or cleared together by `display_stage_jog_flags` `0x0C064D10` from `jog_mode_vinyl`); `0x20` = `JOG TOUCH` lamp (same function); `0x40` = jog ring indicator, set on every pass by `display_stage_bpm` (`0x0C064118`) and cleared in the off half of its 400-tick blink (track loading, near end of track, loop conditions). Bits `0..2` and `7` are never written. **[static, emu]**: `0x58` playing in VINYL, `0x18` while loading, `0x78` paused, `0x40` after VINYL off.
+   - Byte `3`: Jog playhead marker (`1..135` segments around the ring, `0`/`0x88` = blank; built at `0x0C0EC350`). `S[2]`, mirrored in page 2 byte 3.
    - Byte `4`: Binary track number (`0..99`, `0xBB` = overflow, `0xFF` = blank; from `0x0C9D0ADB`).
    - Bytes `5, 6, 7`: Binary `Minutes`, `Seconds`, `Frames` (`0..74` frames/sec; from `0x0C9D0ADC..0x0C9D0ADE`).
    - Bytes `8..9`: `u16 BE` whole-number BPM (`1..999`, `0xFFFF` = blank; from `0x0C9D0AE0`).
    - Bytes `10..11`: `u16 BE` unsigned pitch magnitude in hundredths of a percent (or tenths in `WIDE`; paired with Page `0x02` sign/range flags).
+   - Byte `12`: always `0` (the builder stores the constant at `0x0C065DE2`).
+   - Bytes `13..14`: `u16 BE` copy of `S+0xC` (`0x0C9D0AE4`). No store to it exists in MAIN (the builder's read at `0x0C065DE6` is its only reference) and it was `0` in every capture: unused **[static, emu]**.
 
-2. **Status Page `0x02` (first frame of alternating windows, tag written at `0x0C065DF6` in the shared status builder)**:
+2. **Status Page `0x02` (tag written at `0x0C065DF6` in the shared status builder)**:
+   - Bytes `1..3`: **copies of the jog fields**: byte 1 = `S[0xE]` (jog cue, = page 1 byte 1), byte 2 = `S[0xF]` (jog flags, = page 1 byte 2), byte 3 = `S[0x10]` (jog playhead, = page 1 byte 3). Every writer stores both copies (`display_set_jog_markers` `0x0C0676C0` also writes them straight into both TX pages), so the jog ring updates from whichever page a window carries. (The decompiler shows bytes 2/3 swapped; the instructions at `0x0C065DFE..0x0C065E0C` store `S[0xF]` to byte 2 and `S[0x10]` to byte 3.) **[static, emu]**
    - Byte `4`: Playing-address elapsed column count (`0..100`, built at `0x0C0637CC`).
-   - Byte `5`: Panel button LEDs A (`0x02` = USB activity indicator, `0x04` = `PC`, `0x08` = `CUE`, `0x10` = `PLAY`, `0x20` = `LOOP IN`, `0x40` = `LOOP OUT`, `0x80` = `USB`).
-   - Byte `6`: Panel button LEDs B (`0x01` = `RELOOP`, `0x02` = `DISC`, `0x08` = `REV`, `0x10` = `MASTER TEMPO` button LED, `0x20` = `VINYL`, `0x40` = `EJECT`).
-   - Byte `7`: Beat Loop & Navigation LEDs (`0x01..0x08` = `BEAT 1/2/4/8`, `0x10` = `BROWSE`, `0x20` = `TAG LIST`, `0x40` = `INFO`, `0x80` = `MENU/UTILITY`; built at `0x0C063444..0x0C063480`).
-   - Byte `8`: Power/Standby status (`0x01` = auto-standby requested).
-   - Byte `9`: Playing-address end-of-track flash flags (`bit 0` = fast warning <15s, `bit 1` = slow warning <30s, `bit 2` = lit phase).
+   - Byte `5`: Panel button LEDs A (`0x02` = USB activity indicator, `0x04` = `PC`, `0x08` = `CUE` (blinks while paused, `display_cue_lamp_state(1)`), `0x10` = `PLAY`, `0x20` = `LOOP IN`, `0x40` = `LOOP OUT`, `0x80` = `USB`). Bit `0` was never set in any capture **[emu]**.
+   - Byte `6`: Panel button LEDs B (`0x01` = `RELOOP`, `0x02` = `DISC`, `0x08` = `REV`, `0x10` = `MASTER TEMPO` button LED, `0x20` = `VINYL`, `0x40` = `EJECT`). Bits `2` and `7` were never set in any capture **[emu]**.
+   - Byte `7`: Beat Loop & Navigation **button LEDs** (`0x01..0x08` = `BEAT 1/2/4/8`, `0x10` = `BROWSE`, `0x20` = `TAG LIST`, `0x40` = `INFO`, `0x80` = `MENU/UTILITY`; built at `0x0C063444..0x0C063480`). The view LEDs are only set while the menu level `u8 0x0C1E108C` is `0`, `1` or `5`; otherwise `MENU` lights instead. Not the FL legends (bytes 11/12).
+   - Byte `8`: Power flags `S[0x15]`, written only by `panel_status_set_power_flags` (`0x0C0EEB12`, bit 0 = arg bit 0, bit 2 = arg bit 2): `0x01` = auto-standby requested (`power_state_tick`, `0x0C0EFAAE`); `0x04` = firmware-update mode (set by the RELOOP-held boot path in `panel_keys_to_internal_words`, `0x0C0ED01C`; cleared by the updater at `0x0C08EBD2`). Other bits never written **[static]**.
+   - Byte `9`: Playing-address end-of-track flash flags (`bit 0` = fast warning <15s, `bit 1` = slow warning <30s, `bit 2` = lit phase). `display_stage_playing_address` only touches bits `0..2` (`and #0xF8` / `bset`); bits `3..7` are always `0`.
    - Byte `10`: Active CUE / Loop-In column on the bottom blue strip (`1..100`, `0` = dark; built at `0x0C0642CC`).
-   - Byte `11`: Pitch sign & VFD lamps (`bits 1:0`: `0` = zero, `2` = minus, `3` = plus; `bit 4` `0x10` = VFD `MEMORY` legend; `bit 7` `0x80` = VFD red `MT` legend).
-   - Byte `12`: VFD `A.CUE` & pitch decimals (`bit 0` `0x01` = VFD `A.CUE` legend; `bits 5:4`: `0x10` = hundredths, `0x20` = tenths).
-   - Byte `13`: Time mode (`bit 0` `0x01` = `REMAIN`, `0` = elapsed).
-   - Byte `14`: Pitch range flags (`bit 1` `0x02` = enable range badge; `0x80` = ±6, `0x40` = ±10, `0x20` = ±16, `0x04` = `WIDE`).
+   - Byte `11` (`S[0x18]`): `bits 1:0` pitch sign (`0` = zero, `2` = minus, `3` = plus); **`0x04` = FL `BROWSE` legend**, **`0x08` = FL `TAG LIST` legend** (both from `nav_view_selector` `0x0CE6D0FD` = 1 / 3 in `FUN_0C062F80`); `0x10` = FL `MEMORY` legend; `0x80` = FL red `MT` legend. Bits `5`, `6` never written.
+   - Byte `12` (`S[0x19]`): `0x01` = FL `A.CUE` legend; **`0x08` = FL `CUE` legend** (`display_cue_lamp_state(0)` at `0x0C06317E`: lit once a cue point exists, does not blink with the CUE LED); `bits 5:4` pitch decimals (`0x10` = hundredths, `0x20` = tenths); **`0x40` = BPM legend group**, set on every pass by `display_stage_bpm` (and by the PC-mode BPM stage `0x0C068304`); **`0x80` = FL `INFO` legend** (`nav_view_selector` = 0). Bits `1`, `2` never written. **[static, emu]**
+   - Byte `13` (`S[0x1A]`, `display_stage_time_flags` `0x0C063BCE`): `0x01` = `REMAIN`; **`0x02|0x04|0x08` = time-unit legends** (always set together whenever a time is shown, also with blank `0xFF` digits); **`0x20` = time-digits-valid legend** (set with real, `0xBB` or test digits; cleared when the digits are blanked to `0xFF`). Argument `5` clears bits `1..3` and `5` (no time field at all). Which glass segment each of bits `1..3` drives (`M`/`S`/`F` or the separators) cannot be split from MAIN alone. Bits `4`, `6`, `7` never written. **[static, emu]**: `0x2F` playing in REMAIN, `0x2E` elapsed, `0x0F` while the time is blank (loading, cue jump).
+   - Byte `14` (`S[0x1B]`): Pitch range flags (`bit 1` `0x02` = enable range badge; `0x80` = ±6, `0x40` = ±10, `0x20` = ±16, `0x04` = `WIDE`); **`0x08` = BPM legend group** (set with byte 12 bit 6 by `display_stage_bpm`). Bit `0` never written. The renderer keeps `BPM` lit: MAIN sets these two bits on every normal and PC-mode pass, only the update mode (`u8 0x0CE6D11E` = 1, which skips the stagers) leaves them clear.
 
 3. **Display Text Burst (`0x80` header + `0x81..0xAE` 14-byte chunks, built at `0x0C066046` / `0x0C0660D4`)**:
-   - `0x80` frame: Byte `1` = sequence counter, Byte `2` = display mode (`0x01` = 3-row browser, `0x07` = dialog, `0x08` = single centered message such as `NO DISC` / empty list, `0x0A` = loaded track).
+   - `0x80` frame (`display_build_text_header`, `0x0C065F18`, from the view context `C = 0x0C9D0AF4`; `display_header_dirty_check` `0x0C065E84` and `display_mode_dirty_check` `0x0C066032` set `display_matrix_dirty` when a field changes):
+     - Byte `1` = text sequence (`C[0]`, bumped by `display_tx_text_pass` `0x0C064CA4` when the burst differs).
+     - Byte `2` = display mode (`0x01` = 3-row browser, `0x07` = dialog, `0x08` = single centered message such as `NO DISC` / empty list, `0x0A` = loaded track), chosen from the view mode word `u32 C+4` (`0x0C9D0AF8`) and the message id.
+     - Byte `3` = `C[8]`: list-position kind, set only for view mode 2 by `display_stage_list_header` (`0x0C064F9A`): `0x0C` = cursor on the first item, `0x0B` = on the last item, `0x0A` = in between; `0` otherwise **[static]** (0 in every USB capture).
+     - Byte `4` = `C[9]`: list-level flag. `display_stage_list_header` sets it to `mode ≠ 6 && mode ≠ 0x0C`; the view request copied by `display_take_view_request` (`0x0C064768`) supplies it otherwise. **[emu]**: `0` in the USB root list (one `FOLDER` row) and in messages, `1` inside a folder and in the loaded-track view.
+     - Bytes `5..6` = `u16 BE C+0xA` (`0x0C9D0AFE`): **number of items in the list** (CD TOC track count, or the USB folder's item count `+0x8A` + `+0x8E` of the browse state). **[emu]**: `1` at the root, `12` in a 12-file folder, `3` with 3 files.
+     - Bytes `7..8` = `u16 BE C+0xC` (`0x0C9D0B00`): **index of the first visible row** = cursor index `u16 0x0CE6CAA0[src]` − cursor row in the window `u16 0x0C9D1DD0[src]`. **[emu]**: `0..9` while scrolling 12 files.
+     - Bytes `9..10` = low 16 bits of `u32 C+0x10` (`0x0C9D0B04`): **message / screen id** posted to DisplayTask (`0x0200` normal browse/playing, `0x0023` empty TAG LIST, `0x0301`/`0x0302`/`0x0303` no media for disc/USB/link, `0x0506`; ids `0x301..0x303`, `0x24`, `0x25`, `0x311`, `0x312`, `0x506` select mode `0x07`, ids `2`, `0x12`, `0x1F`, `0x23`, `0x306` select mode `0x08`).
+     - Byte `11` = `C[0x20]` (`0x0C9D0B14`): bits `0..4` = a status code from `display_stage_header_status` (`0x0C064EB6`): `1` = a USB-source timer `u16 0x0CE6D1F6` reached its limit `u16 0x0C9D0E3A` in a view, `2`/`3` = PC mode (`u8 0x0CE6D150` = 1 / otherwise), else `0` (cleared when the menu level ≥ 2); **bits `5..7` = per-row flags for rows 1..3**, set by `display_set_row_flag` (`0x0C068EBA`) for the selected row and cleared on every cursor move. **[emu]**: the bit for the highlighted row appears about 1 s after the cursor rests (and about 1 s after a track loads, for the title row) and clears when the cursor moves; the row's full text is sent, so this is most likely the start signal for the panel's marquee scroll of a long name (not verified on hardware).
+     - Byte `12` = `C[0x21]` (`0x0C9D0B15`): **number of text chunk frames** (index of the last `0x81..` frame, from `u32 0x0C9D0AC0`), written by `display_tx_text_pass` after `display_build_1`. **[emu]**: `2` for the `NO DISC` burst, `3` for three file rows.
+     - Byte `13` = `C[0x22]` (`0x0C9D0B16`): in mode `0x0A`, `0x04` = the track is ready (player state ≠ `2` loading); bits `0`, `1` cleared; `0` in other modes. **[emu]**: `0` while loading, `0x04` once playing or paused.
+     - Byte `14` = always `0`.
    - `0x81..0xAE` frames: Concatenated 14-byte slices (bytes `1..14` of each frame) holding 3 sequential row records:
      - Each row record is `[tag, attr0, attr1, attr2, len, text[0..len-1]]`.
-     - `(tag & 0x03)` is row index `1..3`. `tag & 0x20` (bit 5) marks the highlighted/inverted browser row (e.g. `0x25/0x02/0x03` selects row 1; `0x01/0x26/0x03` selects row 2).
+     - `(tag & 0x03)` is row index `1..3`. `tag & 0x20` (bit 5) marks the highlighted/inverted browser row, which MAIN always sends together with `0x04` (`0x25/0x02/0x03` selects row 1; `0x01/0x26/0x03` selects row 2). `0x10` marks message rows (`0x11/0x12/0x13`).
+     - `attr0` is the row's item type: `0x04` audio file, `0x63` folder (text `0x06 "FOLDER" 0x07 0x02`, control bytes for the panel's icon glyphs), `0x02` title, `0x07` artist, `0x0D` BPM item; `attr1`/`attr2` were `0` in all captures **[emu]**.
      - In loaded mode (`0x0A`), row 1 is the inverted track title, and row 2 with `attr0 == 0x07` carries the artist name.
 
 4. **Auxiliary Overview & Memory Cue Frames (`0x60` and `0x70..0x77`)**:
-   - `0x60` (`0x0C06664E` / `0x0C0664A8`): Bytes `2..14` hold a 100-bit MSB-first bitmap of saved memory-cue and loop columns (`0..99`) for the top red strip.
-   - `0x70..0x77` (`0x0C0662AE`): 100 waveform overview columns (`0..15` height, mapped to `0..5` dot rows) from `0x0C9D1199` (12 samples at `0x70[3..14]`, 14 samples each at `0x71..0x76[1..14]`, 4 samples at `0x77[1..4]`).
+   - `0x60` (`0x0C06664E` / `0x0C0664A8`): Byte `1` = **frame sequence**, incremented (`0xFF` wraps to `0`) every time `panel_tx_saved_cues` appends the frame (one per text pass; `u8 0x0C9D1200` in both branches). Bytes `2..14` hold a 100-bit MSB-first bitmap of saved memory-cue and loop columns (`0..99`) for the top red strip, copied from every fourth byte at `0x0C9D121C` (packed by `display_pack_saved_cues`); all zero (cleared branch) with no track (player state `0`, `1`, `0x0C`), while a USB track loads (state `2`) or while the header status code (`0x80` byte 11 bits `0..4`) is non-zero. **[static, emu]**
+   - `0x70..0x77` (`0x0C0662AE`): 100 waveform overview columns (`0..15` height, mapped to `0..5` dot rows) from `0x0C9D1199` (12 samples at `0x70[3..14]`, 14 samples each at `0x71..0x76[1..14]`, 4 samples at `0x77[1..4]`). `0x70` byte `1` = **waveform sequence** (`u8 0x0C9D1184`), incremented only when the overview changed (`u32 0x0C9D1188` = 1); `0x70` byte `2` = `0`; the first zero sample ends the data and every later column, including `0x77[5..14]`, is `0`. Sent only in the loaded view (mode word 10, message `0x200`, header status code `0`, player state not `2`/`10`/`14`) while the burst has room (< `0x2F` frames). **[static, emu]**: byte 1 counts up as the overview of a WAV without ANLZ fills in during playback.
+
+#### Previously unknown display bytes (mapped Nov 2026)
+
+Evidence: **[static]** MAIN in Ghidra, **[emu]** SCIF1 captures (`CDJ850_SCIF1_CAPTURE`) of scripted runs (`CDJ850_PANEL_SCRIPT`) that change one state at a time, **[manual]** the service manual digest. The panel CPU's own firmware is not available, so a bit's glass segment is named only where MAIN pairs it with a known state. The service manual digest (`docs/cdj850-service-manual.md`) only confirms the split: `IC1007` drives both FL tubes and the key LEDs, and its test mode lights each key's LED separately from the FL test patterns (all on, all off, lattice). It gives no bit assignment, so no row below is **[manual]**.
+
+| Frame / byte | Bit(s) | Meaning | Written by | Evidence |
+|---|---|---|---|---|
+| `01` b2 / `02` b2 | `0x10` | VINYL, set and cleared together with `0x08` | `display_stage_jog_flags` `0x0C064D10` | static, emu |
+| `01` b2 / `02` b2 | `0x40` | jog ring indicator, on every pass, off in the 400-tick blink's off half | `display_stage_bpm` `0x0C064118` | static, emu |
+| `01` b12 | all | constant `0` | `panel_tx_build_status_pages` `0x0C065DE2` | static, emu |
+| `01` b13..14 | all | `u16 S+0xC`, no writer: unused, always `0` | — | static, emu |
+| `02` b1..3 | all | copies of the jog cue / flags / playhead (`01` b1..3) | `display_set_jog_markers` `0x0C0676C0`, `0x0C064D10`, `0x0C064118` | static, emu |
+| `02` b8 | `0x04` | firmware-update mode | `panel_status_set_power_flags` `0x0C0EEB12` (from `0x0C0ED01C`, cleared at `0x0C08EBD2`) | static |
+| `02` b9 | `0xF8` | never written | `display_stage_playing_address` masks them | static |
+| `02` b11 | `0x04` / `0x08` | FL `BROWSE` / `TAG LIST` legend | `display_stage_status` `0x0C062F80` | static, emu |
+| `02` b12 | `0x08` | FL `CUE` legend (steady; the LED in b5 blinks) | `display_cue_lamp_state(0)` `0x0C0634F8` from `0x0C06317E` | static, emu |
+| `02` b12 | `0x40` | BPM legend group, always on in normal and PC mode | `0x0C064118`, `0x0C068304` | static, emu |
+| `02` b12 | `0x80` | FL `INFO` legend | `0x0C062F80` | static, emu |
+| `02` b13 | `0x0E` | time-unit legends, set whenever a time field is shown | `display_stage_time_flags` `0x0C063BCE` | static, emu |
+| `02` b13 | `0x20` | time digits valid (clear for blank `0xFF` digits) | `0x0C063BCE` | static, emu |
+| `02` b14 | `0x08` | BPM legend group (with b12 `0x40`) | `0x0C064118`, `0x0C068304` | static, emu |
+| `80` b3 | all | list-position kind (view mode 2: `0x0C` first, `0x0B` last, `0x0A` between) | `display_stage_list_header` `0x0C064F9A` | static |
+| `80` b4 | all | list-level flag (`0` root list and messages, `1` in a folder and the loaded view) | `0x0C064F9A`, `display_take_view_request` `0x0C064768` | static, emu |
+| `80` b5..6 | all | number of list items | `0x0C064F9A`, `0x0C064768` | static, emu |
+| `80` b7..8 | all | index of the first visible row | `0x0C064F9A`, `0x0C064768` | static, emu |
+| `80` b9..10 | all | message / screen id (`0x0200`, `0x0023`, `0x0301..0x0303`, ...) | `0x0C064768` (copied from the view request `0x0C9D0E28`) | static, emu |
+| `80` b11 | `0x1F` | header status code (`1` USB view timer, `2`/`3` PC mode) | `display_stage_header_status` `0x0C064EB6` | static |
+| `80` b11 | `0xE0` | per-row flag, rows 1..3, about 1 s after the cursor rests (likely long-name scroll start) | `display_set_row_flag` `0x0C068EBA` | static, emu |
+| `80` b12 | all | number of `0x81..` text frames | `display_tx_text_pass` `0x0C064CA4` | static, emu |
+| `80` b13 | `0x04` | loaded track ready (not loading) | `0x0C064F9A` | static, emu |
+| `80` b14 | all | constant `0` | `display_build_text_header` `0x0C065F18` | static, emu |
+| row tag | `0x04`, `0x10` | `0x04` accompanies the selection bit `0x20`; `0x10` = message row | `display_build_2` `0x0C0660D4` (row filler) | emu |
+| row `attr0` | all | item type (`0x04` file, `0x63` folder, `0x02` title, `0x07` artist, `0x0D` BPM) | row filler `FUN_0C06543E` / item formatter `FUN_0C0669D6` | emu |
+| `60` b1 | all | frame sequence (`0x0C9D1200`) | `panel_tx_saved_cues` `0x0C0664A8` | static, emu |
+| `70` b1 | all | waveform sequence, bumped when the overview changes (`0x0C9D1184`) | `panel_tx_waveform` `0x0C0662AE` | static, emu |
+| `70` b2, `77` b5..14 | all | constant `0` | `0x0C0662AE` | static, emu |
+
+The emulator's FL model (`hw/cdj/boards/cdj850/xc/panel_display.c`) lights the `BROWSE`, `TAG LIST` and `INFO` boxes from the legend bits (`02` b11 `0x04`/`0x08`, b12 `0x80`) and the `CUE` legend from `02` b12 `0x08`; it used the button-LED byte and the cue column before. `MENU` (no FL legend) still follows the LED bit `02` b7 `0x80`. Not modelled: the time-unit and BPM legend bits (MAIN keeps them on whenever the fields are shown), the header list fields (the panel's scroll indicator, if it draws one, is not documented) and the per-row flags.
 
 ---
 
