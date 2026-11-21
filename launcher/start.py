@@ -1,11 +1,11 @@
 # SPDX-License-Identifier: GPL-2.0-or-later
-"""Start the decks the way setup configured them (cdj.conf): one or two
-CDJ-2000NXS2 windows, the controller relay and, if you chose a MIDI
-controller, the bridge. Ctrl-C stops everything.
+"""Start the decks the way setup configured them (cdj.conf): the CDJ-850
+in one window (or, for a two-board rig player, one or two windows, the
+controller relay and, if you chose a MIDI controller, the bridge). Ctrl-C stops everything.
 
   usage: ./start.sh             start
-         ./start.sh --model <id>   start that player (cdj2000nxs2, the default,
-                                 or an older one: see models/); setup.sh
+         ./start.sh --model <id>   start that player (cdj850, the default;
+                                 see models/); setup.sh
                                  stores the one you chose in cdj.conf
          ./start.sh --app       start with the virtual deck app as the window
                                  (every player that has a face in app/faces/; a player

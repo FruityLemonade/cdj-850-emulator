@@ -6,19 +6,16 @@
                            <in.UPD> <out.UPD> [<mod> ...]
            patch_update.py [--model <id>] --list
 
---model picks the player the update is for (default cdj2000nxs2); its profile
-(models/<id>.conf) says which section holds MAIN and where the packed
-application starts. Every player's one-file update has the container read
-here and the same two checksums; a mod is offered only for a player that has
-a patch for it. The CDJ-2000 and CDJ-900 ship one file per section: name their
-MAIN file (C2KMAIN.UPD, C900MAIN.UPD), which is one section with no manifest
-before it. The other three files are never patched: they are checked against
-the shipped ones and copied next to the output.
+--model picks the player the update is for (default cdj850, the CDJ-850's
+C850MAIN.UPD v1.13); its profile (models/<id>.conf) says which section holds
+MAIN and where the packed application starts. A mod is offered only for a
+player that has a patch for it.
 
-A mod is named by its folder, mods/<mod>/ (three_band, osc, ableton_link,
+    patch_update.py C850MAIN.UPD out/C850MAIN.UPD bpm999 quant_loops
+
+A mod is named by its folder, mods/<mod>/ (bpm999, quant_loops, hot_cues,
 ...), and brings every patch its mod.conf switches on; --list shows them. A
-single patch (patch_gui.py --list, patch_main.py --list) can still be named on
-its own.
+single patch (patch_main.py --list) can still be named on its own.
 With no mod named, every section is copied through untouched -- a repack
 that reproduces the input byte for byte, useful for proving the container
 handling itself is not what changed.
@@ -33,12 +30,16 @@ way in is no reason to refuse it.
 A player whose MAIN carries a DSP program as data can have mods that patch it
 (dsppatch.py); they are named like the others and ride in the MAIN section.
 
-Every mod here also has a --list entry in patch_gui.py or patch_main.py,
-since that is the tool that actually knows how to splice it into its image;
-this is the container-level wrapper around them. Only mods that patch real
-firmware code are offered -- an emulator-only knob such as high_fps or
-live_clock (emulator/mods/<mod>/mod.conf) has nothing to write into a .UPD and
+Every mod here also has a --list entry in patch_main.py, since that is the
+tool that actually knows how to splice it into its image; this is the
+container-level wrapper around it. Only mods that patch real firmware code
+are offered -- an emulator-only knob has nothing to write into a .UPD and
 does not appear here.
+
+The steps below are for a sectioned update with a manifest. The CDJ-850's
+C850MAIN.UPD is one flat big-endian flash image instead (no manifest, no
+S-records; scripts/firmware/c850_repack.py): its packed MAIN is unpacked, patched and packed
+back in place, with the bootloader's 16-bit sum and the label rewritten.
 
     1. Split the update into its sections (the same manifest split_update.py
        reads: CRLF-decimal lengths, then the sections concatenated).

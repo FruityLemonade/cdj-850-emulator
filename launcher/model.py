@@ -143,7 +143,7 @@ class Model:
 
 
 def load(model_id=None):
-    """The named profile (CDJ_MODEL, else cdj2000nxs2). Raises ModelError with
+    """The named profile (CDJ_MODEL, else cdj850). Raises ModelError with
     the script's message on an unknown id or an incomplete profile."""
     model_id = (model_id or os.environ.get("CDJ_MODEL") or DEFAULT).strip().lower()
     path = os.path.join(models_dir(), model_id + ".conf")

@@ -2,7 +2,7 @@
 
 One file per supported player. The firmware and launch scripts read the
 profile named by `CDJ_MODEL` (or `--model`), so they carry no model specifics
-of their own. The default is `cdj2000nxs2`.
+of their own. The default is `cdj850`.
 
 | profile | player | update | state |
 |---|---|---|---|

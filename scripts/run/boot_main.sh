@@ -7,7 +7,7 @@
 #
 #   usage: CDJ_MODEL=<id> ./scripts/run/boot_main.sh <tag> [seconds]
 #
-#   CDJ_MODEL   a profile in models/ (default cdj2000nxs2)
+#   CDJ_MODEL   a profile in models/ (default cdj850)
 #   MAIN_QEMU   the binary; default follows the build's QEMU_BUILD
 #   LOGDIR      where <tag>.main.log goes (default /tmp)
 #   QEMU_D      the -d list (default unimp,guest_errors)
