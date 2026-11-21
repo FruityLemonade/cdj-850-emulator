@@ -28,6 +28,8 @@ from test_cdj850_scif1_replay import scif1_replay_exe
 
 USB = 0xFFFC1C00
 DMA = 0xFFFE1000
+CMT = 0xFFFEC000
+IPR08 = 0xFFFE0C04
 
 
 def _cdj850_binary():
@@ -124,6 +126,34 @@ def test_transaction_clear_preserves_preset(deck, select_off, count_off):
     deck.write(USB + select_off, 0x0101)  # TRCLR, CURPIPE = 1
     assert deck.read(USB + select_off) & 0x0100 == 0
     assert deck.read(USB + count_off) == 8
+
+
+def test_cmt_compare_stays_pending_until_its_priority_is_enabled(deck):
+    # CMI0 sets a sentinel and clears CMF through CMCSR0.
+    deck.write(0x0C000000 + 142 * 4, 0x0C001000, 4)
+    isr = [0xD104, 0xE001, 0x2102, 0xD104, 0xE000, 0x2101, 0x002B, 0x0009]
+    for i, word in enumerate(isr):
+        deck.write(0x0C001000 + 2 * i, word)
+    deck.write(0x0C001014, 0x0C002000, 4)
+    deck.write(0x0C001018, CMT + 2, 4)
+    deck.write(IPR08, 0x6000)  # USBI enabled while CMI0 stays masked.
+    deck.write(CMT + 6, 0x1045)
+    deck.write(CMT + 2, 0x0040)  # CMIE
+    deck.write(CMT, 1)
+    deck.execute("cont")
+
+    deadline = time.monotonic() + 3
+    while time.monotonic() < deadline and not (deck.read(CMT + 2) & 0x80):
+        time.sleep(0.005)
+    assert deck.read(CMT + 2) & 0x80
+    deck.write(CMT, 0)  # Stop future compare matches, keeping the pending flag.
+    assert deck.read(0x0C002000, 4) == 0
+
+    deck.write(IPR08 + 1, 0x70, 1)
+    deadline = time.monotonic() + 3
+    while time.monotonic() < deadline and deck.read(0x0C002000, 4) == 0:
+        time.sleep(0.005)
+    assert deck.read(0x0C002000, 4) == 1
 
 
 def arm_transmit(deck, channel=7):
