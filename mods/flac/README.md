@@ -1,6 +1,11 @@
 # CDJ-850 FLAC mod
 
-Opt-in native USB FLAC playback for MAIN v1.13. The initial build supports stereo 16-bit / 44.1 kHz native FLAC with a known sample count and blocks up to 4608 frames. It uses the stock transport and DSP.
+Opt-in native USB FLAC playback for MAIN v1.13. It supports stereo native FLAC at 16 or 24 bits and 44.1 or 48 kHz, with a known sample count and blocks up to 4608 frames. It uses the stock transport and DSP:
+
+- The virtual WAV it hands the firmware carries the stream's sample rate. A 48 kHz track goes through the stock resampler (`pcm_rate_copy` and `pcm_resample_cubic`, a 4-point cubic on MAIN), as a 48 kHz WAV does; the DSP plays 44.1 kHz only.
+- The virtual WAV is always 16-bit. 24-bit samples are cut to their top 16 bits, which is exactly what the stock reader does with a 24-bit WAV (`wav_decode_block`, `0x0C058FF2`): no dither, and nothing past 16 bits reaches the DSP either way.
+
+At 48 kHz the decoder delivers about 9% more frames per second of track, and MAIN also runs the resampler, the same cost a 48 kHz WAV has. 24-bit streams carry more bits per sample to read but decode through the same code. Neither has been timed on a physical CDJ-850.
 
 ## Build and run
 
@@ -22,7 +27,7 @@ In the launcher, the FLAC toggle (`mod.conf`) turns on all eight knobs. Patch fr
 
 ## Verification
 
-`make -C mods/flac/cdj850 test` checks bit-exact PCM in the WAV's byte order (LPC orders up to 32 from `--lax -l 32`, wasted bits, all four stereo decorrelations), sample-accurate reads with and without seek tables, final-sector padding, and sample-rate rejection (host build of `payload/decoder.c`, which runs the C predictor; the SH-2A `mac.l` path is checked by the QEMU folder probe below). `pytest tests/test_cdj850_flac_patch.py` checks the signatures, the eight gated writes, the moved classifier entry, the private stack, the boot-critical closure and that no FPU code reaches the payload; `tests/test_cdj850_service_gate.py` runs the gates.
+`make -C mods/flac/cdj850 test` checks bit-exact PCM in the WAV's byte order (LPC orders up to 32 from `--lax -l 32`, wasted bits, all four stereo decorrelations), sample-accurate reads with and without seek tables, final-sector padding at 16 and 24 bits and at 44.1 and 48 kHz, and rejection of other rates (host build of `payload/decoder.c`, which runs the C predictor; the SH-2A `mac.l` path is checked by the QEMU folder probe below). `pytest tests/test_cdj850_flac_patch.py` checks the signatures, the eight gated writes, the moved classifier entry, the private stack, the boot-critical closure and that no FPU code reaches the payload; `tests/test_cdj850_service_gate.py` runs the gates.
 
 Use the repository Python environment with `pyfatfs` and the bundled `baken` tool for the end-to-end QEMU probes.
 
@@ -40,7 +45,22 @@ python3 mods/flac/verify_probe.py mods/flac/build/fixture/music/Baseline.wav \
   mods/flac/build/folder mods/flac/build/export
 ```
 
-The FLAC fixture has no seek table. The folder run compares the entire 18-second track against the PCM ring. The legacy export run checks WAV and FLAC loading, waveform and memory markers, the 8-second cue, a two-beat loop wrap, reverse motion, jog inputs, and the Master Tempo indicator.
+The FLAC fixture has no seek table. The folder run compares the entire 18-second track against the PCM ring.
+
+For 48 kHz or 24 bits, build the fixture with `--rate 48000` and/or `--bits 24`. The WAV and the FLAC then share that format, and the PCM ring holds resampled or truncated audio rather than the source. So run the stock WAV path too, and check that the FLAC ring holds the WAV ring's audio byte for byte:
+
+```sh
+.venv/bin/python mods/flac/make_fixture.py --repo . --out mods/flac/build/fixture48 --rate 48000 --bits 24
+for recipe in folder folder-wav export; do
+  img=$recipe; [ $recipe = folder-wav ] && img=folder
+  python3 mods/flac/probe.py --qemu qemu-build-eb/qemu-system-sh4eb \
+    --flash mods/flac/build/flac.flash --symbols mods/flac/build/payload.map \
+    --usb "mods/flac/build/fixture48/$img.img" \
+    --out "mods/flac/build/48-$recipe" --recipe "$recipe" --with-info
+done
+python3 mods/flac/verify_probe.py mods/flac/build/fixture48/music/Baseline.wav \
+  mods/flac/build/48-folder mods/flac/build/48-export --wav-run mods/flac/build/48-folder-wav
+``` The legacy export run checks WAV and FLAC loading, waveform and memory markers, the 8-second cue, a two-beat loop wrap, reverse motion, jog inputs, and the Master Tempo indicator.
 
 The plain folder browser lists the FLAC filename. The loaded title is blank with the current fixture. Legacy library entries supply title and artist. Cue persistence, audible scratch parity, and sustained decode throughput still need testing.
 

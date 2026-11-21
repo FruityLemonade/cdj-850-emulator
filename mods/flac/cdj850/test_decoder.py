@@ -26,6 +26,7 @@ def main():
                    ((9000, 55), (7000, 110.5), (5000, 331), (3000, 1210), (1500, 5003)))
         contents.extend((clip(tone + rand.gauss(0, 900)), clip(0.8 * tone + rand.gauss(0, 900))))
     # wasted bits (every sample a multiple of 8)
+    wasted = range(len(contents) // 2, len(contents) // 2 + 44100)
     for i in range(44100):
         v = int(20000 * math.sin(i / 37.0)) & ~7
         contents.extend((v, (v // 3) & ~7))
@@ -38,28 +39,37 @@ def main():
     if sys.byteorder == "big":
         contents.byteswap()
     expected = contents.tobytes()
+    # The same material at 24 bits: random low bytes (zero where the wasted-bit
+    # section is), so the decoder's top 16 bits must equal the 16-bit source.
+    wide = bytearray()
+    for i in range(frames * 2):
+        low = 0 if i // 2 in wasted else rand.randrange(256)
+        wide += bytes((low,)) + expected[i * 2:i * 2 + 2]
     with tempfile.TemporaryDirectory() as temp:
         root = Path(temp)
         wav = root / "source.wav"
         flac = root / "source.flac"
-        for rate in (44100, 48000):
+        for rate, width in ((44100, 2), (48000, 2), (44100, 3), (48000, 3),
+                            (32000, 2), (96000, 2), (96000, 3)):
             with wave.open(str(wav), "wb") as file:
-                file.setparams((2, 2, rate, 0, "NONE", ""))
-                file.writeframes(contents.tobytes())
+                file.setparams((2, width, rate, 0, "NONE", ""))
+                file.writeframes(expected if width == 2 else bytes(wide))
             for options in (["-0", "-S", "1s"], ["-8", "--no-seektable"],
                             ["-8", "--lax", "-l", "32", "-b", "4096", "-S", "2s"]):
-                subprocess.run(["flac", "-f", "-s", *options, "-o", flac, wav], check=True)
-                if rate == 48000:
+                subprocess.run(["flac", "-f", "-s", *options, "-o", flac, wav], check=True,
+                               stderr=subprocess.DEVNULL)  # legacy-WAVE warning at 24 bits
+                if rate not in (44100, 48000):
                     result = subprocess.run([exe, flac, "all"], capture_output=True)
-                    assert result.returncode == 3 and not result.stdout
+                    assert result.returncode == 3 and not result.stdout, (rate, width)
                     continue
+                assert subprocess.check_output([exe, flac, "rate"]) == b"%d\n" % rate
                 assert subprocess.check_output([exe, flac, "all"]) == expected
                 indices = [0, 588, 4102, frames - 1, 11, 90300, 510, frames - 500,
                            44100 * 6 + 7, 44100 * 8 + 4095, 44100 * 9 + 22049, 44100 * 5 + 400]
                 actual = subprocess.check_output([exe, flac, *map(str, indices)])
                 wanted = b"".join(expected[i*4:(i+588)*4].ljust(2352, b"\0") for i in indices)
                 assert actual == wanted
-    print("PASS: bit-exact decode (LPC orders to 32, wasted bits, side channels), forward/backward seeks, EOF padding, and format rejection")
+    print("PASS: bit-exact decode (LPC orders to 32, wasted bits, side channels), forward/backward seeks, EOF padding at 16/24 bits and 44.1/48 kHz, and rejection of other rates")
 
 if __name__ == "__main__":
     main()

@@ -29,6 +29,7 @@ static FlacSource input;
 static uint32_t offset;
 static drflac *decoder;
 static uint32_t remaining;
+static uint32_t sample_rate;
 
 /* The LPC prediction of one sample: sum(c[i] * s[i]) >> shift over 64 bits,
  * with c the coefficients in reverse order and s the previous order samples,
@@ -243,6 +244,7 @@ void flac_close(void)
     decoder = NULL;
     used = 0;
     remaining = 0;
+    sample_rate = 0;
 }
 
 uint32_t flac_open(FlacSource source)
@@ -260,7 +262,8 @@ uint32_t flac_open(FlacSource source)
     unsigned bits = ((info[20] & 1u) << 4 | info[21] >> 4) + 1u;
     if (memcmp(info, "fLaC", 4) || (info[4] & 0x7f) ||
         info[5] || info[6] || info[7] != 34 || max_block < 16 ||
-        max_block > MAX_BLOCK_FRAMES || rate != 44100 || channels != 2 || bits != 16 ||
+        max_block > MAX_BLOCK_FRAMES || (rate != 44100 && rate != 48000) ||
+        channels != 2 || (bits != 16 && bits != 24) ||
         (info[21] & 0xf))
         return 0;
 
@@ -273,7 +276,13 @@ uint32_t flac_open(FlacSource source)
         return 0;
     }
     remaining = (uint32_t)decoder->totalPCMFrameCount;
+    sample_rate = rate;
     return remaining;
+}
+
+uint32_t flac_sample_rate(void)
+{
+    return decoder ? sample_rate : 0;
 }
 
 int flac_seek(uint32_t frame)
