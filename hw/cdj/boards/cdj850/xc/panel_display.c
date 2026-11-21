@@ -164,7 +164,8 @@ static void clear_playing(PanelDisplay *display, PanelDisplayUpdate update,
 
     display->next_wave_part = 0;
     if (playing->artist_known || playing->waveform_known ||
-        playing->strips_known || playing->memory_lamp) {
+        playing->strips_known || playing->memory_lamp ||
+        playing->cue_lamp) {
         memset(playing, 0, sizeof(*playing));
         update(&display->state, PANEL_DISPLAY_PLAYING, true, opaque);
     }
@@ -369,7 +370,12 @@ static void panel_playing_status(PanelDisplay *display, const uint8_t *tx,
     /* MAIN 0x0c0642cc emits one column for the current cue or loop-in. */
     unsigned cue = tx[10] <= CDJ850_OVERVIEW_COLUMNS ? tx[10] : 0;
     bool memory_lamp = (tx[11] & 0x10) != 0;
-    bool changed = playing->memory_lamp != memory_lamp;
+    /* The CUE legend is its own bit (0x0c0634f8(0) via 0x0c063176), not the
+     * cue column: it lights only once a cue exists and does not blink with
+     * the CUE button LED (0x0c0634f8(1), byte 5 bit 3). */
+    bool cue_lamp = (tx[12] & 0x08) != 0;
+    bool changed = playing->memory_lamp != memory_lamp ||
+                   playing->cue_lamp != cue_lamp;
 
     for (unsigned i = 0; i < CDJ850_OVERVIEW_COLUMNS; i++) {
         bool address_here = address_on && (remain ? i >= progress : i < progress);
@@ -380,7 +386,7 @@ static void panel_playing_status(PanelDisplay *display, const uint8_t *tx,
         playing->cue[i] = cue_here;
     }
     playing->memory_lamp = memory_lamp;
-    playing->cue_lamp = cue != 0;
+    playing->cue_lamp = cue_lamp;
     if (changed) {
         playing->strips_known = true;
         update(&display->state, PANEL_DISPLAY_PLAYING, true, opaque);
@@ -491,11 +497,14 @@ static void panel_status(PanelDisplay *display, const uint8_t tx[PANEL_FRAME_LEN
         publish_master_tempo(display, (tx[11] & 0x80) != 0, update, opaque);
         /* MAIN 0x0c0642c6 sets the A.CUE bit copied at 0x0c065e4e. */
         publish_auto_cue(display, (tx[12] & 1) != 0, update, opaque);
-        /* MAIN 0x0c063444..0x0c063480 sets the four navigation LEDs.
-         * The copy at 0x0c065e26 puts those bits in this byte. */
-        publish_browse(display, (tx[7] & 0x10) != 0, update, opaque);
-        publish_tag_list(display, (tx[7] & 0x20) != 0, update, opaque);
-        publish_info(display, (tx[7] & 0x40) != 0, update, opaque);
+        /* The FL BROWSE, TAG LIST and INFO legends are their own bits:
+         * 0x0c062f80 sets byte 11 bit 2 / bit 3 and byte 12 bit 7 from the
+         * view selector 0x0ce6d0fd on every pass. The button LEDs in byte 7
+         * (0x0c063444..0x0c063480) go dark while a menu level is open, the
+         * legends do not. MENU has no FL legend; byte 7 bit 7 is its LED. */
+        publish_browse(display, (tx[11] & 0x04) != 0, update, opaque);
+        publish_tag_list(display, (tx[11] & 0x08) != 0, update, opaque);
+        publish_info(display, (tx[12] & 0x80) != 0, update, opaque);
         publish_menu(display, (tx[7] & 0x80) != 0, update, opaque);
         panel_playing_status(display, tx, update, opaque);
         /* MAIN 0x0c063bce copies the TIME mode to the page 2 flags. */
