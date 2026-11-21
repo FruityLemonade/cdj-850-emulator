@@ -150,11 +150,13 @@ def position_mark_xml(start, num=MEMORY_CUE):
     return '      <POSITION_MARK Name="" Type="0" Start="%.3f" Num="%d"/>\n' % (start, num)
 
 
-def track_xml(track_id, path, tags, audio, notes, tempo=None, key="", marks=()):
+def track_xml(track_id, path, tags, audio, notes, tempo=None, key="", marks=(), rating=None):
     """One <TRACK>. tempo is (bpm, first_beat_seconds) when the caller knows
     it exactly (make_test_stick.py does), or None to take it from the tags or
     the audio as resolve_tempo() does. key is rekordbox's Tonality ("Am",
-    "F#m", ...); marks are (start_seconds, num) cue points."""
+    "F#m", ...); marks are (start_seconds, num) cue points; rating is the
+    star count 0..5 (rekordbox's Rating 0, 51, 102, 153, 204, 255), None
+    leaves the attribute out."""
     ext = os.path.splitext(path)[1].lower()
     name = tags["title"] or os.path.splitext(os.path.basename(path))[0]
     if tempo is None:
@@ -175,6 +177,8 @@ def track_xml(track_id, path, tags, audio, notes, tempo=None, key="", marks=()):
         "Location": encode_location(os.path.abspath(path)),
         "Tonality": key,
     }
+    if rating is not None:
+        attrs["Rating"] = str(51 * int(rating))
     line = "    <TRACK " + " ".join(
         '%s="%s"' % (k, sax.escape(v)) for k, v in attrs.items())
     children = []

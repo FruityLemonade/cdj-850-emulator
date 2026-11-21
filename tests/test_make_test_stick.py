@@ -78,6 +78,11 @@ def test_check_spec_fills_in_the_defaults():
     {"tracks": [_track(first_downbeat=-0.1)]},
     {"tracks": [_track(bars=0)]},
     {"tracks": [_track(bars=8.5)]},
+    {"tracks": [_track(rating=True)]},
+    {"tracks": [_track(rating=1.5)]},
+    {"tracks": [_track(rating="5")]},
+    {"tracks": [_track(rating=-1)]},
+    {"tracks": [_track(rating=6)]},
     {"tracks": [_track(memory_cues=[17])]},          # bar 17 of a 16-bar track
     {"tracks": [_track(memory_cues=[0])]},
     {"tracks": [_track(memory_cues=[[2, 5]])]},       # a 4/4 bar has no beat 5
@@ -93,6 +98,16 @@ def test_check_spec_fills_in_the_defaults():
 def test_check_spec_refuses_what_cannot_be_built(spec):
     with pytest.raises(mts.SpecError):
         mts.check_spec(spec)
+
+
+@pytest.mark.parametrize("rating", [None, 0, 1, 5])
+def test_collection_rating(rating, tmp_path):
+    track = _track() if rating is None else _track(rating=rating)
+    spec = mts.check_spec({"tracks": [track]})
+    path = tmp_path / "T.mp3"
+    path.touch()
+    element = ET.fromstring(mts.collection(spec, [str(path)])).find("./COLLECTION/TRACK")
+    assert element.get("Rating") == (None if rating is None else str(51 * rating))
 
 
 def test_marks_are_memory_cues_then_hot_cues_a_to_h():

@@ -141,6 +141,8 @@ static uint8_t fl_glyph(unsigned char ch, int row)
     case ')': return row == 0 || row == 6 ? 8 : 4;
     case 0xb1: return row == 6 ? 31 : row == 2 ? 14 :
                       row == 1 || row == 3 ? 4 : 0;
+    case '*': return row == 3 ? 31 : row == 2 || row == 4 ? 10 :
+                     row == 1 || row == 5 ? 4 : 0;
     case '+': return row == 3 ? 14 : row >= 1 && row <= 5 ? 4 : 0;
     case '%': return row == 0 || row == 6 ? 17 : 1 << (row * 4 / 6);
     default: return row == 0 ? 14 : row == 1 ? 17 :
@@ -598,7 +600,9 @@ static void fl_playing_matrix(uint8_t dots[FL_ROWS][FL_COLS], const FlState *s)
                 dots[y+1][x] = !(note[y] & (64 >> x));
         fl_matrix_text(dots, 8, 1, s->rows[0], true);
     }
-    if (s->playing.artist_known) {
+    if (s->playing.title_info_known) {
+        fl_matrix_text(dots, 8, 11, s->rows[1], false);
+    } else if (s->playing.artist_known) {
         for (int y = 0; y < 6; y++)
             for (int x = 0; x < 5; x++)
                 dots[y+12][x+1] = !!(person[y] & (16 >> x));

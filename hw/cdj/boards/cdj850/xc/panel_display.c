@@ -32,6 +32,7 @@ static void publish_header(PanelDisplay *display, PanelDisplayUpdate update,
     display->header_only = false;
     if (display->state.header[2] != display->pending_header[2]) {
         display->state.playing.artist_known = false;
+        display->state.playing.title_info_known = false;
         display->state.playing.artist[0] = '\0';
     }
     memcpy(display->state.header, display->pending_header, PANEL_FRAME_LEN);
@@ -90,10 +91,12 @@ static void try_publish_text(PanelDisplay *display, PanelDisplayUpdate update,
                    memcmp(next.rows, display->state.rows, sizeof(next.rows));
 
     memcpy(next.header, display->pending_header, sizeof(next.header));
-    /* MAIN's loaded-track row 2 uses attribute 0x07 for the artist.
-     * Both text records and their header are published in this update. */
+    /* Loaded-track row 2 carries either the artist (0x07) or the info_order
+     * BPM, key and rating line (0x0D). Publish it with its text header. */
     next.playing.artist_known = next.header[2] == 0x0a &&
                                 next.attrs[1][0] == 0x07 && next.rows[1][0];
+    next.playing.title_info_known = next.header[2] == 0x0a &&
+                                    next.attrs[1][0] == 0x0d && next.rows[1][0];
     if (next.playing.artist_known) {
         memcpy(next.playing.artist, next.rows[1], sizeof(next.playing.artist));
     } else {
@@ -163,7 +166,7 @@ static void clear_playing(PanelDisplay *display, PanelDisplayUpdate update,
     Cdj850Playing *playing = &display->state.playing;
 
     display->next_wave_part = 0;
-    if (playing->artist_known || playing->waveform_known ||
+    if (playing->artist_known || playing->title_info_known || playing->waveform_known ||
         playing->strips_known || playing->memory_lamp ||
         playing->cue_lamp) {
         memset(playing, 0, sizeof(*playing));

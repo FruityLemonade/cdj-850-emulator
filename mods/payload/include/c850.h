@@ -150,6 +150,14 @@ typedef void c850_hook_fn(u32 *regs, u32 *sp);
 #define C850_SETTINGS           0x0C9DA23C           /* 0x58 bytes, flash log at 0x3F8000; never set
                                                         +0 bit 4, +1 bits 4..6, +0x43 bits 4..7 (log end) */
 
+/* ---- Track INFO metadata (section 4b.8) ---- */
+#define C850_DB_TRACK_INFO      0x0C054A36u        /* server handler for request 0x2002 */
+#define C850_DB_USB_INFO        0x0301u            /* drive 3, rekordbox DB kind 1 */
+#define C850_DB_USB_INFO_RATING(db) C850_U8((db) + 0x2946u) /* USB INFO field 6 enabled */
+#define C850_INFO_RATING_TEXT(rec) ((rec) + 0x5A8)  /* INFO 0x0A, up to five panel glyphs */
+#define C850_INFO_RATING_MAX    5
+#define C850_INFO_RATING_FILLED 0x04               /* filled star, U+2605 [static] */
+
 /* ---- Dot-matrix text rows (section 4b.7) ---- */
 /* row record: [tag, attr0, attr1, attr2, len, text[len]] */
 #define C850_MATRIX_ROW(r)      (0x0C9D0B18 + (r) * 0x105)

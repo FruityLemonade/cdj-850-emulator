@@ -254,7 +254,8 @@ void vfd_note_playing(const Cdj850Playing *playing)
 {
     const Cdj850Playing *cur = &vfd.display.playing;
 
-    if (cur->artist_known == playing->artist_known &&
+    if (cur->title_info_known == playing->title_info_known &&
+        cur->artist_known == playing->artist_known &&
         (!playing->artist_known ||
          strncmp(cur->artist, playing->artist, sizeof(cur->artist)) == 0) &&
         cur->waveform_known == playing->waveform_known &&
