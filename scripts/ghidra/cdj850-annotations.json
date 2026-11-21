@@ -977,7 +977,7 @@
         {
           "address": "0c08ec44",
           "type": "PLATE",
-          "text": "Service-mode USB update was observed using mode 6. Mode 6 programs 57 sectors of 64 KiB at 0x00060000..0x003EFFFF and skips writing when the version matches. Mode 5 programs 63 sectors at 0x00000000..0x003EFFFF, including boot. The path that selects mode 5 remains unresolved. Both modes preserve the last 64 KiB settings sector. Erase, program and read-back verify per sector."
+          "text": "Service-mode USB update (mode 6) programs 57 sectors of 64 KiB at 0x00060000..0x003EFFFF. It reports COMPLETE! without writing only if the file version starts at or above ASCII '1' and its first character and both characters after the dot equal the running label. The dot is ignored, and labels starting with '0' are written. Mode 5 programs 63 sectors at 0x00000000..0x003EFFFF, including boot. Its entry path remains unresolved. Both modes preserve the last 64 KiB settings sector. Erase, program and read-back verify per sector."
         },
         {
           "address": "0c08efe0",
