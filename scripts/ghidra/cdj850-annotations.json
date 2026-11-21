@@ -12,6 +12,22 @@
           "name": "reset_entry"
         },
         {
+          "address": "00000544",
+          "name": "cache_flush_enable"
+        },
+        {
+          "address": "00000578",
+          "name": "icache_invalidate_range"
+        },
+        {
+          "address": "00000582",
+          "name": "ocache_purge_range"
+        },
+        {
+          "address": "0000058c",
+          "name": "cache_range_assoc_body"
+        },
+        {
           "address": "00010000",
           "name": "boot_lzss_unpack"
         },
@@ -29,6 +45,26 @@
           "address": "000004c4",
           "type": "PLATE",
           "text": "Reset copies 0x7F longwords of stage 2 from NOR 0x00010000 to SDRAM 0x0DDEFA20, then jumps to the SDRAM copy. The stage-2 routines are annotated at their NOR source addresses."
+        },
+        {
+          "address": "00000544",
+          "type": "PLATE",
+          "text": "Runs from its on-chip RAM copy at 0xFFF80400 (once per boot in the emulator). CCR1 (0xFFFC1000) = 0x808 (ICF|OCF: drop every line of both caches, no write-back) and read back, then 0x101 (ICE|OCE, WT=0: write-back operand cache) and read back, as SH7263 manual 8.2.1 asks of code that changes CCR1. The only CCR1 writer in boot and MAIN."
+        },
+        {
+          "address": "00000578",
+          "type": "PLATE",
+          "text": "icache_invalidate_range(r4 = start, r5 = length): pushes PR and r0-r7, r3 = 0xF0000008 (instruction-cache address array, A = 1) and runs the shared body at 0x58C. The boot calls it through its on-chip RAM copy at 0xFFF80434."
+        },
+        {
+          "address": "00000582",
+          "type": "PLATE",
+          "text": "ocache_purge_range(r4 = start, r5 = length): as 0x578 with r3 = 0xF0800008 (operand-cache address array, A = 1). Writing V = 0 associatively makes the chip write a dirty line back before dropping it (SH7263 manual 8.4.3), so this is write-back plus invalidate."
+        },
+        {
+          "address": "0000058c",
+          "type": "PLATE",
+          "text": "Shared body of 0x578/0x582 (bsr only to get PC into PR). If PR is in cache-enabled space (PR & 0xE0000000 == 0) it continues at 0x1FF80456, the on-chip RAM copy of 0x59A, because memory-mapped cache accesses must run from cache-disabled space (manual 8.4.4). Then, for start in cache-enabled space, for each 16-byte line from start & ~15 to (start + length - 1) & ~15 it stores addr & 0x1FFFF800 (tag, U = V = 0) to r3 | (addr & 0x7F0); restores r0-r7 and PR, rts/n."
         },
         {
           "address": "00010000",
@@ -317,6 +353,10 @@
           "name": "usb_host_irq_dispatch"
         },
         {
+          "address": "0c019006",
+          "name": "usb_dma_start"
+        },
+        {
           "address": "0c019878",
           "name": "usb_host_handle_interrupt"
         },
@@ -327,6 +367,10 @@
         {
           "address": "0c057ce4",
           "name": "usb_audio_open"
+        },
+        {
+          "address": "0c058ff2",
+          "name": "wav_pcm_read"
         },
         {
           "address": "0c061454",
@@ -423,6 +467,10 @@
         {
           "address": "0c07800a",
           "name": "ssu0_16bit_cmd"
+        },
+        {
+          "address": "0c0894cc",
+          "name": "alloc_zeroed"
         },
         {
           "address": "0c08e842",
@@ -645,12 +693,20 @@
           "name": "power_state_tick"
         },
         {
+          "address": "0c0efb9a",
+          "name": "pcm_ring_write"
+        },
+        {
           "address": "0c0f01dc",
           "name": "audio_build_loop_in_record"
         },
         {
           "address": "0c0f6e6c",
           "name": "player_tick_usb_playback"
+        },
+        {
+          "address": "0c0f95e6",
+          "name": "pcm_rate_copy"
         },
         {
           "address": "0c0f9ee8",
@@ -675,6 +731,10 @@
         {
           "address": "0c0fa954",
           "name": "serialTask"
+        },
+        {
+          "address": "0c0fb97e",
+          "name": "ocache_purge_range"
         },
         {
           "address": "0c0fc170",
@@ -731,6 +791,22 @@
         {
           "address": "0c10e7c8",
           "name": "usb_file_size"
+        },
+        {
+          "address": "0c1100b8",
+          "name": "memcpy"
+        },
+        {
+          "address": "0c1105d4",
+          "name": "memcpy_block32"
+        },
+        {
+          "address": "0c11066c",
+          "name": "memcpy_aligned"
+        },
+        {
+          "address": "0c1106ec",
+          "name": "memset"
         }
       ],
       "comments": [
@@ -795,6 +871,11 @@
           "text": "Entry named DjControlTask by the 20-byte descriptor at 0x0C14F7CC. Waits on flag 2, reads audio commands from mailbox 2, and runs the audio state machine."
         },
         {
+          "address": "0c019006",
+          "type": "PLATE",
+          "text": "usb_dma_start(buf, len, to_memory, chan 0..1, fifo): rejects a buffer not longword-aligned, purges the operand cache over buf & ~15 .. +((len + 15) & ~15) + 16 with ocache_purge_range (0x0C0FB97E), then writes the channel's SAR/DAR/DMATCR (len / 4 longwords) and CHCR = 0x4815 (to memory: DM increment) or 0x1815 (from memory: SM increment), RS = 1000 (DMARS), TS longword, IE, DE. The purge before arming is what keeps USB DMA coherent with the write-back cache [static + emu: cache model, 0 findings over 7404 transfers]."
+        },
+        {
           "address": "0c01b31e",
           "type": "PLATE",
           "text": "Start of the documented USB host control-transfer path. SUREQ starts setup, default control pipe BRDY handles the data packets, and a control read sends its zero-length OUT status through pipe 5."
@@ -808,6 +889,11 @@
           "address": "0c057ce4",
           "type": "PLATE",
           "text": "Opens a USB audio file (the flac mod redirects pools 0x0C0BE79C and 0x0C0BED94)."
+        },
+        {
+          "address": "0c058ff2",
+          "type": "PLATE",
+          "text": "USB WAV PCM read: takes the next chunk of the file buffer (0x0C0592A6) and writes it to the output buffer: 24-bit (format byte +0x55 = 0x18) reduced to 16-bit samples bytewise, 16-bit copied with memcpy (mono duplicated to both channels), then every 16-bit sample byte-swapped in place (little-endian WAV to big-endian). The output buffer is in the uncached SDRAM mirror, so the swap is one uncached read and one uncached write per sample: ~5.5M of each, about 80% of all uncached accesses in a USB play run, which the emulator cannot show [static + emu: call trace, cache model]."
         },
         {
           "address": "0c061454",
@@ -958,6 +1044,11 @@
           "address": "0c07800a",
           "type": "PLATE",
           "text": "16-bit SSU0 command to the PCM1742 DAC using PF7/DACCS."
+        },
+        {
+          "address": "0c0894cc",
+          "type": "PLATE",
+          "text": "alloc_zeroed(n): p = 0x0C088BC4(n) (allocator), memset(p, 0, n) if p != 0, return p. Over 200 call sites [static]."
         },
         {
           "address": "0c08e842",
@@ -1295,6 +1386,11 @@
           "text": "Power/standby state machine, called at 0x0C0EE644."
         },
         {
+          "address": "0c0efb9a",
+          "type": "PLATE",
+          "text": "pcm_ring_write(src, frames): copies stereo frames into the PCM ring at pcm_ring_or_update_buffer: 0x961 slots of 0x24C frames (0x930 bytes, one CD-DA sector of PCM each), advancing the slot index and wrapping after slot 0x960. The third copy of every PCM byte in USB playback. Called from 0x0C0C02D4 [static + emu]."
+        },
+        {
           "address": "0c0f01dc",
           "type": "PLATE",
           "text": "audio_build_loop_in_record(sector): builds the loop-in record 0x0C7F6498.. (frame, MSF, ring sector) from the s16 sector 0x0C7F6468 (writer 0x0C0F022A). Called by 0x0C009DB4 for audio cmd 6 and cmd 7/2."
@@ -1303,6 +1399,11 @@
           "address": "0c0f6e6c",
           "type": "PLATE",
           "text": "USB playback state handler and refill scheduler. USB state at 0x0CE6D25F includes browse 0x0A, load 2, play 3, pause 4 and brake/pause 5. Refills the circular PCM ring while fill is below 500 sectors."
+        },
+        {
+          "address": "0c0f95e6",
+          "type": "PLATE",
+          "text": "pcm_rate_copy(src, dst, ?, samples, &frames_out): if pcm_sample_rate (0x0CE6DBAC) is 44100, memcpy samples * 2 bytes from src (wav_pcm_read's uncached buffer) to dst and report samples / 2 frames; otherwise resamples block by block through 0x0C0F97B8, keeping the remainder in a carry buffer. Called from 0x0C0BF6BA [static + emu]."
         },
         {
           "address": "0c0f9ee8",
@@ -1323,6 +1424,11 @@
           "address": "0c0fa13c",
           "type": "PLATE",
           "text": "SCIF1 TXI1 vector 199 services further 16-byte frames in the same PNL_XBUSY window until MAIN clears TIE."
+        },
+        {
+          "address": "0c0fb97e",
+          "type": "PLATE",
+          "text": "ocache_purge_range(r4 = start, r5 = length): for each 16-byte line stores start & 0x1FFFF800 (tag, U = V = 0) to 0xF0800008 + (start & 0x7F0), stepping both by 16 (the entry wraps into the don't-care address bits). Associative operand-cache address-array writes: a dirty line is written back, then dropped (SH7263 manual 8.4.3). Runs from cached SDRAM, unlike the boot's copy in on-chip RAM; MAIN's only cache maintenance (382k array writes in a USB play run) [static + emu]."
         },
         {
           "address": "0c0fc9dc",
@@ -1358,6 +1464,26 @@
           "address": "0c10e7c8",
           "type": "PLATE",
           "text": "Size of a USB file (the flac mod redirects pools 0x0C057F1C and 0x0C05814C)."
+        },
+        {
+          "address": "0c1100b8",
+          "type": "PLATE",
+          "text": "C library memcpy(dst r4, src r5, n r6); word-aligned copies go to memcpy_aligned (0x0C11066C). The emulator's CDJ_NATIVE_COPY hook recognises it by its first opcode 0xE218. During USB WAV playback three callers move ~87% of its bytes: wav_pcm_read, pcm_rate_copy and pcm_ring_write [static + emu: call trace]."
+        },
+        {
+          "address": "0c1105d4",
+          "type": "PLATE",
+          "text": "Inner loop of memcpy: 32 bytes per iteration in eight longword loads and stores (r9-r14 saved), byte tail. The function the cache model's USB-play profile charges most line fills to, as memcpy runs over large PCM buffers; ~1.4M of its reads and writes go through the uncached SDRAM mirror (wav_pcm_read's buffer) [static + emu]."
+        },
+        {
+          "address": "0c11066c",
+          "type": "PLATE",
+          "text": "memcpy's word-aligned path: one longword, then 8-byte pairs until the length is a multiple of 32, then memcpy_block32 (0x0C1105D4), or a byte tail for under 4 bytes [static]."
+        },
+        {
+          "address": "0c1106ec",
+          "type": "PLATE",
+          "text": "C library memset(dst r4, byte r5, n r6), filling backwards from the end in 16-byte longword blocks. 1031 references; most bytes come from large clears (alloc_zeroed, table resets). On the write-allocate operand cache every missed line is first read from SDRAM: 609k write misses in a USB play run. The emulator's CDJ_NATIVE_COPY hook recognises it by its first opcode 0x2FE6 [static + emu]."
         }
       ],
       "labels": [
@@ -1788,6 +1914,10 @@
         {
           "address": "0ce6d25f",
           "name": "usb_player_state"
+        },
+        {
+          "address": "0ce6dbac",
+          "name": "pcm_sample_rate"
         },
         {
           "address": "0cee505c",

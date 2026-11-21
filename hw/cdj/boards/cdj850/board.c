@@ -1,5 +1,7 @@
 /* SPDX-License-Identifier: GPL-2.0-or-later */
 #include "cdj_common.h"
+#include "exec/gdbstub.h"
+#include "gdbstub/helpers.h"
 #include "cdj_gui_keys.h"
 #include "dsp56300.h"
 #include "dsp56371.h"
@@ -249,6 +251,57 @@ static void cdj850_ccr_init(MemoryRegion *sysmem, SuperHCPU *cpu)
     memory_region_add_subregion_overlap(sysmem, 0xFFFC1000, &s->iomem, 1);
 }
 
+/*
+ * Registers for TCG plugins. The SH-4 target has no GDB core description, so
+ * qemu_plugin_get_registers() is empty and a plugin cannot read any register.
+ * This feature names r0-r15, pc, pr, sr, gbr and vbr for them (read-only);
+ * the cache model (scripts/cache/cdj850_cache.c) reads r15 at exception entry
+ * and Rn of pref @Rn. Without a core XML the GDB stub advertises no
+ * features, so GDB clients see no change.
+ */
+static GDBFeature cdj850_plugin_regs;
+
+static int cdj850_plugin_reg_get(CPUState *cs, GByteArray *buf, int n)
+{
+    CPUSH4State *env = cpu_env(cs);
+
+    if (n < 16) {
+        return gdb_get_reg32(buf, env->gregs[n]);
+    }
+    switch (n) {
+    case 16: return gdb_get_reg32(buf, env->pc);
+    case 17: return gdb_get_reg32(buf, env->pr);
+    case 18: return gdb_get_reg32(buf, cpu_read_sr(env));
+    case 19: return gdb_get_reg32(buf, env->gbr);
+    case 20: return gdb_get_reg32(buf, env->vbr);
+    }
+    return 0;
+}
+
+static int cdj850_plugin_reg_set(CPUState *cs, uint8_t *buf, int n)
+{
+    return 0;
+}
+
+static void cdj850_plugin_regs_init(SuperHCPU *cpu)
+{
+    /* The builder keeps these pointers: static storage. */
+    static const char *const names[] = {
+        "r0", "r1", "r2", "r3", "r4", "r5", "r6", "r7", "r8", "r9", "r10",
+        "r11", "r12", "r13", "r14", "r15", "pc", "pr", "sr", "gbr", "vbr",
+    };
+    GDBFeatureBuilder b;
+
+    gdb_feature_builder_init(&b, &cdj850_plugin_regs, "org.qemu.cdj850.regs",
+                             "cdj850-regs.xml", CPU(cpu)->gdb_num_regs);
+    for (int n = 0; n < ARRAY_SIZE(names); n++) {
+        gdb_feature_builder_append_reg(&b, names[n], 32, n, "uint32", NULL);
+    }
+    gdb_feature_builder_end(&b);
+    gdb_register_coprocessor(CPU(cpu), cdj850_plugin_reg_get,
+                             cdj850_plugin_reg_set, &cdj850_plugin_regs);
+}
+
 /* Port/PFC (0xFFFE3800), serial (0xFFFE7000) and mailbox (0xFFFFC000)
  * live in xc/ now that the board carries more than two peripheral
  * families (Task 6e file-split rule). */
@@ -412,6 +465,7 @@ static void cdj850_init(MachineState *machine)
     }
 
     cdj850_ccr_init(sysmem, cpu);
+    cdj850_plugin_regs_init(cpu);
     cdj850_intc_init(sysmem, cpu);
     cdj850_adc_init(sysmem, cpu);
     cdj850_dsp_init();
