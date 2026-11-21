@@ -285,6 +285,8 @@ def check_untouched(stock, out, fw, targets, rep):
                  if fw.container == 'c850' else slice(0, LABEL_SIZE))
     for i, (a, b) in enumerate(zip(stock.sections, out.sections)):
         label = a[lbl_slice].decode('latin1').rstrip('\x00 ')
+        if fw.container == 'c850':
+            a, b = c850_label_neutral(a), c850_label_neutral(b)
         if a[lbl_slice] != b[lbl_slice]:
             rep.fail('section %d (%s): label changed' % (i + 1, label))
         if i not in allowed:
@@ -398,6 +400,36 @@ def check_blob_section(i, stock_sec, out_sec, rep):
     return gui_decode.decode(out_sec)[3], gui_decode.decode(stock_sec)[3]
 
 
+def c850_label_neutral(sec):
+    """A CDJ-850 file with its version field (0x60010, 16 bytes) blanked: the
+    one label part a modded file may change (it is outside the summed bytes)."""
+    lo = c850_repack.VERSION_OFF
+    return sec[:lo] + bytes(16) + sec[lo + 16:] if len(sec) >= lo + 16 else sec
+
+
+def check_c850_version(stock_sec, out_sec, name, rep):
+    """The version label against what the service USB update does with it
+    (c850_repack.installs_over, traced at 0x0C08EC44)."""
+    have, want = c850_repack.get_version(stock_sec), c850_repack.get_version(out_sec)
+    if not re.fullmatch(r'[0-9]\.[0-9]{2}', want) or \
+            out_sec[c850_repack.VERSION_OFF + 4:c850_repack.VERSION_OFF + 16] != bytes(12):
+        rep.fail('%s: version field %r is not D.DD padded with NULs' % (name, want))
+        return
+    if out_sec == stock_sec or want == have and out_sec[c850_repack.PACKED_OFF:] == stock_sec[c850_repack.PACKED_OFF:]:
+        return
+    stock_ver = c850_repack.base_version(have)
+    if c850_repack.installs_over(want, stock_ver):
+        rep.ok('%s: version label %s: the service USB update writes it over a deck running %s%s, and the stock '
+               'file %s over it %s' % (name, want, stock_ver,
+                                       ' and over any other modded build' if want[0] < '1' else '',
+                                       stock_ver, 'too' if c850_repack.installs_over(stock_ver, want)
+                                       else 'NOT (skipped)'))
+    else:
+        rep.note('%s: version label %s equals the running %s where the updater compares (first char and the two '
+                 'after the dot): the service USB update skips it on a stock deck (COMPLETE!, nothing written); '
+                 'relabel (patch_update.py default "0.DD")' % (name, want, stock_ver))
+
+
 def check_c850_section(i, stock_sec, out_sec, model, rep):
     name = 'section %d (%s)' % (i + 1, out_sec[c850_repack.LABEL_OFF:c850_repack.PACKED_OFF]
                                 .decode('latin1').rstrip('\x00 '))
@@ -410,8 +442,13 @@ def check_c850_section(i, stock_sec, out_sec, model, rep):
     if stock_sec is not None:
         if stock_sec[:c850_repack.PACKED_OFF] == out_sec[:c850_repack.PACKED_OFF]:
             rep.ok('%s: bytes 0-%#x (boot, recovery, label) identical' % (name, c850_repack.PACKED_OFF))
+        elif (c850_label_neutral(stock_sec)[:c850_repack.PACKED_OFF]
+              == c850_label_neutral(out_sec)[:c850_repack.PACKED_OFF]):
+            rep.ok('%s: bytes 0-%#x (boot, recovery, label) identical but for the version field' %
+                   (name, c850_repack.PACKED_OFF))
         else:
             rep.fail('%s: bytes below %#x differ' % (name, c850_repack.PACKED_OFF))
+        check_c850_version(stock_sec, out_sec, name, rep)
     stream, _, _ = c850_repack.read_packed(out_sec)
     end = c850_repack.STREAM_OFF + len(stream) + 2
     window_end = modelfw.update_window_end(model) or c850_repack.MAIN_END
@@ -530,6 +567,8 @@ def check_writes(target, stock_img, out_img, profile, spans, rep, table=None, ds
             rep.fail('%s: %s rewrites %d bytes at %#x, more than a call site' % (target, mod, hi - lo, lo))
     if any(kind in LOADER_KINDS for _, kind, _, _ in flat):
         check_loader(target, stock_img, out_img, flat, rep)
+    if target == 'main':
+        check_payload_calls(stock_img, out_img, flat, rep)
     runs = bootcrit.merge([(lo, hi) for _, kind, lo, hi in flat if kind == 'free'])
     proven = 0
     for lo, hi in runs:
@@ -549,6 +588,39 @@ def check_writes(target, stock_img, out_img, profile, spans, rep, table=None, ds
 
 
 LOADER_KINDS = ('loader', 'loaderblob')
+
+
+def check_payload_calls(stock_img, out_img, flat, rep):
+    """Every word a mod wrote into MAIN code or the cave that points into the
+    loader's region (a trampoline's hook literal, a redirected pool word) must
+    point inside the payload the loader in this image copies there, so a hook
+    never jumps into SDRAM nobody filled."""
+    lo_r, hi_r = c850loader.REGION, c850loader.REGION_END
+    seen = {}
+    for mod, kind, lo, hi in flat:
+        if kind not in ('site', 'free'):
+            continue
+        for off in range(lo + (-lo % 4), hi - 3, 4):
+            word = struct.unpack_from('>I', out_img, off)[0]
+            if lo_r <= word & ~0x20000000 < hi_r and out_img[off:off + 4] != stock_img[off:off + 4]:
+                seen.setdefault(off, (mod, off, word))      # a shared trampoline is declared by each hook
+    found = [seen[off] for off in sorted(seen)]
+    if not found:
+        return
+    try:
+        payload = c850loader.installed(out_img)
+    except c850loader.LoaderError:
+        payload = None
+    end = c850loader.PAYLOAD + len(payload) if payload is not None else None
+    bad = [(mod, off, word) for mod, off, word in found
+           if end is None or not c850loader.PAYLOAD <= word & ~0x20000000 < end]
+    for mod, off, word in bad[:SHOWN]:
+        rep.fail('main: %s writes %#x at %#x, which points into the loader region but %s'
+                 % (mod, word, 0x0C000000 + off,
+                    'no loader is installed' if end is None else 'outside the %d-byte payload' % len(payload)))
+    if not bad:
+        rep.ok('main: %d written words call into the payload, all inside the %d bytes the loader copies to %#x'
+               % (len(found), len(payload), c850loader.PAYLOAD))
 
 
 def check_loader(target, stock_img, out_img, flat, rep):
@@ -926,7 +998,7 @@ def identify(data):
             data[c850_repack.LABEL_OFF:c850_repack.LABEL_OFF + 12] == b'CDJ-850 MAIN'):
         lbl = data[c850_repack.LABEL_OFF:c850_repack.PACKED_OFF].decode('latin1', errors='replace')
         m = re.search(r'(\d+\.\d+)', lbl)
-        return 'cdj850', 'MAIN', (m.group(1) if m else None)
+        return 'cdj850', 'MAIN', (c850_repack.base_version(m.group(1)) if m else None)
     sizes, pos = modelfw.parse_manifest(data)
     labels, at = [], pos
     for size in sizes or [len(data)]:

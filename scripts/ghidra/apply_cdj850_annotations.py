@@ -11,25 +11,32 @@ import pyghidra
 def apply_annotations(program, annotations):
     from ghidra.app.cmd.disassemble import DisassembleCommand
     from ghidra.app.cmd.function import CreateFunctionCmd
+    from ghidra.program.model.data import Undefined
     from ghidra.program.model.listing import CommentType
     from ghidra.program.model.symbol import SourceType
 
-    def mapped_address(value):
+    def annotation_address(value, *, require_memory=True):
         address = program.getAddressFactory().getAddress(value)
-        if address is None or not program.getMemory().contains(address):
+        if address is None or not address.isMemoryAddress():
+            raise ValueError(f"Invalid annotation address {value}")
+        if require_memory and not program.getMemory().contains(address):
             raise ValueError(f"Annotation address {value} is outside mapped memory")
         return address
 
     listing = program.getListing()
     manager = program.getFunctionManager()
+    symbols = program.getSymbolTable()
     with pyghidra.transaction(program, "Apply CDJ-850 annotations"):
         for entry in annotations["functions"]:
-            address = mapped_address(entry["address"])
+            address = annotation_address(entry["address"])
             function = manager.getFunctionAt(address)
             if function is None:
                 if listing.getInstructionAt(address) is None:
+                    data = listing.getDefinedDataContaining(address)
+                    if data is not None and Undefined.isUndefined(data.getDataType()):
+                        listing.clearCodeUnits(data.getMinAddress(), data.getMaxAddress(), False)
                     command = DisassembleCommand(address, None, True)
-                    if not command.applyTo(program):
+                    if not command.applyTo(program) or listing.getInstructionAt(address) is None:
                         raise ValueError(f"Could not disassemble at {address}: {command.getStatusMsg()}")
                 command = CreateFunctionCmd(address)
                 if not command.applyTo(program):
@@ -41,8 +48,14 @@ def apply_annotations(program, annotations):
             ):
                 function.setName(entry["name"], SourceType.USER_DEFINED)
 
+        for entry in annotations.get("labels", []):
+            # Raw imports need no extra memory blocks to name documented RAM locations.
+            address = annotation_address(entry["address"], require_memory=False)
+            if symbols.getGlobalSymbol(entry["name"], address) is None:
+                symbols.createLabel(address, entry["name"], SourceType.USER_DEFINED)
+
         for entry in annotations["comments"]:
-            address = mapped_address(entry["address"])
+            address = annotation_address(entry["address"])
             kind = CommentType.valueOf(entry["type"])
             if listing.getComment(kind, address) != entry["text"]:
                 listing.setComment(address, kind, entry["text"])
@@ -89,8 +102,9 @@ def main():
     except (FileNotFoundError, ValueError) as error:
         parser.exit(1, f"{error}\n")
 
-    print(f"{name}: applied {len(entry['functions'])} function names "
-          f"and {len(entry['comments'])} comments to {args.program}.")
+    print(f"{name}: applied {len(entry['functions'])} function names, "
+          f"{len(entry.get('labels', []))} labels, and {len(entry['comments'])} "
+          f"comments to {args.program}.")
 
 
 if __name__ == "__main__":

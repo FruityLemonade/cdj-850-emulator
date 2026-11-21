@@ -9,7 +9,12 @@ guard words.
 | knob | values |
 |---|---|
 | `CDJ_MAIN_LOADER` | `1` on, `0` off (default) |
-| `CDJ850_LOADER_PAYLOAD` | path of the payload file (raw bytes, run from `0x0DE00020`); unset = no payload |
+| `CDJ850_LOADER_PAYLOAD` | path of the payload file (raw bytes, run from `0x0DE00020`); unset = no payload. Used only when no named mod brings payload sources; with them it must equal the built payload or the loader is refused |
+
+**Automatic use.** A mod that ships payload sources (`mods/<mod>/cdj850/payload/*.c|.s|.S`, see
+`mods/payloadbuild.py` and section 8.4 of the modding reference) does not need this mod named:
+`patch_main.py` and `patch_update.py` build the payload of every such mod named, add `loader`
+themselves and hand it the built image. Its hooks and pool redirects call the payload's symbols.
 
 Firmware: CDJ-850 MAIN 1.13 only. The engine is `mods/c850loader.py`; the
 RAM map behind it is in [the modding reference](../../docs/cdj850-modding.md)
@@ -48,7 +53,13 @@ emulator, dump the region with the QEMU monitor
 python3 mods/c850loader.py ram region.bin
 ```
 
-This reports a guard word or payload that has changed.
+This reports a guard word or payload that has changed. A payload with
+`.data` or `.bss` (such as `payload_demo`'s counters) changes its own bytes
+once it runs, so its sum no longer matches after that; the guards still do.
+
+The stub needs no cache maintenance: it writes through the uncached mirror,
+the bootloader flushed both caches when it enabled them, and nothing runs
+from or caches the region before the stub (modding reference, section 8.4).
 
 ## Building
 

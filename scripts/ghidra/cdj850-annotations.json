@@ -10,13 +10,95 @@
         {
           "address": "00000100",
           "name": "reset_entry"
+        },
+        {
+          "address": "00000544",
+          "name": "cache_flush_enable"
+        },
+        {
+          "address": "00000578",
+          "name": "icache_invalidate_range"
+        },
+        {
+          "address": "00000582",
+          "name": "ocache_purge_range"
+        },
+        {
+          "address": "0000058c",
+          "name": "cache_range_assoc_body"
+        },
+        {
+          "address": "00010000",
+          "name": "boot_lzss_unpack"
+        },
+        {
+          "address": "000100b2",
+          "name": "boot_sum16"
+        },
+        {
+          "address": "00010160",
+          "name": "boot_stage2_entry"
         }
       ],
       "comments": [
         {
           "address": "000004c4",
           "type": "PLATE",
-          "text": "Stage-2 copy: 0x7F words from flash 0x10000 to 0x0DDEFA20. Stage 2: check sum16(0x60020..0x60024+len)==BE16 trailer, LZSS to 0x0C000000; else same for recovery image at 0x20000; else hang."
+          "text": "Reset copies 0x7F longwords of stage 2 from NOR 0x00010000 to SDRAM 0x0DDEFA20, then jumps to the SDRAM copy. The stage-2 routines are annotated at their NOR source addresses."
+        },
+        {
+          "address": "00000544",
+          "type": "PLATE",
+          "text": "Runs from its on-chip RAM copy at 0xFFF80400 (once per boot in the emulator). CCR1 (0xFFFC1000) = 0x808 (ICF|OCF: drop every line of both caches, no write-back) and read back, then 0x101 (ICE|OCE, WT=0: write-back operand cache) and read back, as SH7263 manual 8.2.1 asks of code that changes CCR1. The only CCR1 writer in boot and MAIN."
+        },
+        {
+          "address": "00000578",
+          "type": "PLATE",
+          "text": "icache_invalidate_range(r4 = start, r5 = length): pushes PR and r0-r7, r3 = 0xF0000008 (instruction-cache address array, A = 1) and runs the shared body at 0x58C. The boot calls it through its on-chip RAM copy at 0xFFF80434."
+        },
+        {
+          "address": "00000582",
+          "type": "PLATE",
+          "text": "ocache_purge_range(r4 = start, r5 = length): as 0x578 with r3 = 0xF0800008 (operand-cache address array, A = 1). Writing V = 0 associatively makes the chip write a dirty line back before dropping it (SH7263 manual 8.4.3), so this is write-back plus invalidate."
+        },
+        {
+          "address": "0000058c",
+          "type": "PLATE",
+          "text": "Shared body of 0x578/0x582 (bsr only to get PC into PR). If PR is in cache-enabled space (PR & 0xE0000000 == 0) it continues at 0x1FF80456, the on-chip RAM copy of 0x59A, because memory-mapped cache accesses must run from cache-disabled space (manual 8.4.4). Then, for start in cache-enabled space, for each 16-byte line from start & ~15 to (start + length - 1) & ~15 it stores addr & 0x1FFFF800 (tag, U = V = 0) to r3 | (addr & 0x7F0); restores r0-r7 and PR, rts/n."
+        },
+        {
+          "address": "00010000",
+          "type": "PLATE",
+          "text": "Okumura LZSS decoder. The 4096-byte history ring starts with 4078 spaces and its write cursor at 4078. MAIN and recovery both unpack to 0x0C000000."
+        },
+        {
+          "address": "000100b2",
+          "type": "PLATE",
+          "text": "Plain byte sum truncated to 16 bits. Covers the four-byte big-endian length followed by the packed stream, stopping before the big-endian checksum trailer."
+        },
+        {
+          "address": "00010160",
+          "type": "PLATE",
+          "text": "Validate the packed MAIN block at 0x00060020, unpack it to 0x0C000000 and enter it. On mismatch, try the packed recovery block at 0x00020000 with the same decoder. Hang if both checks fail."
+        },
+        {
+          "address": "00020000",
+          "type": "PLATE",
+          "text": "Packed fallback block. Big-endian length 0x01EC37, stream at 0x00020004, then big-endian sum16 0x7079 in stock v1.13. The unpacked recovery program runs at 0x0C000000."
+        }
+      ],
+      "labels": [
+        {
+          "address": "00020000",
+          "name": "packed_recovery_length"
+        },
+        {
+          "address": "00020004",
+          "name": "packed_recovery_stream"
+        },
+        {
+          "address": "0ddefa20",
+          "name": "boot_stage2_runtime"
         }
       ]
     },
@@ -31,7 +113,13 @@
           "name": "reset_entry"
         }
       ],
-      "comments": []
+      "comments": [
+        {
+          "address": "P:000000",
+          "type": "PLATE",
+          "text": "SHI boot segment 1, 9 P words. Sets up the PLL and clock, then jumps to the DSP bootstrap ROM at P:$FF0000."
+        }
+      ]
     },
     "dsp_seg2_stage2.bin": {
       "sha256": "fbda6bf53c50cb9ab4af98b45142e7474d923ec74796cc9a82d6b5954683ae2c",
@@ -44,7 +132,13 @@
           "name": "reset_entry"
         }
       ],
-      "comments": []
+      "comments": [
+        {
+          "address": "P:000000",
+          "type": "PLATE",
+          "text": "SHI boot segment 2, 82 P words. Performs secondary initialization, then jumps to the DSP bootstrap ROM at P:$FF0000."
+        }
+      ]
     },
     "dsp_seg3_stage3.bin": {
       "sha256": "46f96419392aa154c964b97feba497af4f559f2f2695ac188f16983bbc8eb3d5",
@@ -57,15 +151,124 @@
           "name": "reset_entry"
         }
       ],
-      "comments": []
+      "comments": [
+        {
+          "address": "P:000000",
+          "type": "PLATE",
+          "text": "SHI boot segment 3, 896 P words. Sets up X/Y data tables and audio ring descriptors, then jumps to the DSP bootstrap ROM at P:$FF0000."
+        }
+      ]
     },
     "dsp_seg4_app.bin": {
       "sha256": "314deeef47ccad1414e6a8ec1fe787328a96a27b55b0b5868dc098127cc07026",
       "language": "DSP56300:LE:24:default",
       "compiler": "default",
       "load_address": "P:000000",
-      "functions": [],
-      "comments": []
+      "functions": [
+        {
+          "address": "P:000100",
+          "name": "dsp_audio_main"
+        },
+        {
+          "address": "P:0001fc",
+          "name": "dsp_request_pcm_block"
+        },
+        {
+          "address": "P:0002b9",
+          "name": "dsp_transfer_rx_to_sample_ring"
+        },
+        {
+          "address": "P:0003bb",
+          "name": "dsp_esai_rx_isr"
+        },
+        {
+          "address": "P:00043e",
+          "name": "dsp_esai_tx_isr"
+        },
+        {
+          "address": "P:000731",
+          "name": "dsp_render_audio_block"
+        },
+        {
+          "address": "P:000c44",
+          "name": "dsp_write_shi_reply"
+        }
+      ],
+      "comments": [
+        {
+          "address": "P:000000",
+          "type": "PLATE",
+          "text": "SHI boot segment 4, 3824 P words. Reset vectors into the runtime audio application, using the X/Y tables populated by segment 3."
+        },
+        {
+          "address": "P:00011e",
+          "type": "PRE",
+          "text": "Poll HCSR.HRNE and read a 24-bit SHI word from HRX. Word 0 has bit 23 set and is staged in X:$25. Word 1 has bit 23 clear and supplies speed. Word 0 bit 15 is HOLD and bit 10 is reverse."
+        },
+        {
+          "address": "P:000197",
+          "type": "PRE",
+          "text": "X:$1E holds target speed and X:$1F holds active speed. HOLD permits an immediate update at P:$1E2. The audio renderer normally ramps active speed toward the target."
+        },
+        {
+          "address": "P:0001ee",
+          "type": "PRE",
+          "text": "Runtime service loop calls the PCM request, ring transfer, audio render and SHI reply routines as their ready and mode flags allow."
+        },
+        {
+          "address": "P:0001fc",
+          "type": "PLATE",
+          "text": "With PLAY on PF10 high and RX fill below threshold, enables ESAI receive IRQ and pulls PE4/DSPDREQ low to request the next PCM block from MAIN."
+        },
+        {
+          "address": "P:0002b9",
+          "type": "PLATE",
+          "text": "Transfers samples from the ESAI RX ring Y:$15000..$157FF (read index X:$01) into the main sample ring X:$10000..$11FFF (write index X:$03)."
+        },
+        {
+          "address": "P:0003bb",
+          "type": "PLATE",
+          "text": "ESAI RX handler. Recognizes right/left block headers $CE5C00/$CA5A00 and writes PCM to Y:$15000..$157FF using index X:$02. Tracks the block with an 84-state LFSR."
+        },
+        {
+          "address": "P:00043e",
+          "type": "PLATE",
+          "text": "ESAI TX handler. Drains the stereo output ring Y:$0E80..$0EBF using index X:$00 and feeds TX0 to the DAC."
+        },
+        {
+          "address": "P:000731",
+          "type": "PLATE",
+          "text": "Consumes the sample ring X:$10000..$11FFF via X:$04 and writes the ESAI TX ring via X:$06. Includes the speed ramp using X:$1E and X:$1F and the interpolation/time-stretch path."
+        },
+        {
+          "address": "P:000c44",
+          "type": "PLATE",
+          "text": "Builds the SHI reply and writes HTX when HCSR.HTDE is set. The normal speed reply has tag $C00000 and uses live DSP speed. Reply bit 21 echoes reverse."
+        },
+        {
+          "address": "P:000e3c",
+          "type": "PRE",
+          "text": "SHI-command reinitialization and ESAI RX enable path. The entry from P:$128 requires PF10 low, standby set, and command bits 3:2 both set."
+        }
+      ],
+      "labels": [
+        {
+          "address": "P:00011e",
+          "name": "dsp_poll_shi_command"
+        },
+        {
+          "address": "P:000197",
+          "name": "dsp_apply_shi_speed"
+        },
+        {
+          "address": "P:0001ee",
+          "name": "dsp_audio_service_loop"
+        },
+        {
+          "address": "P:000e3c",
+          "name": "dsp_reinit_esai_rx"
+        }
+      ]
     },
     "main_unpacked.bin": {
       "sha256": "26c8bfe933afc1e08a05dc65513303f1343a570d1e87f2734d60316e87c01591",
@@ -74,8 +277,132 @@
       "load_address": "0c000000",
       "functions": [
         {
+          "address": "0c000cc4",
+          "name": "wav_header_read"
+        },
+        {
+          "address": "0c00119e",
+          "name": "grid_page_window"
+        },
+        {
+          "address": "0c0012e4",
+          "name": "grid_find_beat"
+        },
+        {
+          "address": "0c003e56",
+          "name": "frames_to_minutes_seconds_frames"
+        },
+        {
+          "address": "0c00585a",
+          "name": "loop_in_frame_get"
+        },
+        {
+          "address": "0c00586c",
+          "name": "sector_to_track"
+        },
+        {
+          "address": "0c0059d2",
+          "name": "pcm_next_feed_sector"
+        },
+        {
+          "address": "0c005aa8",
+          "name": "pcm_align_read_position"
+        },
+        {
+          "address": "0c005b14",
+          "name": "dsp_stream_start"
+        },
+        {
+          "address": "0c005bb6",
+          "name": "dsp_stream_stop"
+        },
+        {
+          "address": "0c005c44",
+          "name": "pcm_set_read_sector"
+        },
+        {
+          "address": "0c005d54",
+          "name": "dsp_build_runtime_shi_command"
+        },
+        {
+          "address": "0c00851e",
+          "name": "ring_sector_to_frame"
+        },
+        {
+          "address": "0c009e5a",
+          "name": "audio_apply_loop_out"
+        },
+        {
+          "address": "0c014fc8",
+          "name": "DjControlTask"
+        },
+        {
+          "address": "0c015b18",
+          "name": "audio_clear_loop_segments"
+        },
+        {
+          "address": "0c015bd4",
+          "name": "audio_build_loop_segments"
+        },
+        {
+          "address": "0c016020",
+          "name": "audio_set_dac_level"
+        },
+        {
+          "address": "0c018f44",
+          "name": "usb_host_irq_dispatch"
+        },
+        {
+          "address": "0c019006",
+          "name": "usb_dma_start"
+        },
+        {
+          "address": "0c019878",
+          "name": "usb_host_handle_interrupt"
+        },
+        {
+          "address": "0c040c90",
+          "name": "usb_classify_dir_entry"
+        },
+        {
+          "address": "0c057ce4",
+          "name": "usb_audio_open"
+        },
+        {
+          "address": "0c058ff2",
+          "name": "wav_pcm_read"
+        },
+        {
           "address": "0c061454",
           "name": "DisplayTask"
+        },
+        {
+          "address": "0c062ffc",
+          "name": "display_stage_navigation_leds"
+        },
+        {
+          "address": "0c0637cc",
+          "name": "display_stage_playing_address"
+        },
+        {
+          "address": "0c063fd6",
+          "name": "display_stage_pitch"
+        },
+        {
+          "address": "0c064118",
+          "name": "display_stage_bpm"
+        },
+        {
+          "address": "0c0642cc",
+          "name": "display_stage_active_cue_column"
+        },
+        {
+          "address": "0c0644d4",
+          "name": "display_stage_track_and_time"
+        },
+        {
+          "address": "0c065d9e",
+          "name": "panel_tx_build_status_pages"
         },
         {
           "address": "0c065ed0",
@@ -90,12 +417,44 @@
           "name": "display_build_2"
         },
         {
+          "address": "0c0662ae",
+          "name": "panel_tx_waveform"
+        },
+        {
           "address": "0c066338",
           "name": "display_build_3"
         },
         {
+          "address": "0c0664a8",
+          "name": "panel_tx_saved_cues"
+        },
+        {
+          "address": "0c06664e",
+          "name": "display_pack_saved_cues"
+        },
+        {
+          "address": "0c073788",
+          "name": "beat_grid_set_tempo"
+        },
+        {
+          "address": "0c073954",
+          "name": "track_length_slot"
+        },
+        {
           "address": "0c075e40",
           "name": "ssi_init_0"
+        },
+        {
+          "address": "0c076444",
+          "name": "ssi_dma_dei2_isr"
+        },
+        {
+          "address": "0c076474",
+          "name": "ssi_prepare_pcm_block"
+        },
+        {
+          "address": "0c076624",
+          "name": "irq7_dspdreq_isr"
         },
         {
           "address": "0c077570",
@@ -110,12 +469,244 @@
           "name": "ssu0_16bit_cmd"
         },
         {
+          "address": "0c0894cc",
+          "name": "alloc_zeroed"
+        },
+        {
+          "address": "0c08e842",
+          "name": "flash_erase_sector"
+        },
+        {
+          "address": "0c08e8ae",
+          "name": "flash_program_word"
+        },
+        {
+          "address": "0c08e92c",
+          "name": "FlashTask"
+        },
+        {
+          "address": "0c08eb80",
+          "name": "flash_dispatch_request"
+        },
+        {
+          "address": "0c08ebf0",
+          "name": "flash_verify_sector"
+        },
+        {
+          "address": "0c08ec44",
+          "name": "upd_flash_write"
+        },
+        {
+          "address": "0c08efe0",
+          "name": "settings_get"
+        },
+        {
+          "address": "0c08f294",
+          "name": "settings_load_factory_defaults"
+        },
+        {
+          "address": "0c08f3c2",
+          "name": "upd_load_from_usb"
+        },
+        {
           "address": "0c08f450",
           "name": "upd_load_from_cd"
         },
         {
+          "address": "0c0b8d68",
+          "name": "version_label_init"
+        },
+        {
+          "address": "0c0b8ddc",
+          "name": "initTask"
+        },
+        {
+          "address": "0c0b8ea2",
+          "name": "idleTASK"
+        },
+        {
+          "address": "0c0b92cc",
+          "name": "tick_1ms"
+        },
+        {
+          "address": "0c0be3e4",
+          "name": "wav_pcm_read"
+        },
+        {
+          "address": "0c0c1442",
+          "name": "anlz_add_cue"
+        },
+        {
+          "address": "0c0c166c",
+          "name": "anlz_set_hot_cue"
+        },
+        {
+          "address": "0c0c5960",
+          "name": "anlz_write_section"
+        },
+        {
+          "address": "0c0c5eec",
+          "name": "anlz_save"
+        },
+        {
+          "address": "0c0c8afa",
+          "name": "tslp_tsk"
+        },
+        {
+          "address": "0c0c9ca6",
+          "name": "set_flg"
+        },
+        {
+          "address": "0c0c9e7c",
+          "name": "wai_flg"
+        },
+        {
+          "address": "0c0cb532",
+          "name": "snd_mbx"
+        },
+        {
+          "address": "0c0cb640",
+          "name": "prcv_mbx"
+        },
+        {
+          "address": "0c0cddca",
+          "name": "rtos_init_objects"
+        },
+        {
+          "address": "0c0ce17c",
+          "name": "rtos_get_message_block"
+        },
+        {
+          "address": "0c0d1c42",
+          "name": "sync_tempo_range_check"
+        },
+        {
+          "address": "0c0d275a",
+          "name": "cue_select_from_list"
+        },
+        {
+          "address": "0c0d2bc8",
+          "name": "memory_cue_add"
+        },
+        {
+          "address": "0c0d3b1a",
+          "name": "cue_call_prev_next"
+        },
+        {
+          "address": "0c0d4172",
+          "name": "memory_button"
+        },
+        {
+          "address": "0c0d5912",
+          "name": "show_popup_message"
+        },
+        {
+          "address": "0c0d59b8",
+          "name": "player_compute_dsp_speed_and_hold"
+        },
+        {
           "address": "0c0d610c",
           "name": "panel_unpack_buttons"
+        },
+        {
+          "address": "0c0d7464",
+          "name": "audio_send_cmd"
+        },
+        {
+          "address": "0c0d7800",
+          "name": "player_key_dispatch_by_state"
+        },
+        {
+          "address": "0c0d8d78",
+          "name": "player_handle_tempo_and_time_buttons"
+        },
+        {
+          "address": "0c0d9b44",
+          "name": "tempo_fader_to_pitch"
+        },
+        {
+          "address": "0c0dc996",
+          "name": "player_handle_cue"
+        },
+        {
+          "address": "0c0dd978",
+          "name": "player_tick_jog"
+        },
+        {
+          "address": "0c0deb50",
+          "name": "player_handle_play_pause"
+        },
+        {
+          "address": "0c0e0f34",
+          "name": "keys_state4_looping"
+        },
+        {
+          "address": "0c0e49cc",
+          "name": "player_keys_latch_prev"
+        },
+        {
+          "address": "0c0e5590",
+          "name": "beat_loop_out_from_bpm"
+        },
+        {
+          "address": "0c0e570a",
+          "name": "auto_beat_loop_set"
+        },
+        {
+          "address": "0c0e827e",
+          "name": "player_select_disc"
+        },
+        {
+          "address": "0c0e831a",
+          "name": "player_select_usb"
+        },
+        {
+          "address": "0c0e843c",
+          "name": "player_select_pc"
+        },
+        {
+          "address": "0c0ec73c",
+          "name": "player_state_tick"
+        },
+        {
+          "address": "0c0eccb4",
+          "name": "panel_keys_to_internal_words"
+        },
+        {
+          "address": "0c0ed178",
+          "name": "playertask"
+        },
+        {
+          "address": "0c0eefb0",
+          "name": "player_enter_usb_source"
+        },
+        {
+          "address": "0c0ef844",
+          "name": "auto_standby_seconds"
+        },
+        {
+          "address": "0c0ef8c8",
+          "name": "power_tick_1ms"
+        },
+        {
+          "address": "0c0ef8ec",
+          "name": "power_state_tick"
+        },
+        {
+          "address": "0c0efb9a",
+          "name": "pcm_ring_write"
+        },
+        {
+          "address": "0c0f01dc",
+          "name": "audio_build_loop_in_record"
+        },
+        {
+          "address": "0c0f6e6c",
+          "name": "player_tick_usb_playback"
+        },
+        {
+          "address": "0c0f95e6",
+          "name": "pcm_rate_copy"
         },
         {
           "address": "0c0f9ee8",
@@ -138,6 +729,14 @@
           "name": "txi1_panel_isr"
         },
         {
+          "address": "0c0fa954",
+          "name": "serialTask"
+        },
+        {
+          "address": "0c0fb97e",
+          "name": "ocache_purge_range"
+        },
+        {
           "address": "0c0fc170",
           "name": "loader_init"
         },
@@ -154,6 +753,10 @@
           "name": "cd_task_tick"
         },
         {
+          "address": "0c105004",
+          "name": "irq1_servo_busy_isr"
+        },
+        {
           "address": "0c105da4",
           "name": "loader_insertion_detect"
         },
@@ -166,25 +769,1159 @@
           "name": "loader_set_pwm"
         },
         {
+          "address": "0c107484",
+          "name": "irq2_spindle_flag_isr"
+        },
+        {
+          "address": "0c10b20c",
+          "name": "usbi_mode_dispatch_isr"
+        },
+        {
+          "address": "0c10b564",
+          "name": "usbTask"
+        },
+        {
           "address": "0c10dcea",
           "name": "usb_cdetflg_poll"
+        },
+        {
+          "address": "0c10e246",
+          "name": "usb_file_close"
+        },
+        {
+          "address": "0c10e7c8",
+          "name": "usb_file_size"
+        },
+        {
+          "address": "0c1100b8",
+          "name": "memcpy"
+        },
+        {
+          "address": "0c1105d4",
+          "name": "memcpy_block32"
+        },
+        {
+          "address": "0c11066c",
+          "name": "memcpy_aligned"
+        },
+        {
+          "address": "0c1106ec",
+          "name": "memset"
         }
       ],
       "comments": [
         {
+          "address": "0c000cc4",
+          "type": "PLATE",
+          "text": "Reads the WAV header of a USB audio file (the flac mod redirects pool 0x0C08CBF0)."
+        },
+        {
+          "address": "0c00119e",
+          "type": "PLATE",
+          "text": "grid_page_window(ctx, file_id): pages the beat-grid window that holds the wanted beat into the grid context 0x0C9D24FC (500 beats per window)."
+        },
+        {
+          "address": "0c0012e4",
+          "type": "PLATE",
+          "text": "grid_find_beat(ctx, time_ms, mode): index of the beat in the current grid window, -1 on error. Entries at ctx+0x80 are {u16 beat_in_bar, u16 bpm*100, u32 time_ms}. Only caller: the beat-grid tempo setter 0x0C073788."
+        },
+        {
+          "address": "0c00585a",
+          "type": "PLATE",
+          "text": "Returns the loop-in frame *0x0C7F6498."
+        },
+        {
+          "address": "0c00586c",
+          "type": "PLATE",
+          "text": "Track of a ring sector."
+        },
+        {
+          "address": "0c0059d2",
+          "type": "PLATE",
+          "text": "The next ring sector the PCM feeder plays. Called just before loop sends so 0x0C7F6468 holds the loop-in sector (auto loop pool 0x0C0E5D30, LOOP IN pool 0x0C0DFA80, refresh after cmd 6 pool 0x0C0E5FD0)."
+        },
+        {
+          "address": "0c005b14",
+          "type": "PLATE",
+          "text": "Clear the pending IRQ7 flag, enable DSPDREQ interrupt priority 7, and drive MAIN PF16 (PLAY) high toward DSP PF10."
+        },
+        {
+          "address": "0c005bb6",
+          "type": "PLATE",
+          "text": "Drive MAIN PF16 (PLAY) low to stop DSP requests for PCM blocks."
+        },
+        {
+          "address": "0c005c44",
+          "type": "PLATE",
+          "text": "Sets the PCM read pointer to 0x0C1E8E5C + sector_index * 0x930. The 0x960-sector ring holds interleaved big-endian 16-bit stereo."
+        },
+        {
+          "address": "0c005d54",
+          "type": "PLATE",
+          "text": "Pack the runtime SHI command as two big-endian 24-bit words. Word 0 has bit 23 set, bit 15 HOLD and bit 10 reverse. Word 1 holds the speed (0x080000 = 1x), with bit 22 selecting Master Tempo."
+        },
+        {
+          "address": "0c00851e",
+          "type": "PLATE",
+          "text": "ring_sector_to_frame(ring_sector): play frame (1/75 s) of a PCM ring sector."
+        },
+        {
+          "address": "0c014fc8",
+          "type": "PLATE",
+          "text": "Entry named DjControlTask by the 20-byte descriptor at 0x0C14F7CC. Waits on flag 2, reads audio commands from mailbox 2, and runs the audio state machine."
+        },
+        {
+          "address": "0c019006",
+          "type": "PLATE",
+          "text": "usb_dma_start(buf, len, to_memory, chan 0..1, fifo): rejects a buffer not longword-aligned, purges the operand cache over buf & ~15 .. +((len + 15) & ~15) + 16 with ocache_purge_range (0x0C0FB97E), then writes the channel's SAR/DAR/DMATCR (len / 4 longwords) and CHCR = 0x4815 (to memory: DM increment) or 0x1815 (from memory: SM increment), RS = 1000 (DMARS), TS longword, IE, DE. The purge before arming is what keeps USB DMA coherent with the write-back cache [static + emu: cache model, 0 findings over 7404 transfers]."
+        },
+        {
+          "address": "0c01b31e",
+          "type": "PLATE",
+          "text": "Start of the documented USB host control-transfer path. SUREQ starts setup, default control pipe BRDY handles the data packets, and a control read sends its zero-length OUT status through pipe 5."
+        },
+        {
+          "address": "0c040c90",
+          "type": "PLATE",
+          "text": "Directory entry classifier (drive, dir entry, mode, flags) -> file type; upper-cases the extension. Called by bsr from 0x0C040ACE and 0x0C0408A0 (no pool word). The flac mod redirects its entry."
+        },
+        {
+          "address": "0c057ce4",
+          "type": "PLATE",
+          "text": "Opens a USB audio file (the flac mod redirects pools 0x0C0BE79C and 0x0C0BED94)."
+        },
+        {
+          "address": "0c058ff2",
+          "type": "PLATE",
+          "text": "USB WAV PCM read: takes the next chunk of the file buffer (0x0C0592A6) and writes it to the output buffer: 24-bit (format byte +0x55 = 0x18) reduced to 16-bit samples bytewise, 16-bit copied with memcpy (mono duplicated to both channels), then every 16-bit sample byte-swapped in place (little-endian WAV to big-endian). The output buffer is in the uncached SDRAM mirror, so the swap is one uncached read and one uncached write per sample: ~5.5M of each, about 80% of all uncached accesses in a USB play run, which the emulator cannot show [static + emu: call trace, cache model]."
+        },
+        {
+          "address": "0c061454",
+          "type": "PLATE",
+          "text": "MAIN display task. Stages status, text, waveform, and saved-cue data for the SCIF1 transmit path to the panel CPU. See the v1.13 SCIF1 replay and display integration plan."
+        },
+        {
+          "address": "0c062ffc",
+          "type": "PLATE",
+          "text": "Stages navigation indications from 0x0CE6D0FD. TX status 0x02 byte 7 bits 4..7 are BROWSE, TAG LIST, INFO and MENU/UTILITY. Low four bits carry beat-select LEDs."
+        },
+        {
+          "address": "0c0637cc",
+          "type": "PLATE",
+          "text": "Stages playing-address column count (0..100) for status 0x02 byte 4. Byte 9 bits 1, 0, and 2 carry the slow-warning, fast-warning, and lit-phase flags. Byte 13 bit 0 selects REMAIN."
+        },
+        {
+          "address": "0c063fd6",
+          "type": "PLATE",
+          "text": "Stages unsigned pitch magnitude, sign, decimal format and range. TX 0x01 bytes 10..11 carry the magnitude. TX 0x02 bytes 11, 12 and 14 carry sign, precision and range."
+        },
+        {
+          "address": "0c06405a",
+          "type": "PRE",
+          "text": "Stages MASTER TEMPO VFD legend at 0x0C9D0AF0 bit 7, transmitted in status 0x02 byte 11. The button LED uses a separate field."
+        },
+        {
+          "address": "0c064118",
+          "type": "PLATE",
+          "text": "Stages whole-number BPM. 0xFFFF denotes unavailable. The value is sent big-endian in status 0x01 bytes 8..9."
+        },
+        {
+          "address": "0c0642aa",
+          "type": "PRE",
+          "text": "Hook span 0x0C0642AA..0x0C0642B8 (display_stage_bpm tail), shared by bpm999, bpm_decimals, bpm_probe, hot_cues and payload_demo."
+        },
+        {
+          "address": "0c0642c6",
+          "type": "PRE",
+          "text": "Stages A.CUE at 0x0C9D0AF1 bit 0, transmitted in status 0x02 byte 12."
+        },
+        {
+          "address": "0c0642cc",
+          "type": "PLATE",
+          "text": "Stages the current cue/loop-in column for status 0x02 byte 10. Values 1..100 select a column and zero leaves the marker off."
+        },
+        {
+          "address": "0c0644d4",
+          "type": "PLATE",
+          "text": "Stages binary track number and minute/second/frame digits. Track values 0..99 are numeric, 0xBB is overflow and 0xFF unavailable. M/S/F uses 75 frames per second."
+        },
+        {
+          "address": "0c065d9e",
+          "type": "PLATE",
+          "text": "Build both 16-byte MAIN TX status pages. Page 0x01 (zero-based byte indices): bytes 1..3 are jog cue, flags and playhead, byte 4 is track number, bytes 5..7 are M/S/F, bytes 8..9 are BE BPM and bytes 10..11 are BE pitch magnitude. Page 0x02 begins at the tag store at 0x0C065DF6. Each page uses sum8ec at byte 15."
+        },
+        {
+          "address": "0c065db6",
+          "type": "EOL",
+          "text": "TX 0x01 byte 4 receives the binary track number."
+        },
+        {
+          "address": "0c065dba",
+          "type": "EOL",
+          "text": "TX 0x01 bytes 5..7 receive minutes, seconds and frames."
+        },
+        {
+          "address": "0c065dcc",
+          "type": "EOL",
+          "text": "TX 0x01 bytes 8..9 receive whole BPM, high byte first."
+        },
+        {
+          "address": "0c065ddc",
+          "type": "EOL",
+          "text": "TX 0x01 bytes 10..11 receive unsigned pitch magnitude, high byte first."
+        },
+        {
+          "address": "0c065df6",
+          "type": "PRE",
+          "text": "MAIN TX status page 0x02. Byte 4 is playing address, bytes 5..7 are LEDs, byte 8 is standby status, byte 9 is warning/phase, byte 10 is active cue, bytes 11..12 carry VFD legends and pitch format, byte 13 bit 0 is REMAIN, and byte 14 holds pitch-range flags. Byte 15 is sum8ec."
+        },
+        {
+          "address": "0c066046",
+          "type": "PLATE",
+          "text": "Builds SCIF1 text header 0x80 and numbered text chunks 0x81 onward. Header byte 1 is sequence, byte 2 is mode (0x01 browse, 0x07 dialog, 0x08 single message, 0x0A loaded). Each chunk carries bytes 1..14 of payload."
+        },
+        {
+          "address": "0c0660d4",
+          "type": "PLATE",
+          "text": "Serializes three counted text rows: tag, three attribute bytes, byte length, then text. Tag bits 1:0 identify rows 1..3 and bit 5 marks the selected browser row. In loaded mode 0x0A, row 2 attribute 0x07 identifies artist text. The long-title capture carries the full title and artist strings."
+        },
+        {
+          "address": "0c0662ae",
+          "type": "PLATE",
+          "text": "Packs 100 waveform samples from 0x0C9D1199 into frames 0x70..0x77. Data occupies 0x70 bytes 3..14, 0x71..0x76 bytes 1..14, and 0x77 bytes 1..4."
+        },
+        {
+          "address": "0c0664a8",
+          "type": "PLATE",
+          "text": "Sends SCIF1 page 0x60. Bytes 2..14 hold the MSB-first saved cue/loop bitmap. Status 0x02 byte 11 bit 4 carries the MEMORY legend."
+        },
+        {
+          "address": "0c06664e",
+          "type": "PLATE",
+          "text": "Normalizes saved cue and loop starts to columns 0..99 and packs their positions into the MSB-first bitmap for page 0x60."
+        },
+        {
+          "address": "0c073788",
+          "type": "PLATE",
+          "text": "Beat-grid tempo setter: only caller of grid_find_beat (pool 0x0C073830, loaded at 0x0C0737B8). Writes the base tempo 0x0C9D23EC, clamped by movi20 #0x708 (180.0) at 0x0C0737D6 (bpm999 raises it to 999.0)."
+        },
+        {
+          "address": "0c073830",
+          "type": "PRE",
+          "text": "Pool word -> grid_find_beat, loaded at 0x0C0737B8. Mod bpm_decimals redirects it."
+        },
+        {
+          "address": "0c073954",
+          "type": "PLATE",
+          "text": "Returns the track-length slot of a track; length = *(u32 *)(0x0CE59B58 + slot*0x3A4)."
+        },
+        {
+          "address": "0c076444",
+          "type": "PLATE",
+          "text": "SSI DMA channel 2 completion, DEI2 vector 116. Re-enables IRQ7/DSPDREQ priority after the paired SSI PCM transfer."
+        },
+        {
+          "address": "0c076474",
+          "type": "PLATE",
+          "text": "Builds two 45-longword SSI DMA buffers from interleaved PCM. Each carries leading zero, right/left header 0xCE5C0000/0xCA5A0000, 42 packed sample words and trailing zero."
+        },
+        {
+          "address": "0c076624",
+          "type": "PLATE",
+          "text": "IRQ7 vector 71, DSPDREQ on PE11. Masks IRQ7 while preparing PCM and arming DMAC ch1/ch2 for SSI0 right and SSI1 left."
+        },
+        {
+          "address": "0c077570",
+          "type": "PLATE",
+          "text": "Runtime full-duplex SHI exchange with the audio DSP over SSU0 using PF3/DSPCS. MAIN TX buffer 0x0C7F671B and RX buffer 0x0C7F6721 each hold two 24-bit words."
+        },
+        {
+          "address": "0c077c3c",
+          "type": "PLATE",
+          "text": "Upload four DSP56371 SHI bootstrap stages from 0x0C155B28. Each header has a 24-bit BE word count and P-RAM destination. Check the successive DSPDREQ levels 0, 1, 0, 1."
+        },
+        {
+          "address": "0c07800a",
+          "type": "PLATE",
+          "text": "16-bit SSU0 command to the PCM1742 DAC using PF7/DACCS."
+        },
+        {
+          "address": "0c0894cc",
+          "type": "PLATE",
+          "text": "alloc_zeroed(n): p = 0x0C088BC4(n) (allocator), memset(p, 0, n) if p != 0, return p. Over 200 call sites [static]."
+        },
+        {
           "address": "0c08e842",
           "type": "PLATE",
-          "text": "flash_erase_sector(addr): AMD CFI AA/55/80/AA/55/30 via 0x20000AAA/0x20000554 (uncached CS0). 0x0C08E8AE = flash_program_word(addr,data): AA/55/A0."
+          "text": "AMD CFI sector erase uses the uncached CS0 window. Poll flash RY/BY# on PC2 at 0xFFFE391E bit 2 after the operation."
+        },
+        {
+          "address": "0c08e8ae",
+          "type": "PLATE",
+          "text": "Programs one flash word through the uncached CS0 window and polls RY/BY# on PC2."
+        },
+        {
+          "address": "0c08e92c",
+          "type": "PLATE",
+          "text": "FlashTask entry from the descriptor at 0x0C15A36C. Receives flash requests and dispatches them through 0x0C08EB80."
         },
         {
           "address": "0c08ec44",
           "type": "PLATE",
-          "text": "upd_flash_write(mode): mode 5 USB = flash 0x0..0x3EFFFF (63x64KB, boot region included); mode 6 CD = 0x60000.. (57 sectors, skips same version). Per sector erase 0x0C08E842, program 0x0C08E8AE, verify 0x0C08EBF0. No checksum/label/model check."
+          "text": "Service-mode USB update was observed using mode 6. Mode 6 programs 57 sectors of 64 KiB at 0x00060000..0x003EFFFF and skips writing when the version matches. Mode 5 programs 63 sectors at 0x00000000..0x003EFFFF, including boot. The path that selects mode 5 remains unresolved. Both modes preserve the last 64 KiB settings sector. Erase, program and read-back verify per sector."
+        },
+        {
+          "address": "0c08efe0",
+          "type": "PLATE",
+          "text": "Reads user settings from the RAM copy at 0x0C9DA23C. Persistent settings live in NOR around 0x003F8000."
+        },
+        {
+          "address": "0c08f294",
+          "type": "PLATE",
+          "text": "Initialize factory defaults. Bit 7 of the settings byte at 0x0C9DA23C defaults to VINYL jog mode."
         },
         {
           "address": "0c08f3c2",
           "type": "PLATE",
-          "text": "upd_load_from_usb: sprintf(\"C:/C850MAIN.UPD\"), fill 4 MB buffer 0x0C1E8E5C with 0xFF, read file, flash-task mode 5. No content checks. (notes/cdj850-layout.md \"Update container rules\")"
+          "text": "Load C:/C850MAIN.UPD from USB into the 4 MiB buffer at 0x0C1E8E5C, prefilled with 0xFF. A state nibble selects flash-task mode 5 or 6. The service-mode USB path (USB SELECT + RELOOP at power-on) reached mode 6 in the v1.13 emulator trace."
+        },
+        {
+          "address": "0c08f450",
+          "type": "PLATE",
+          "text": "CD-side update loader. Reads the update through the CD sector path in 2048-byte sectors."
+        },
+        {
+          "address": "0c0b8d68",
+          "type": "PLATE",
+          "text": "At boot: memset 0x0CE6D242 (16 bytes), then sprintf the MAIN label at flash 0x060010 into it (1.13 stock, 0.13 for a patch_update.py build). The numeric version 113 at 0x0CE6D240 is a constant (0x0C0B8D86)."
+        },
+        {
+          "address": "0c0b92cc",
+          "type": "PLATE",
+          "text": "1 ms tick: increments 0x0CE49F54, then calls the power/standby part 0x0C0EF8C8 through pool 0x0C0B9310 (loaded at 0x0C0B92EA)."
+        },
+        {
+          "address": "0c0b9310",
+          "type": "PRE",
+          "text": "Pool word -> power_tick_1ms, loaded at 0x0C0B92EA. Mod payload_demo redirects it."
+        },
+        {
+          "address": "0c0be3e4",
+          "type": "PLATE",
+          "text": "Reads WAV PCM data from a USB audio file (the flac mod redirects pool 0x0C0585F4)."
+        },
+        {
+          "address": "0c0c1442",
+          "type": "PLATE",
+          "text": "anlz_add_cue(db, track key, rec, hot): adds a memory cue (hot = 0, from memory_cue_add) or hot cue (hot = 1, via 0x0C0C166C) to the ANLZ file and writes it (0x0C0C17E6 -> 0x0C0C5960 -> 0x0C0C5EEC)."
+        },
+        {
+          "address": "0c0c166c",
+          "type": "PLATE",
+          "text": "Fills hot-cue slot ctx + 0xF58 + n*0x38 (n = 1..3, tag PCPT, status 1) from the record, sets the PCOB count/length, then writes the section through pool 0x0C0C195C (0x0C0C5960)."
+        },
+        {
+          "address": "0c0c195c",
+          "type": "PRE",
+          "text": "Pool word -> anlz_write_section, read only at 0x0C0C17CE. Mod hot_cues (hot_cues_anlz) redirects it."
+        },
+        {
+          "address": "0c0c5960",
+          "type": "PLATE",
+          "text": "anlz_write_section(file, ctx, 3, buf): rewrites the ANLZ file from the hot-cue tag on (pool 0x0C0C195C, read only at 0x0C0C17CE)."
+        },
+        {
+          "address": "0c0c8afa",
+          "type": "PLATE",
+          "text": "RTOS: sleep the calling task with a timeout."
+        },
+        {
+          "address": "0c0c9ca6",
+          "type": "PLATE",
+          "text": "RTOS: set event flag bits (audio_send_cmd sets flag 2 after queueing)."
+        },
+        {
+          "address": "0c0c9e7c",
+          "type": "PLATE",
+          "text": "RTOS: wait on event flag (flag, pattern, mode, ..., timeout). DjControlTask waits on flag 2; playertask's loop waits at 0x0C0ED1B0 (pool 0x0C0ED244)."
+        },
+        {
+          "address": "0c0cb532",
+          "type": "PLATE",
+          "text": "RTOS: send to mailbox (audio_send_cmd queues on mailbox 2)."
+        },
+        {
+          "address": "0c0cb640",
+          "type": "PLATE",
+          "text": "RTOS polling receive from mailbox. DjControlTask uses mailbox 2 for audio commands."
+        },
+        {
+          "address": "0c0cddca",
+          "type": "PLATE",
+          "text": "Initialize RTOS kernel objects using SDRAM pool 1 at 0x0CEEFA20 and on-chip RAM pool 2 at 0xFFF86638."
+        },
+        {
+          "address": "0c0ce17c",
+          "type": "PLATE",
+          "text": "RTOS: wait for a free message block; the only place audio_send_cmd can block, before it queues."
+        },
+        {
+          "address": "0c0d1c42",
+          "type": "PLATE",
+          "text": "Base tempo outside 60.0..199.9 (999.0 with bpm999, constant at 0x0C0D1C80) stores 130.0 in the sync field."
+        },
+        {
+          "address": "0c0d275a",
+          "type": "PLATE",
+          "text": "cue_select_from_list(src, dir): picks the next/previous memory cue or loop and fills the 0x24-byte jump record 0x0CE65C0C and the cue frame 0x0CE6D158."
+        },
+        {
+          "address": "0c0d2bc8",
+          "type": "PLATE",
+          "text": "memory_cue_add(src, 1): USB branch builds the 0x24 record from the loop/cue records and calls 0x0C0C1442 (rec, 0) to add it to the ANLZ file, then inserts it into the runtime list 0x0CE649D4."
+        },
+        {
+          "address": "0c0d3b1a",
+          "type": "PLATE",
+          "text": "cue_call_prev_next(next): CALL< (0) / CALL> (1). The USB branches call cue_select_from_list through pools 0x0C0D41BC (read at 0x0C0D3F5C) and 0x0C0D3CC8 (read at 0x0C0D3B94), chosen by 0x0CE6D254."
+        },
+        {
+          "address": "0c0d3cc8",
+          "type": "PRE",
+          "text": "Pool word -> cue_select_from_list, read only at 0x0C0D3B94. Mod hot_cues (hot_cues_select2) redirects it."
+        },
+        {
+          "address": "0c0d4172",
+          "type": "PLATE",
+          "text": "MEMORY button: calls memory_cue_add on USB."
+        },
+        {
+          "address": "0c0d41bc",
+          "type": "PRE",
+          "text": "Pool word -> cue_select_from_list, read only at 0x0C0D3F5C. Mod hot_cues (hot_cues_select) redirects it."
+        },
+        {
+          "address": "0c0d5912",
+          "type": "PLATE",
+          "text": "Shows a popup on the dot-matrix display by message id (e.g. 0x1F, 0x32B, 0x312, 0x311, 0x314)."
+        },
+        {
+          "address": "0c0d59b8",
+          "type": "PLATE",
+          "text": "Compute the DSP target speed from the fader, range, jog bend and VINYL ramp state. Updates 0x0CE6C940 and the HOLD flag at 0x0CE6C938."
+        },
+        {
+          "address": "0c0d610c",
+          "type": "PLATE",
+          "text": "Unpack panel button state using the tables at 0x0C194EA4 and 0x0C194FD8. Panel RX 0x01 carries rotary, pitch and jog words with checksum at byte 15. RX 0x02 carries button banks and the VINYL pot with checksum at byte 12."
+        },
+        {
+          "address": "0c0d7464",
+          "type": "PLATE",
+          "text": "Format and send an audio command packet via RTOS mailbox 2."
+        },
+        {
+          "address": "0c0d7800",
+          "type": "PLATE",
+          "text": "Dispatches the key handlers by player state. State 4 (USB loop playing) tail-jumps through pool 0x0C0D7B98 (read only at 0x0C0D79A6) to keys_state4_looping."
+        },
+        {
+          "address": "0c0d7b98",
+          "type": "PRE",
+          "text": "Pool word -> keys_state4_looping, read only by the tail jump at 0x0C0D79A6. Mods loop_resize and quant_loops share one redirect to the payload's c850_loop_tick."
+        },
+        {
+          "address": "0c0d8d78",
+          "type": "PLATE",
+          "text": "Handles TEMPO range, MASTER TEMPO and TIME MODE/AUTO CUE button actions. Changing range or MT forces a speed/flag refresh even when the fader is unchanged."
+        },
+        {
+          "address": "0c0d8dc2",
+          "type": "PRE",
+          "text": "Hook span 0x0C0D8DC2..0x0C0D8DCE (TEMPO range step). Mod tempo_wide steps 16% -> WIDE on USB."
+        },
+        {
+          "address": "0c0d9194",
+          "type": "PRE",
+          "text": "Toggle elapsed/remaining time at 0x0CE6D0DD. The REMAIN flag travels in status 0x02 byte 13 bit 0."
+        },
+        {
+          "address": "0c0d91e4",
+          "type": "PRE",
+          "text": "Toggle the auto-cue latch on a long TIME MODE press. Status 0x02 byte 12 bit 0 carries A.CUE."
+        },
+        {
+          "address": "0c0d9714",
+          "type": "PRE",
+          "text": "Pool word -> memory_button, read only at 0x0C0D9664. Mod loop_resize redirects it."
+        },
+        {
+          "address": "0c0d9994",
+          "type": "PRE",
+          "text": "Pool word -> cue_call_prev_next, read at 0x0C0D98AC (CALL>) and 0x0C0D98EA (CALL<). Mod loop_resize redirects it."
+        },
+        {
+          "address": "0c0d9b44",
+          "type": "PLATE",
+          "text": "Tempo fader to pitch: from the fader sample 0x0CE6CA48 against the centre 0x0CE6CA4A writes the pitch word 0x0CE6CA50 (s16, 1/100 %, clamped to the range; WIDE flag 0x0CE6CA4C selects x50) and the whole pitched BPM 0x0C9D23F0 = round(round(base/10) * (10000+pitch)/10000)."
+        },
+        {
+          "address": "0c0dd978",
+          "type": "PLATE",
+          "text": "Player tick processing jog motion for pitch bend and VINYL scratch velocity."
+        },
+        {
+          "address": "0c0deb50",
+          "type": "PLATE",
+          "text": "PLAY/PAUSE button handler. For USB the normal load-completion path starts playback. A subsequent PLAY press pauses/brakes, according to jog mode and player state."
+        },
+        {
+          "address": "0c0dfa80",
+          "type": "PRE",
+          "text": "Pool word -> pcm_next_feed_sector, read only at 0x0C0DF95E (LOOP IN). Mod quant_loops (quant_loops_loop_in) redirects it."
+        },
+        {
+          "address": "0c0e0090",
+          "type": "PRE",
+          "text": "Pool word -> audio_send_cmd, read by the LOOP OUT code (and its CD branch). Mod quant_loops (quant_loops_loop_out) redirects it."
+        },
+        {
+          "address": "0c0e02c0",
+          "type": "PRE",
+          "text": "Pool word -> audio_send_cmd, read only by the LOOP OUT code. Mod quant_loops (quant_loops_loop_out2) redirects it."
+        },
+        {
+          "address": "0c0e0f34",
+          "type": "PLATE",
+          "text": "Key handler for state 4 (a USB loop is playing), once per player cycle."
+        },
+        {
+          "address": "0c0e49cc",
+          "type": "PLATE",
+          "text": "Copies the held key words K0..K2 (0x0CE6CA08..) to their _prev copies (0x0CE6CA22..) once per player cycle."
+        },
+        {
+          "address": "0c0e5590",
+          "type": "PLATE",
+          "text": "beat_loop_out_from_bpm(beats, &bpm, tracklen): bpm = round(base tempo 0x0C9D23EC / 10) (0 -> 130); 0x0CE6CA90 = D1C0 + 36000/bpm (8-beat limit); D1C0 += beats*4500 / (bpm * (D154*15 + 1)), clamped to tracklen-1, so D1C0 (0x0CE6D1C0) becomes the out frame. Returns 1 only when enough audio is buffered past the out point."
+        },
+        {
+          "address": "0c0e570a",
+          "type": "PLATE",
+          "text": "auto_beat_loop_set(beats 1/2/4/8): stores beats in 0x0C1E1088. With no loop active (0x0CE6D0ED == 0) sets D1C0 (0x0CE6D1C0) to the current frame, runs beat_loop_out_from_bpm and sends audio cmd 6 with the out frame. The other audio_send_cmd loads in it are the resize sends (flag 1)."
+        },
+        {
+          "address": "0c0e5d08",
+          "type": "PRE",
+          "text": "Pool word -> audio_send_cmd, read only in auto_beat_loop_set (cued path, 0x0C0E5CC8). Mod quant_loops (quant_loops_auto_send2) redirects it."
+        },
+        {
+          "address": "0c0e5d4c",
+          "type": "PRE",
+          "text": "Pool word -> track_length_slot, read only at 0x0C0E5C0E in auto_beat_loop_set's new-loop path. Mod quant_loops redirects it."
+        },
+        {
+          "address": "0c0e5fc8",
+          "type": "PRE",
+          "text": "Pool word -> audio_send_cmd, read only in auto_beat_loop_set (play path, 0x0C0E5D90). Mod quant_loops (quant_loops_auto_send) redirects it."
+        },
+        {
+          "address": "0c0e5fd0",
+          "type": "PRE",
+          "text": "Pool word -> pcm_next_feed_sector, read only at 0x0C0E5DAA, right after the cmd 6 sends. Mod quant_loops (quant_loops_auto_keep) redirects it."
+        },
+        {
+          "address": "0c0eae2a",
+          "type": "PRE",
+          "text": "USB load-completion state selection. The normal path selects playing state 3 and sends audio command (1, 1). The audio task starts streaming after 75 buffered sectors."
+        },
+        {
+          "address": "0c0ec73c",
+          "type": "PLATE",
+          "text": "Player state tick, every player cycle (bsr at 0x0C0ED274). Calls 0x0C0EB388 first through pool 0x0C0EC838 (read only at 0x0C0EC73E). With the UI lock 0x0CE6D151 set it saves K0..K2 to 0x0CE6CA14 and masks them."
+        },
+        {
+          "address": "0c0ec838",
+          "type": "PRE",
+          "text": "Pool word -> 0x0C0EB388, read only at 0x0C0EC73E (first call of player_state_tick). Mod hot_cues (hot_cues_tick) redirects it."
+        },
+        {
+          "address": "0c0eccb4",
+          "type": "PLATE",
+          "text": "Builds the held key words K0/K1/K2 (0x0CE6CA08..) from the accepted panel keys. Called only by the bsr at 0x0C0ED1FA in the playertask loop when the new-keys flag 0x0CE6D132 is set. Calls the key filter through pool 0x0C0ED038 (read at 0x0C0ECEFC) right after K0..K2 are built."
+        },
+        {
+          "address": "0c0ecf12",
+          "type": "PRE",
+          "text": "Copy the received SCIF1 0x01 fader position and center reference (wire bytes 5..8, big-endian) into 0x0CE6CA48 and 0x0CE6CA4A."
+        },
+        {
+          "address": "0c0ed038",
+          "type": "PRE",
+          "text": "Pool word -> 0x0C0DD492, the key filter point, read only at 0x0C0ECEFC after K0..K2 are built. Mods hot_cues and quant_loops redirect it to the payload's c850_ui_keys chain."
+        },
+        {
+          "address": "0c0ed178",
+          "type": "PLATE",
+          "text": "playertask entry (priority 2): the key loop. Calls panel_keys_to_internal_words (0x0C0ED1FA), player_state_tick (0x0C0ED274) and the key handlers, and waits on an event flag at 0x0C0ED1B0 (pool 0x0C0ED244)."
+        },
+        {
+          "address": "0c0ed244",
+          "type": "PRE",
+          "text": "Pool word -> wai_flg, read only at 0x0C0ED1B0 in the playertask loop. Mod hot_cues (hot_cues_leds) redirects it."
+        },
+        {
+          "address": "0c0ef844",
+          "type": "PLATE",
+          "text": "Idle auto-standby countdown: counts whole seconds in 0x0C1E10AE and asks for standby at the limit from table 0x0C18CCDC, indexed by (UTILITY byte 0x0C9DA23E >> 4) & 7."
+        },
+        {
+          "address": "0c0ef8c8",
+          "type": "PLATE",
+          "text": "Power/standby part of the 1 ms tick (from tick_1ms through pool 0x0C0B9310). Calls auto_standby_seconds."
+        },
+        {
+          "address": "0c0ef8ec",
+          "type": "PLATE",
+          "text": "Power/standby state machine, called at 0x0C0EE644."
+        },
+        {
+          "address": "0c0efb9a",
+          "type": "PLATE",
+          "text": "pcm_ring_write(src, frames): copies stereo frames into the PCM ring at pcm_ring_or_update_buffer: 0x961 slots of 0x24C frames (0x930 bytes, one CD-DA sector of PCM each), advancing the slot index and wrapping after slot 0x960. The third copy of every PCM byte in USB playback. Called from 0x0C0C02D4 [static + emu]."
+        },
+        {
+          "address": "0c0f01dc",
+          "type": "PLATE",
+          "text": "audio_build_loop_in_record(sector): builds the loop-in record 0x0C7F6498.. (frame, MSF, ring sector) from the s16 sector 0x0C7F6468 (writer 0x0C0F022A). Called by 0x0C009DB4 for audio cmd 6 and cmd 7/2."
+        },
+        {
+          "address": "0c0f6e6c",
+          "type": "PLATE",
+          "text": "USB playback state handler and refill scheduler. USB state at 0x0CE6D25F includes browse 0x0A, load 2, play 3, pause 4 and brake/pause 5. Refills the circular PCM ring while fill is below 500 sectors."
+        },
+        {
+          "address": "0c0f95e6",
+          "type": "PLATE",
+          "text": "pcm_rate_copy(src, dst, ?, samples, &frames_out): if pcm_sample_rate (0x0CE6DBAC) is 44100, memcpy samples * 2 bytes from src (wav_pcm_read's uncached buffer) to dst and report samples / 2 frames; otherwise resamples block by block through 0x0C0F97B8, keeping the remainder in a carry buffer. Called from 0x0C0BF6BA [static + emu]."
+        },
+        {
+          "address": "0c0f9ee8",
+          "type": "PLATE",
+          "text": "Eight-bit end-around-carry checksum. MAIN TX and panel RX 0x01 sum bytes 0..14 into byte 15. Panel RX 0x02 sums bytes 0..11 into byte 12."
+        },
+        {
+          "address": "0c0f9f14",
+          "type": "PLATE",
+          "text": "Set up SCIF1 at 0xFFFE8800 as clock-synchronous slave. IC1007 is clock master. MAIN_XBUSY is PC14 and PNL_XBUSY is PE9/IRQ5."
+        },
+        {
+          "address": "0c0fa05e",
+          "type": "PLATE",
+          "text": "On PNL_XBUSY rising edge, IRQ5 vector 69 starts the transaction and preloads its first 16-byte MAIN TX frame."
+        },
+        {
+          "address": "0c0fa13c",
+          "type": "PLATE",
+          "text": "SCIF1 TXI1 vector 199 services further 16-byte frames in the same PNL_XBUSY window until MAIN clears TIE."
+        },
+        {
+          "address": "0c0fb97e",
+          "type": "PLATE",
+          "text": "ocache_purge_range(r4 = start, r5 = length): for each 16-byte line stores start & 0x1FFFF800 (tag, U = V = 0) to 0xF0800008 + (start & 0x7F0), stepping both by 16 (the entry wraps into the don't-care address bits). Associative operand-cache address-array writes: a dirty line is written back, then dropped (SH7263 manual 8.4.3). Runs from cached SDRAM, unlike the boot's copy in on-chip RAM; MAIN's only cache maintenance (382k array writes in a USB play run) [static + emu]."
+        },
+        {
+          "address": "0c0fc9dc",
+          "type": "PLATE",
+          "text": "MAIN-side transfer on the CD servo bus to IC201 (TC94A15FG). PE6 is SRVCCE, PE8 is SRVBCLK and PE12..15 are SRVBUS0..3."
+        },
+        {
+          "address": "0c0fd7cc",
+          "type": "PLATE",
+          "text": "Bring up the CD servo on its Port E bus. PE7 is SRVRST."
+        },
+        {
+          "address": "0c10b20c",
+          "type": "PLATE",
+          "text": "USBI vector 140. Dispatches via the USB mode word at 0x0CEE505C. Mode 1 invokes the host path at 0x0C018F44."
+        },
+        {
+          "address": "0c10b564",
+          "type": "PLATE",
+          "text": "usbTask entry from the task descriptor at 0x0C1ACBC4. The board uses one USB controller with PB10 selecting USB-A host (high) or USB-B PC device (low)."
+        },
+        {
+          "address": "0c10dcea",
+          "type": "PLATE",
+          "text": "Poll USB_CDETFLG on PE10 (high normal, low overcurrent) and update the overcurrent flag at 0x0C1E1271."
+        },
+        {
+          "address": "0c10e246",
+          "type": "PLATE",
+          "text": "Closes a USB file (the flac mod redirects pool 0x0C058150)."
+        },
+        {
+          "address": "0c10e7c8",
+          "type": "PLATE",
+          "text": "Size of a USB file (the flac mod redirects pools 0x0C057F1C and 0x0C05814C)."
+        },
+        {
+          "address": "0c1100b8",
+          "type": "PLATE",
+          "text": "C library memcpy(dst r4, src r5, n r6); word-aligned copies go to memcpy_aligned (0x0C11066C). The emulator's CDJ_NATIVE_COPY hook recognises it by its first opcode 0xE218. During USB WAV playback three callers move ~87% of its bytes: wav_pcm_read, pcm_rate_copy and pcm_ring_write [static + emu: call trace]."
+        },
+        {
+          "address": "0c1105d4",
+          "type": "PLATE",
+          "text": "Inner loop of memcpy: 32 bytes per iteration in eight longword loads and stores (r9-r14 saved), byte tail. The function the cache model's USB-play profile charges most line fills to, as memcpy runs over large PCM buffers; ~1.4M of its reads and writes go through the uncached SDRAM mirror (wav_pcm_read's buffer) [static + emu]."
+        },
+        {
+          "address": "0c11066c",
+          "type": "PLATE",
+          "text": "memcpy's word-aligned path: one longword, then 8-byte pairs until the length is a multiple of 32, then memcpy_block32 (0x0C1105D4), or a byte tail for under 4 bytes [static]."
+        },
+        {
+          "address": "0c1106ec",
+          "type": "PLATE",
+          "text": "C library memset(dst r4, byte r5, n r6), filling backwards from the end in 16-byte longword blocks. 1031 references; most bytes come from large clears (alloc_zeroed, table resets). On the write-allocate operand cache every missed line is first read from SDRAM: 609k write misses in a USB play run. The emulator's CDJ_NATIVE_COPY hook recognises it by its first opcode 0x2FE6 [static + emu]."
+        }
+      ],
+      "labels": [
+        {
+          "address": "0c065df6",
+          "name": "panel_tx_status_02"
+        },
+        {
+          "address": "0c0d9194",
+          "name": "write_time_mode_remain"
+        },
+        {
+          "address": "0c0d91e4",
+          "name": "write_auto_cue_latch"
+        },
+        {
+          "address": "0c14f7cc",
+          "name": "dj_control_task_descriptor"
+        },
+        {
+          "address": "0c154494",
+          "name": "display_task_descriptor"
+        },
+        {
+          "address": "0c155ab4",
+          "name": "ssi_dsp_interrupt_descriptors"
+        },
+        {
+          "address": "0c155b28",
+          "name": "dsp_shi_segment_1"
+        },
+        {
+          "address": "0c155b49",
+          "name": "dsp_shi_segment_2"
+        },
+        {
+          "address": "0c155c45",
+          "name": "dsp_shi_segment_3"
+        },
+        {
+          "address": "0c1566cd",
+          "name": "dsp_shi_segment_4"
+        },
+        {
+          "address": "0c15a36c",
+          "name": "flash_task_descriptor"
+        },
+        {
+          "address": "0c18be24",
+          "name": "init_task_descriptor"
+        },
+        {
+          "address": "0c18be40",
+          "name": "idle_task_descriptor"
+        },
+        {
+          "address": "0c18ccdc",
+          "name": "auto_standby_limit_table"
+        },
+        {
+          "address": "0c18cf80",
+          "name": "serial_task_descriptor"
+        },
+        {
+          "address": "0c194ea4",
+          "name": "panel_button_table_1"
+        },
+        {
+          "address": "0c194fd8",
+          "name": "panel_button_table_2"
+        },
+        {
+          "address": "0c1acbc4",
+          "name": "usb_task_descriptor"
+        },
+        {
+          "address": "0c1c1ae8",
+          "name": "dsp_boot_expected_dreq_levels"
+        },
+        {
+          "address": "0c1e1088",
+          "name": "auto_loop_beats"
+        },
+        {
+          "address": "0c1e109a",
+          "name": "update_mode"
+        },
+        {
+          "address": "0c1e10aa",
+          "name": "power_on_keys_pending"
+        },
+        {
+          "address": "0c1e10ac",
+          "name": "standby_state"
+        },
+        {
+          "address": "0c1e10ae",
+          "name": "standby_seconds"
+        },
+        {
+          "address": "0c1e10b0",
+          "name": "standby_ticks"
+        },
+        {
+          "address": "0c1e1271",
+          "name": "usb_overcurrent_flag"
+        },
+        {
+          "address": "0c1e8e5c",
+          "name": "pcm_ring_or_update_buffer"
+        },
+        {
+          "address": "0c7f645c",
+          "name": "pcm_play_sector"
+        },
+        {
+          "address": "0c7f645e",
+          "name": "pcm_write_sector"
+        },
+        {
+          "address": "0c7f6466",
+          "name": "pcm_state4_play_sector"
+        },
+        {
+          "address": "0c7f6468",
+          "name": "loop_in_sector"
+        },
+        {
+          "address": "0c7f6470",
+          "name": "pcm_read_ptr"
+        },
+        {
+          "address": "0c7f6474",
+          "name": "pcm_write_ptr"
+        },
+        {
+          "address": "0c7f647c",
+          "name": "play_frame"
+        },
+        {
+          "address": "0c7f6498",
+          "name": "loop_in_record"
+        },
+        {
+          "address": "0c7f64b0",
+          "name": "loop_out_record"
+        },
+        {
+          "address": "0c7f64dc",
+          "name": "loop_out_request"
+        },
+        {
+          "address": "0c7f650c",
+          "name": "track_length_frames"
+        },
+        {
+          "address": "0c7f6627",
+          "name": "audio_task_state"
+        },
+        {
+          "address": "0c7f6674",
+          "name": "audio_loop_playing"
+        },
+        {
+          "address": "0c7f671b",
+          "name": "dsp_shi_tx_frame"
+        },
+        {
+          "address": "0c7f6721",
+          "name": "dsp_shi_rx_frame"
+        },
+        {
+          "address": "0c9d0ad8",
+          "name": "display_status_staging"
+        },
+        {
+          "address": "0c9d0adb",
+          "name": "display_track_number"
+        },
+        {
+          "address": "0c9d0adc",
+          "name": "display_time_minutes"
+        },
+        {
+          "address": "0c9d0add",
+          "name": "display_time_seconds"
+        },
+        {
+          "address": "0c9d0ade",
+          "name": "display_time_frames"
+        },
+        {
+          "address": "0c9d0ae0",
+          "name": "display_whole_bpm"
+        },
+        {
+          "address": "0c9d0ae9",
+          "name": "display_leds_loop_in_out"
+        },
+        {
+          "address": "0c9d0aea",
+          "name": "display_leds_reloop"
+        },
+        {
+          "address": "0c9d0aeb",
+          "name": "display_beat_navigation_flags"
+        },
+        {
+          "address": "0c9d0af0",
+          "name": "display_pitch_sign_mt_memory_flags"
+        },
+        {
+          "address": "0c9d0af1",
+          "name": "display_pitch_decimal_auto_cue_flags"
+        },
+        {
+          "address": "0c9d0af2",
+          "name": "display_time_mode_flags"
+        },
+        {
+          "address": "0c9d0b18",
+          "name": "display_matrix_rows"
+        },
+        {
+          "address": "0c9d1199",
+          "name": "display_waveform_samples"
+        },
+        {
+          "address": "0c9d1254",
+          "name": "display_matrix_dirty"
+        },
+        {
+          "address": "0c9d23ec",
+          "name": "bpm_base_tenths"
+        },
+        {
+          "address": "0c9d23f0",
+          "name": "bpm_whole_pitched"
+        },
+        {
+          "address": "0c9d24fc",
+          "name": "beat_grid_ctx"
+        },
+        {
+          "address": "0c9d2578",
+          "name": "beat_grid_window_entries"
+        },
+        {
+          "address": "0c9da23c",
+          "name": "user_settings_ram"
+        },
+        {
+          "address": "0c9da23e",
+          "name": "user_settings_utility"
+        },
+        {
+          "address": "0ce49f54",
+          "name": "tick_ms"
+        },
+        {
+          "address": "0ce649d0",
+          "name": "anlz_ctx"
+        },
+        {
+          "address": "0ce649d4",
+          "name": "memory_cue_list"
+        },
+        {
+          "address": "0ce65850",
+          "name": "memory_cue_count"
+        },
+        {
+          "address": "0ce65c0c",
+          "name": "cue_jump_target"
+        },
+        {
+          "address": "0ce6c930",
+          "name": "pitch_prev"
+        },
+        {
+          "address": "0ce6c932",
+          "name": "pitch_cur"
+        },
+        {
+          "address": "0ce6c938",
+          "name": "dsp_shi_word0_flags"
+        },
+        {
+          "address": "0ce6c940",
+          "name": "dsp_target_speed"
+        },
+        {
+          "address": "0ce6ca08",
+          "name": "keys_k0"
+        },
+        {
+          "address": "0ce6ca0a",
+          "name": "keys_k1"
+        },
+        {
+          "address": "0ce6ca0c",
+          "name": "keys_k2"
+        },
+        {
+          "address": "0ce6ca22",
+          "name": "keys_k0_prev"
+        },
+        {
+          "address": "0ce6ca24",
+          "name": "keys_k1_prev"
+        },
+        {
+          "address": "0ce6ca26",
+          "name": "keys_k2_prev"
+        },
+        {
+          "address": "0ce6ca48",
+          "name": "pitch_fader_raw"
+        },
+        {
+          "address": "0ce6ca4a",
+          "name": "pitch_fader_center"
+        },
+        {
+          "address": "0ce6ca4c",
+          "name": "pitch_wide_flag"
+        },
+        {
+          "address": "0ce6ca50",
+          "name": "pitch_hundredths"
+        },
+        {
+          "address": "0ce6ca9d",
+          "name": "player_speed_substate"
+        },
+        {
+          "address": "0ce6d0dd",
+          "name": "time_mode_remain"
+        },
+        {
+          "address": "0ce6d0de",
+          "name": "jog_mode_vinyl"
+        },
+        {
+          "address": "0ce6d0df",
+          "name": "auto_cue_enabled"
+        },
+        {
+          "address": "0ce6d0e0",
+          "name": "master_tempo_enabled"
+        },
+        {
+          "address": "0ce6d0e1",
+          "name": "tempo_range"
+        },
+        {
+          "address": "0ce6d0ec",
+          "name": "cue_or_loop_exists"
+        },
+        {
+          "address": "0ce6d0ed",
+          "name": "loop_active"
+        },
+        {
+          "address": "0ce6d0f1",
+          "name": "play_intent_latch"
+        },
+        {
+          "address": "0ce6d0f2",
+          "name": "vinyl_brake_flag"
+        },
+        {
+          "address": "0ce6d0f3",
+          "name": "jog_touched"
+        },
+        {
+          "address": "0ce6d0f5",
+          "name": "pitch_force_refresh"
+        },
+        {
+          "address": "0ce6d0fd",
+          "name": "nav_view_selector"
+        },
+        {
+          "address": "0ce6d132",
+          "name": "new_keys_flag"
+        },
+        {
+          "address": "0ce6d151",
+          "name": "ui_lock"
+        },
+        {
+          "address": "0ce6d154",
+          "name": "beat_fraction_mode"
+        },
+        {
+          "address": "0ce6d158",
+          "name": "cue_frame"
+        },
+        {
+          "address": "0ce6d1c0",
+          "name": "auto_loop_point_frame"
+        },
+        {
+          "address": "0ce6d240",
+          "name": "firmware_version_number"
+        },
+        {
+          "address": "0ce6d242",
+          "name": "running_version_label"
+        },
+        {
+          "address": "0ce6d252",
+          "name": "active_source_index"
+        },
+        {
+          "address": "0ce6d254",
+          "name": "cue_call_branch"
+        },
+        {
+          "address": "0ce6d25a",
+          "name": "is_usb_or_data_mode"
+        },
+        {
+          "address": "0ce6d25d",
+          "name": "player_state_by_source"
+        },
+        {
+          "address": "0ce6d25f",
+          "name": "usb_player_state"
+        },
+        {
+          "address": "0ce6dbac",
+          "name": "pcm_sample_rate"
+        },
+        {
+          "address": "0cee505c",
+          "name": "usb_mode_word"
         }
       ]
     }

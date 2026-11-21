@@ -54,15 +54,16 @@ class Sh2a:
         self.r = [0] * 16
         self.t = 0
         self.pr = self.RET
+        self.mach = self.macl = 0
         self.steps = 0
 
     def load(self, addr, size):
         fmt = {1: '>b', 2: '>h', 4: '>i'}[size]
-        return struct.unpack(fmt, self.mem.read(addr, size))[0] & MASK
+        return struct.unpack(fmt, self.mem.read(addr & MASK, size))[0] & MASK
 
     def store(self, addr, value, size):
         fmt = {1: '>B', 2: '>H', 4: '>I'}[size]
-        self.mem.write(addr, struct.pack(fmt, value & ((1 << 8 * size) - 1)))
+        self.mem.write(addr & MASK, struct.pack(fmt, value & ((1 << 8 * size) - 1)))
 
     def run(self, pc, stop, limit=200000):
         while pc != stop:
@@ -87,13 +88,20 @@ class Sh2a:
         if op & 0xF00F == 0x0000:                               # movi20 #imm20,Rn
             r[n] = signed((op >> 4 & 15) << 16 | self.word(pc + 2), 20) & MASK
             return pc + 4
-        if op & 0xF00F == 0x3001:                               # movu.b/w @(disp12,Rm),Rn
+        if op & 0xF00F == 0x0001:                               # movi20s #imm20<<8,Rn
+            r[n] = (signed((op >> 4 & 15) << 16 | self.word(pc + 2), 20) << 8) & MASK
+            return pc + 4
+        if op & 0xF00F == 0x3001:                               # mov(u).b/w/l with disp12
             ext = self.word(pc + 2)
             kind, disp = ext >> 12, ext & 0xFFF
             if kind == 0x8:
                 r[n] = self.load(r[m] + disp, 1) & 0xFF
             elif kind == 0x9:
                 r[n] = self.load(r[m] + disp * 2, 2) & 0xFFFF
+            elif kind in (0x0, 0x1, 0x2):                     # mov.b/w/l Rm,@(disp12,Rn)
+                self.store(r[n] + disp * (1 << kind), r[m], 1 << kind)
+            elif kind in (0x4, 0x5, 0x6):                     # mov.b/w/l @(disp12,Rm),Rn
+                r[n] = self.load(r[m] + disp * (1 << (kind - 4)), 1 << (kind - 4))
             else:
                 raise AssertionError('32-bit op %#06x %#06x at %#x' % (op, ext, pc))
             return pc + 4
@@ -128,6 +136,20 @@ class Sh2a:
             r[0] &= imm                                         # and #imm,R0
         elif op & 0xFF00 == 0xCB00:
             r[0] |= imm                                         # or #imm,R0
+        elif op & 0xFF00 == 0xCA00:
+            r[0] ^= imm                                         # xor #imm,R0
+        elif op & 0xFE00 == 0x8600:                             # bclr/bset/bst/bld #imm3,Rn (SH-2A)
+            n, bit, one = (op >> 4) & 0xF, 1 << (op & 7), op & 8
+            if op & 0x0100 == 0:
+                self.r[n] = (self.r[n] | bit) if one else (self.r[n] & ~bit & MASK)
+            elif one:
+                self.t = int(bool(self.r[n] & bit))             # bld
+            else:
+                self.r[n] = (self.r[n] | bit) if self.t else (self.r[n] & ~bit & MASK)
+        elif op & 0xFF00 == 0x8000:                             # mov.b R0,@(disp,Rn)
+            self.store(r[m] + (op & 15), r[0], 1)
+        elif op & 0xFF00 == 0x8100:                             # mov.w R0,@(disp,Rn)
+            self.store(r[m] + (op & 15) * 2, r[0], 2)
         elif op & 0xFF00 == 0x8400:                             # mov.b @(disp,Rm),R0
             r[0] = self.load(r[m] + (op & 15), 1)
         elif op & 0xFF00 == 0x8500:                             # mov.w @(disp,Rm),R0
@@ -139,6 +161,13 @@ class Sh2a:
         elif op & 0xF0FF == 0x400B:                             # jsr @Rn
             self.pr = pc + 4
             return self.branch(pc, r[n])
+        elif op & 0xF0FF == 0x402B:                             # jmp @Rn
+            return self.branch(pc, r[n])
+        elif op == 0x006B:                                      # rts/n (no delay slot)
+            return self.pr
+        elif op & 0xF0FF == 0x404B:                             # jsr/n @Rn (no delay slot)
+            self.pr = pc + 2
+            return r[n]
         else:
             self.alu(op, n, m)
         return nxt
@@ -167,6 +196,10 @@ class Sh2a:
                 r[n] &= r[m]
             elif lo == 0xB:
                 r[n] |= r[m]
+            elif lo == 0xE:                                     # mulu.w
+                self.macl = (r[n] & 0xFFFF) * (r[m] & 0xFFFF)
+            elif lo == 0xF:                                     # muls.w
+                self.macl = signed(r[n], 16) * signed(r[m], 16) & MASK
             else:
                 raise AssertionError('op %#06x' % op)
         elif group == 0x6:
@@ -174,7 +207,7 @@ class Sh2a:
                 r[n] = self.load(r[m], 1 << lo)
             elif lo == 3:
                 r[n] = r[m]
-            elif lo in (5, 6):                                  # mov.w/l @Rm+,Rn
+            elif lo in (4, 5, 6):                               # mov.b/w/l @Rm+,Rn
                 size = 1 << (lo - 4)
                 r[n] = self.load(r[m], size)
                 r[m] = (r[m] + size) & MASK
@@ -184,6 +217,12 @@ class Sh2a:
                 r[n] = r[m] & 0xFF
             elif lo == 0xD:
                 r[n] = r[m] & 0xFFFF
+            elif lo == 0x7:
+                r[n] = ~r[m] & MASK                             # not
+            elif lo == 0xE:
+                r[n] = signed(r[m], 8) & MASK                   # exts.b
+            elif lo == 0xF:
+                r[n] = signed(r[m], 16) & MASK                  # exts.w
             else:
                 raise AssertionError('op %#06x' % op)
         elif group == 0x0:
@@ -193,6 +232,12 @@ class Sh2a:
                 r[n] = self.load(r[0] + r[m], 1 << (lo - 0xC))
             elif op & 0xF0FF == 0x0029:
                 r[n] = self.t                                   # movt
+            elif op & 0xF0FF == 0x0039:
+                r[n] = self.t ^ 1                               # movrt (SH-2A)
+            elif op & 0xF0FF in (0x000A, 0x001A, 0x002A):       # sts mach/macl/pr,Rn
+                r[n] = (self.mach, self.macl, self.pr)[op >> 4 & 3]
+            elif lo == 7:                                       # mul.l Rm,Rn
+                self.macl = r[n] * r[m] & MASK
             else:
                 raise AssertionError('op %#06x' % op)
         elif group == 0x3:
@@ -211,6 +256,17 @@ class Sh2a:
                 r[n] = (a - b) & MASK
             elif lo == 0xC:
                 r[n] = (a + b) & MASK
+            elif lo == 0xA:                                     # subc Rm,Rn
+                d = a - b - self.t
+                self.t = int(d < 0)
+                r[n] = d & MASK
+            elif lo == 0xE:                                     # addc Rm,Rn
+                d = a + b + self.t
+                self.t = int(d > MASK)
+                r[n] = d & MASK
+            elif lo in (5, 0xD):                                # dmulu.l / dmuls.l
+                prod = a * b if lo == 5 else (signed(a) * signed(b)) & 0xFFFFFFFFFFFFFFFF
+                self.mach, self.macl = prod >> 32 & MASK, prod & MASK
             else:
                 raise AssertionError('op %#06x' % op)
         elif group == 0x4:
@@ -234,6 +290,10 @@ class Sh2a:
             r[n] = v << 8 & MASK
         elif low == 0x19:
             r[n] = v >> 8
+        elif low == 0x28:
+            r[n] = v << 16 & MASK                               # shll16
+        elif low == 0x29:
+            r[n] = v >> 16                                      # shlr16
         elif low == 0x21:
             r[n] = signed(v) >> 1 & MASK                        # shar
         elif low == 0x24:                                       # rotcl
@@ -244,6 +304,35 @@ class Sh2a:
             self.t = int(r[n] == 0)
         elif low == 0x15:
             self.t = int(signed(v) > 0)                         # cmp/pl
+        elif low in (0x8B, 0x9B, 0xAB):                         # mov.b/w/l R0,@Rn+ (SH-2A)
+            size = {0x8B: 1, 0x9B: 2, 0xAB: 4}[low]
+            self.store(v, r[0], size)
+            r[n] = (v + size) & MASK
+        elif low in (0xCB, 0xDB, 0xEB):                         # mov.b/w/l @-Rm,R0 (SH-2A)
+            size = {0xCB: 1, 0xDB: 2, 0xEB: 4}[low]
+            r[n] = (v - size) & MASK
+            r[0] = self.load(r[n], size)
+        elif low in (0x02, 0x12, 0x22):                         # sts.l mach/macl/pr,@-Rn
+            r[n] = (v - 4) & MASK
+            self.store(r[n], (self.mach, self.macl, self.pr)[low >> 4], 4)
+        elif low in (0x06, 0x16, 0x26):                         # lds.l @Rn+,mach/macl/pr
+            val = self.load(v, 4) & MASK
+            r[n] = (v + 4) & MASK
+            if low == 0x06:
+                self.mach = val
+            elif low == 0x16:
+                self.macl = val
+            else:
+                self.pr = val
+        elif low == 0x84:                                       # divu R0,Rn (SH-2A)
+            r[n] = v // r[0] if r[0] else MASK
+        elif low == 0x94:                                       # divs R0,Rn (SH-2A)
+            a, b = signed(v), signed(r[0])
+            r[n] = (abs(a) // abs(b) * (1 if (a < 0) == (b < 0) else -1)) & MASK if b else MASK
+        elif low == 0x11:                                       # cmp/pz Rn
+            self.t = int(signed(v) >= 0)
+        elif low == 0x15:                                       # cmp/pl Rn
+            self.t = int(signed(v) > 0)
         elif low == 0x80 and op & 0xF00F == 0x4000:             # mulr R0,Rn
             r[n] = v * r[0] & MASK
         elif op & 0xF00F == 0x400C:                             # shad Rm,Rn

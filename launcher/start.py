@@ -1,11 +1,10 @@
 # SPDX-License-Identifier: GPL-2.0-or-later
-"""Start the decks the way setup configured them (cdj.conf): one or two
-CDJ-2000NXS2 windows, the controller relay and, if you chose a MIDI
-controller, the bridge. Ctrl-C stops everything.
+"""Start the deck the way setup configured it (cdj.conf): the CDJ-850 in
+one window. Ctrl-C stops everything.
 
   usage: ./start.sh             start
-         ./start.sh --model <id>   start that player (cdj2000nxs2, the default,
-                                 or an older one: see models/); setup.sh
+         ./start.sh --model <id>   start that player (cdj850, the default;
+                                 see models/); setup.sh
                                  stores the one you chose in cdj.conf
          ./start.sh --app       start with the virtual deck app as the window
                                  (every player that has a face in app/faces/; a player
@@ -13,7 +12,7 @@ controller, the bridge. Ctrl-C stops everything.
          ./start.sh --web [lan] serve the deck as a web page as well: on this
                                  PC only, or with "lan" on its LAN address with
                                  a key made at each start in the printed URL
-                                 (the NXS2 so far)
+                                 (not drawn for the CDJ-850 yet)
          ./start.sh --service   boot into the service manual's SERVICE MODE
                                  screen instead of the player (see "Service
                                  mode" in docs/using-the-deck.md)
@@ -237,7 +236,7 @@ def main(argv):
             say("the virtual deck app has no face for the %s yet; starting its plain window" % player.title)
         use_app = c["CDJ_APP"] == "1" if app is None else app
         if web:
-            say("the web deck draws the NXS2 only so far; starting the %s without it" % player.title)
+            say("the web deck does not draw the %s yet; starting it without the web page" % player.title)
         return _start_deck(lay, player, c, dry, use_app and bool(player.app_face))
     if app is None:
         # The packaged program's window is the virtual deck app unless the
@@ -369,7 +368,7 @@ def main(argv):
 
 
 def _start_deck(lay, player, c, dry, app=False):
-    """An older player: one window, none of the NXS2 rig around it. With the
+    """The player in one window, MAIN emulator alone (launcher/deck.py). With the
     app, its screen goes to a VNC server and the app draws the player around
     it, sending the drawn keys to the panel socket the host keyboard uses."""
     env = dict(os.environ)
