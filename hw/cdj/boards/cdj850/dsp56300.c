@@ -181,7 +181,7 @@ typedef enum {
 } DspOpKind;
 
 typedef struct {
-    const void *fn;
+    const void *handler;
     uint32_t imm;
     uint8_t  kind;
     uint8_t  words;
@@ -283,6 +283,7 @@ typedef struct {
 
     uint32_t p[DSP_PRAM_SIZE];
     DspInsn icache[DSP_PRAM_SIZE];
+    const void *decode_handler; /* native label, initialized by dsp_exec() */
     uint32_t x[DSP_DRAM_SIZE];
     uint32_t y[DSP_DRAM_SIZE];
     uint32_t x_io[DSP_IO_SIZE];
@@ -607,10 +608,10 @@ static inline void mem_write_p(Dsp56300 *d, uint32_t addr, uint32_t val)
     addr &= DSP_MASK24;
     if (addr < DSP_PRAM_SIZE) {
         d->p[addr] = val & DSP_MASK24;
-        d->icache[addr].fn = NULL;
+        d->icache[addr].handler = d->decode_handler;
         d->icache[addr].kind = DSP_OP_INVALID;
         if (addr > 0) {
-            d->icache[addr - 1].fn = NULL;
+            d->icache[addr - 1].handler = d->decode_handler;
             d->icache[addr - 1].kind = DSP_OP_INVALID;
         }
     }
@@ -1430,7 +1431,6 @@ static inline uint32_t dsp_ext(const Dsp56300 *d, uint32_t pc)
 
 static void dsp_decode_insn(DspInsn *ins, uint32_t pc, uint32_t op)
 {
-    ins->fn = NULL;
 #ifdef DSP_TEST_COMMON
     ins->op = op;
 #endif
@@ -2591,8 +2591,7 @@ exec_par_xy_dual(Dsp56300 *d, uint32_t pk, uint8_t alu, bool do_mac, bool do_alu
 }
 
 static __attribute__((noinline)) DspInsn *
-dsp_icache_fill(Dsp56300 *d, uint32_t pc, uint32_t op,
-                const void *const *dispatch)
+dsp_icache_decode(Dsp56300 *d, uint32_t pc, uint32_t op)
 {
     DspInsn *slot = &d->icache[pc];
 
@@ -2604,8 +2603,14 @@ dsp_icache_fill(Dsp56300 *d, uint32_t pc, uint32_t op,
                     pc, op, d->sp, d->sr, d->la, d->lc);
     }
     dsp_decode_insn(slot, pc, op);
-    slot->fn = dispatch[slot->kind];
     return slot;
+}
+
+static void dsp_clear_icache(Dsp56300 *d)
+{
+    for (unsigned pc = 0; pc < DSP_PRAM_SIZE; pc++) {
+        d->icache[pc] = (DspInsn) { .handler = d->decode_handler };
+    }
 }
 
 static bool dsp_exec(Dsp56300 *d, unsigned budget, int32_t stop_sp)
@@ -2698,24 +2703,29 @@ static bool dsp_exec(Dsp56300 *d, unsigned budget, int32_t stop_sp)
                     ((d->sr & SR_LF) ? (d->la + 1u) : 0xFFFFFFFFu);     \
     } while (0)
 
+    /* Tests also assign instructions directly to P-RAM. */
 #ifdef DSP_TEST_COMMON
-#define DSP_CACHE_HIT(slot, pc)                                         \
-    __builtin_expect((slot)->fn != NULL && (slot)->op == d->p[pc], 1)
+#define DSP_CHECK_PROGRAM_WRITE()                                       \
+    do {                                                                \
+        if (ins->op != d->p[pc]) {                                      \
+            goto lbl_DECODE;                                            \
+        }                                                               \
+    } while (0)
 #else
-#define DSP_CACHE_HIT(slot, pc)                                         \
-    __builtin_expect((slot)->fn != NULL, 1)
+#define DSP_CHECK_PROGRAM_WRITE() do {} while (0)
 #endif
 
+    /*
+     * Empty and invalidated entries point at the decoder. Decoded entries
+     * point at their instruction handlers, so fetch can always jump directly.
+     */
 #define DSP_FETCH()                                                     \
     do {                                                                \
         if (__builtin_expect(pc < DSP_PRAM_SIZE, 1)) {                  \
-            DspInsn *_slot = &d->icache[pc];                            \
+            ins = &d->icache[pc];                                       \
             next_pc = pc + 1;                                           \
-            if (!DSP_CACHE_HIT(_slot, pc)) {                            \
-                _slot = dsp_icache_fill(d, pc, d->p[pc], dispatch);     \
-            }                                                           \
-            ins = _slot;                                                \
-            goto *ins->fn;                                              \
+            DSP_CHECK_PROGRAM_WRITE();                                  \
+            goto *ins->handler;                                         \
         }                                                               \
         next_pc = (pc + 1) & DSP_MASK24;                                \
         ins = &nop_insn;                                                \
@@ -2732,8 +2742,20 @@ static bool dsp_exec(Dsp56300 *d, unsigned budget, int32_t stop_sp)
         DSP_FETCH();                                                    \
     } while (0)
 
+    if (__builtin_expect(!d->decode_handler, 0)) {
+        d->decode_handler = &&lbl_DECODE;
+        dsp_clear_icache(d);
+    }
     DSP_SYNC_LOOP();
     DSP_FETCH();
+
+lbl_DECODE: {
+    DspInsn *decoded = dsp_icache_decode(d, pc, d->p[pc]);
+
+    decoded->handler = dispatch[decoded->kind];
+    ins = decoded;
+    goto *ins->handler;
+}
 
 lbl_PAR_EA_NOALU: {
     unsigned reg5 = ins->a & 0x1Fu;
@@ -2763,22 +2785,13 @@ lbl_PAR_EA_NOALU: {
 
 lbl_PAR_AA_NOALU: {
     unsigned reg5 = ins->a & 0x1Fu;
-    bool space_y = (ins->a >> 5) & 1;
-    bool mem_to_reg = (ins->a >> 6) & 1;
-    uint32_t addr = ins->imm;
+    uint32_t *ram = (ins->a & 0x20u) ? d->y : d->x;
+    uint32_t addr = ins->imm; /* The short absolute address is always in RAM. */
 
-    if (mem_to_reg) {
-        write_reg5(d, reg5, space_y ? mem_read_y(d, addr) : mem_read_x(d, addr));
+    if (ins->a & 0x40u) {
+        write_reg5(d, reg5, ram[addr]);
     } else {
-        uint32_t val = read_reg5(d, reg5);
-        if (space_y) {
-            if (__builtin_expect(mem_write_y_yield(d, addr, val), 0) &&
-                stop_sp < 0) {
-                budget = 1;
-            }
-        } else {
-            mem_write_x(d, addr, val);
-        }
+        ram[addr] = read_reg5(d, reg5) & DSP_MASK24;
     }
     DSP_STEP_END();
 }
@@ -3082,22 +3095,22 @@ lbl_BIT_BRANCH: {
     switch (mode) {
     case 0:
         addr = 0xFFFF80u + ins->alu;
-        val = space_y ? mem_read_y(d, addr) : mem_read_x(d, addr);
+        val = space_y ? io_read_y(d, addr) : io_read_x(d, addr);
         break;
     case 1:
         val = read_reg6(d, ins->alu);
         break;
     case 2:
         addr = 0xFFFFC0u + ins->alu;
-        val = space_y ? mem_read_y(d, addr) : mem_read_x(d, addr);
+        val = space_y ? io_read_y(d, addr) : io_read_x(d, addr);
         break;
     case 3:
         addr = eval_ea(d, ins->alu, dsp_ext(d, pc), NULL, true);
         val = space_y ? mem_read_y(d, addr) : mem_read_x(d, addr);
         break;
     default:
-        addr = ins->alu;
-        val = space_y ? mem_read_y(d, addr) : mem_read_x(d, addr);
+        addr = ins->alu; /* Short absolute memory operand. */
+        val = space_y ? d->y[addr] : d->x[addr];
         break;
     }
     bool was_set = (val & ins->imm) != 0;
@@ -3204,7 +3217,7 @@ lbl_step_slow:
     DSP_FETCH();
 
 #undef DSP_SYNC_LOOP
-#undef DSP_CACHE_HIT
+#undef DSP_CHECK_PROGRAM_WRITE
 #undef DSP_FETCH
 #undef DSP_STEP_END
 }
@@ -3548,7 +3561,7 @@ static int dsp_post_load(void *opaque, int version_id)
     Dsp56300 *d = opaque;
 
     (void)version_id;
-    memset(d->icache, 0, sizeof(d->icache));
+    dsp_clear_icache(d);
     return 0;
 }
 
@@ -3633,7 +3646,7 @@ static void dsp56300_reset(void *opaque)
     qatomic_set(&d->main_pfdr, 0);
 
     memset(d->p, 0, sizeof(d->p));
-    memset(d->icache, 0, sizeof(d->icache));
+    dsp_clear_icache(d);
     memset(d->x, 0, sizeof(d->x));
     memset(d->y, 0, sizeof(d->y));
     memset(d->x_io, 0, sizeof(d->x_io));

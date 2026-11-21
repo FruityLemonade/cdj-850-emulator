@@ -227,6 +227,8 @@ static void cdj850_intc_write(void *opaque, hwaddr off, uint64_t val,
                               unsigned size)
 {
     Cdj850Intc *s = opaque;
+    uint16_t old_cmt_priority = intc_reg16(s, CDJ850_INTC_IPR08)
+                                & CDJ850_IPR08_CMT0_MASK;
     unsigned i;
 
     for (i = 0; i < size; i++) {
@@ -250,6 +252,10 @@ static void cdj850_intc_write(void *opaque, hwaddr off, uint64_t val,
     }
     /* A priority or sense change can release a latched request. */
     intc_update(s, false);
+    if (old_cmt_priority != (intc_reg16(s, CDJ850_INTC_IPR08)
+                            & CDJ850_IPR08_CMT0_MASK)) {
+        cdj850_cmt_priority_changed();
+    }
 }
 
 static const MemoryRegionOps cdj850_intc_ops = {

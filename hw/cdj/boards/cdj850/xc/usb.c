@@ -85,7 +85,6 @@
 #define CDJ850_USB_BASE     0xFFFC1C00
 #define CDJ850_USB_SIZE     0x100
 #define CDJ850_USBI_VECTOR  140
-#define CDJ850_INTC_IPR08   0x404          /* 0xFFFE0C04 */
 #define CDJ850_USB_POLL_NS  100000
 
 /* SH7263 offsets (manual Table 25.2) that need more than a pass-through. */

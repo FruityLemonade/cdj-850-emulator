@@ -5,6 +5,7 @@
 #include "cdj_common.h"
 
 void cdj850_cmt_init(MemoryRegion *sysmem, SuperHCPU *cpu);
+void cdj850_cmt_priority_changed(void);
 /* Queue an interrupt request: SH-2A vector number and priority level. */
 void cdj850_irq_raise(SuperHCPU *cpu, uint16_t vec, uint8_t level);
 /* Level-sensitive sources: is a request for vec queued, or presented and
