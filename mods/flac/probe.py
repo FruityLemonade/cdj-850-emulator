@@ -13,6 +13,8 @@ import time
 SCRIPTS = {
     "folder": ("6000:usb:200,9000:enter:200,10500:rot+1,11500:enter:200,"
                "18000:disc:200"),
+    # the same, loading the WAV (track 1) through the stock path
+    "folder-wav": "6000:usb:200,9000:enter:200,11500:enter:200,18000:disc:200",
     "export": ("6000:usb:200,7600:rot+2,9000:enter:200,11500:enter:200,"
                "14500:next:200,17000:time:200,18300:call_next:200,20000:play:200,"
                "21400:beat_2:200,24000:reloop:200,24800:rev:200,27500:rev:200,"
@@ -46,6 +48,9 @@ def main():
     parser.add_argument("--symbols", type=Path,
                         default=Path(__file__).parent / "build/payload.map")
     parser.add_argument("--with-info", action="store_true")
+    # wall-clock seconds for the whole script; emulated time is fixed by -icount,
+    # so a busy host only needs longer
+    parser.add_argument("--timeout", type=float, default=120)
     args = parser.parse_args()
     args.out.mkdir(parents=True, exist_ok=True)
     env = os.environ.copy()
@@ -79,7 +84,7 @@ def main():
             try:
                 json.loads(conn.readline())
                 execute(conn, "qmp_capabilities")
-                deadline = time.monotonic() + 120
+                deadline = time.monotonic() + args.timeout
                 report = []
                 done = False
                 while time.monotonic() < deadline and process.poll() is None and not done:

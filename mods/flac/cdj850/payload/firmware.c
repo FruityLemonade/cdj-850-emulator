@@ -18,6 +18,7 @@ typedef struct {
     uint32_t compressed_size;
     uint32_t size;
     int raw_offset;
+    uint32_t rate; /* 44100 or 48000, from STREAMINFO */
 } VirtualFile;
 
 static VirtualFile files[FILE_SLOTS];
@@ -129,7 +130,7 @@ int flac_audio_source_size(void *handle, uint32_t *size)
     }
     if (!file)
         return -1;
-    *file = (VirtualFile){handle, *size, 0, position};
+    *file = (VirtualFile){handle, *size, 0, position, 0};
     uint32_t frames = start(file);
     if (!frames || frames > (INT32_MAX - WAV_HEADER_SIZE) / 4) {
         file->handle = NULL;
@@ -138,6 +139,7 @@ int flac_audio_source_size(void *handle, uint32_t *size)
         ++flac_diagnostics.failures;
         return -1;
     }
+    file->rate = flac_sample_rate();
     file->size = WAV_HEADER_SIZE + frames * 4;
     *size = file->size;
     ++flac_diagnostics.opened;
@@ -166,16 +168,20 @@ static void write_le32(uint8_t *p, uint32_t value)
         p[i] = (uint8_t)(value >> (i * 8));
 }
 
-static void wav_header(uint8_t *header, uint32_t size)
+/* The stock parser (wav_header_parse, 0x0C08CA8E) maps the fmt rate to its
+ * rate index; pcm_rate_copy resamples anything but 44.1 kHz for the DSP. */
+static void wav_header(uint8_t *header, uint32_t size, uint32_t rate)
 {
     static const uint8_t template[WAV_HEADER_SIZE] = {
         'R','I','F','F',0,0,0,0,'W','A','V','E',
-        'f','m','t',' ',16,0,0,0,1,0,2,0,0x44,0xac,0,0,0x10,0xb1,2,0,4,0,16,0,
+        'f','m','t',' ',16,0,0,0,1,0,2,0,0,0,0,0,0,0,0,0,4,0,16,0,
         'J','U','N','K',4,0,0,0,0,0,0,0,
         'd','a','t','a',0,0,0,0
     };
     memcpy(header, template, WAV_HEADER_SIZE);
     write_le32(header + 4, size - 8);
+    write_le32(header + 24, rate);
+    write_le32(header + 28, rate * 4);
     write_le32(header + 52, size - WAV_HEADER_SIZE);
 }
 
@@ -199,7 +205,7 @@ static int virtual_read(VirtualFile *file, void *dst, uint32_t count, uint32_t p
         uint32_t take = total;
         if (position < WAV_HEADER_SIZE) {
             uint8_t header[WAV_HEADER_SIZE];
-            wav_header(header, file->size);
+            wav_header(header, file->size, file->rate);
             if (take > WAV_HEADER_SIZE - position)
                 take = WAV_HEADER_SIZE - position;
             memcpy(out, header + position, take);

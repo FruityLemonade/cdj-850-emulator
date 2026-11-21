@@ -26,6 +26,12 @@ int main(int argc, char **argv)
     if (!frames)
         return 3;
 
+    if (argv[2][0] == 'r') {
+        /* "rate" prints the stream's sample rate */
+        printf("%lu\n", (unsigned long)flac_sample_rate());
+        flac_close();
+        return fclose(file);
+    }
     for (int i = 2; i < argc; i++) {
         /* "all" reads through EOF; otherwise write the sector at the given sample. */
         int all = argv[i][0] == 'a';

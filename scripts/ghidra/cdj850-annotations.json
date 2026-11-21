@@ -618,6 +618,18 @@
           "name": "alloc_zeroed"
         },
         {
+          "address": "0c08bd54",
+          "name": "sample_rate_index_b"
+        },
+        {
+          "address": "0c08ca8e",
+          "name": "wav_header_parse"
+        },
+        {
+          "address": "0c08e59c",
+          "name": "sample_rate_index"
+        },
+        {
           "address": "0c08e80a",
           "name": "flash_reset_cmd"
         },
@@ -874,8 +886,16 @@
           "name": "player_tick_usb_playback"
         },
         {
+          "address": "0c0f95c0",
+          "name": "pcm_rate_init"
+        },
+        {
           "address": "0c0f95e6",
           "name": "pcm_rate_copy"
+        },
+        {
+          "address": "0c0f97b8",
+          "name": "pcm_resample_cubic"
         },
         {
           "address": "0c0f9ee8",
@@ -1103,7 +1123,7 @@
         {
           "address": "0c058ff2",
           "type": "PLATE",
-          "text": "USB WAV decode block (codec type 5 of usb_decoder_read; the file-level read is wav_pcm_read, 0x0C0BE3E4): takes the next chunk of the file buffer (0x0C0592A6) and writes it to the output buffer: 24-bit (format byte +0x55 = 0x18) reduced to 16-bit samples bytewise, 16-bit copied with memcpy (mono duplicated to both channels), then every 16-bit sample byte-swapped in place (little-endian WAV to big-endian). The output buffer is in the uncached SDRAM mirror, so the swap is one uncached read and one uncached write per sample: ~5.5M of each, about 80% of all uncached accesses in a USB play run, which the emulator cannot show [static + emu: call trace, cache model]."
+          "text": "USB WAV decode block (codec type 5 of usb_decoder_read; the file-level read is wav_pcm_read, 0x0C0BE3E4): takes the next chunk of the file buffer (0x0C0592A6) and writes it to the output buffer: 24-bit (bits-per-sample byte +0x55 = 0x18, set by wav_header_parse) reduced to 16-bit samples bytewise by keeping bytes 1-2 of each 3 (the top 16 bits, truncated, no rounding or dither; the flac mod cuts 24-bit FLAC the same way), 16-bit copied with memcpy (mono duplicated to both channels), then every 16-bit sample byte-swapped in place (little-endian WAV to big-endian). The output buffer is in the uncached SDRAM mirror, so the swap is one uncached read and one uncached write per sample: ~5.5M of each, about 80% of all uncached accesses in a USB play run, which the emulator cannot show [static + emu: call trace, cache model]."
         },
         {
           "address": "0c060c4c",
@@ -1773,7 +1793,7 @@
         {
           "address": "0c0f95e6",
           "type": "PLATE",
-          "text": "pcm_rate_copy(src, dst, ?, samples, &frames_out): if pcm_sample_rate (0x0CE6DBAC) is 44100, memcpy samples * 2 bytes from src (wav_decode_block's uncached buffer) to dst and report samples / 2 frames; otherwise resamples block by block through 0x0C0F97B8, keeping the remainder in a carry buffer. Called from 0x0C0BF6BA [static + emu]."
+          "text": "pcm_rate_copy(src, dst, ?, samples, &frames_out): if pcm_sample_rate (0x0CE6DBAC) is 44100, memcpy samples * 2 bytes from src (wav_decode_block's uncached buffer) to dst and report samples / 2 frames; otherwise resamples block by block through pcm_resample_cubic (0x0C0F97B8), keeping the remainder in a carry buffer. Called from 0x0C0BF6BA [static + emu]."
         },
         {
           "address": "0c0f9ee8",
@@ -1934,6 +1954,36 @@
           "address": "0c7f6625",
           "type": "PLATE",
           "text": "USB playback sub-state (record 0x0C7F6620 + 5) switched on by player_tick_usb_playback: 0x10-0x17 when +6 is 0, 0x20-0x2B when +6 is 1, 0x30-0x32 when +6 is 2 [static]. Observed [emu]: 0x30 at load, 0x10 while playing, 0x11/0x12 briefly when a refill is scheduled, 0x12 while the flac mod underruns during SEARCH."
+        },
+        {
+          "address": "0c08ca8e",
+          "type": "PLATE",
+          "text": "wav_header_parse(track, ?): RIFF/WAVE parser of the loaded USB track. Reads the header through wav_header_read (pool 0x0C08CBF0, the flac mod's redirect) and walks the chunks. From 'fmt ': bits per sample -> record +0x54 (u16; wav_decode_block reads its low byte +0x55); sample rate -> sample_rate_index (0x0C08E59C) -> record +0x3A2 bits 5-8; record +0x3A1 bits 2-3 = 1 for 44100, 2 for any other rate; channels -> +0x3A2 bits 1-6; format tag must be 1 (PCM); byte rate * 8 -> bitrate in kbps at +0x52, and 0x0C08CEC8(data size, bitrate) -> +0x08. Record = 0x3A4-byte track slot. 48 kHz WAV takes the same path as 44.1 kHz, only the rate index differs [static]."
+        },
+        {
+          "address": "0c08e59c",
+          "type": "PLATE",
+          "text": "sample_rate_index(rate): 96000->0, 88200->1, 64000->2, 48000->3, 44100->4, 32000->5, 24000->6, 22050->7, 16000->8, 12000->9, 11025->10, 8000->11, else 15. The inverse of sample_rate_table (0x0C18C2C0). Called by wav_header_parse and other header parsers at 0x0C08CF1A, 0x0C08D41C, 0x0C08D6E8, 0x0C08DD30 [static]."
+        },
+        {
+          "address": "0c08bd54",
+          "type": "PLATE",
+          "text": "Byte-for-byte equivalent of sample_rate_index (0x0C08E59C), called from the parsers at 0x0C089730, 0x0C08993E, 0x0C089E40, 0x0C08AB8E [static]."
+        },
+        {
+          "address": "0c0f95c0",
+          "type": "PLATE",
+          "text": "pcm_rate_init(rate): zeroes a 12-byte buffer and a counter, stores rate in pcm_sample_rate (0x0CE6DBAC), then calls 0x0C0F96A8(rate). usb_decode_fill (0x0C0BF6BA) calls it at 0x0C0BF748 with sample_rate_table[record +0x3A2 bits 5-8] before the decode loop [static]."
+        },
+        {
+          "address": "0c0f97b8",
+          "type": "PLATE",
+          "text": "pcm_resample_cubic(src, dst, channels, in_frames, out_frames): converts 16-bit frames to out_frames with a 4-point cubic interpolator, 11-bit fractional position, integer only, clipped to 16 bits; stereo when channels == 2. Copies the last 3 input frames (12 bytes) ahead of src for the next call. Called only from pcm_rate_copy (0x0C0F9644) for rates other than 44100 [static]."
+        },
+        {
+          "address": "0c18c2c0",
+          "type": "PLATE",
+          "text": "sample_rate_table: 12 u32 rates indexed by record +0x3A2 bits 5-8: 96000, 88200, 64000, 48000, 44100, 32000, 24000, 22050, 16000, 12000, 11025, 8000 (the MPEG-4 sampling-frequency index order). Read by usb_decode_fill (0x0C0BF6E4) for pcm_rate_init, and by 0x0C0005F4, 0x0C0584B4, 0x0C08E460, 0x0C08F590, 0x0C08F64A, 0x0C08F7AA, 0x0C08F904, 0x0C0903D0 [static]."
         }
       ],
       "labels": [
@@ -1992,6 +2042,10 @@
         {
           "address": "0c18be40",
           "name": "idle_task_descriptor"
+        },
+        {
+          "address": "0c18c2c0",
+          "name": "sample_rate_table"
         },
         {
           "address": "0c18ccdc",
