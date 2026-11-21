@@ -3,6 +3,16 @@
 from dsppatch import DspShiProfile
 from sigpatch import Cave, ImageProfile
 
+# Service-mode gate (docs/cdj850-modding.md, "Service mode gate"): no mod may
+# act while either byte is nonzero.
+#   0x0C1E109A  1 or 2 once panel_keys_to_internal_words (0x0C0ED00E) saw
+#               RELOOP held at power-on (USB/CD firmware update); its only
+#               store in MAIN, 0 in .data otherwise.
+#   0x0C1E10AA  1 in .data until that function has looked at the power-on
+#               keys (cleared at 0x0C0ECF58, never set again): the mode is
+#               not known yet, so mods stay out until it is.
+SERVICE_GATE = (0x0C1E109A, 0x0C1E10AA)
+
 # MAIN runs in place from flash 0x0C000000 on the big-endian SH7263 (SH-2A).
 # Erased flash in the image is sparse, so routines go into six unused debug
 # shell handlers (1,118 bytes) that only the shell command table points to.
@@ -16,6 +26,7 @@ MAIN_PROFILE = ImageProfile(
         end=b'show message buffer info',
         sha256='891c18aac15fe3179e6b6f72df866a24c9bdb443359cfdd63fe2465e0ee6bba8',
     ),
+    gate=SERVICE_GATE,
 )
 
 # The DSP56371 program MAIN uploads over SHI as four contiguous big-endian

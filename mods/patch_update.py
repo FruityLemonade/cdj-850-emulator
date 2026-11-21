@@ -2,7 +2,8 @@
 # SPDX-License-Identifier: GPL-2.0-or-later
 """Patch a real Pioneer firmware update (.UPD) with a mod.
 
-    usage: patch_update.py [--model <id>] <in.UPD> <out.UPD> [<mod> ...]
+    usage: patch_update.py [--model <id>] [--version D.DD | --keep-version]
+                           <in.UPD> <out.UPD> [<mod> ...]
            patch_update.py [--model <id>] --list
 
 --model picks the player the update is for (default cdj2000nxs2); its profile
@@ -56,6 +57,19 @@ verified against (MODS[name].fw_versions). patch_update.py reads the
 update's own version string for that image and leaves out a mod it was not
 verified for -- pass --force-version to patch anyway, at your own risk.
 
+CDJ-850 version label. The deck's service-mode USB update (USB SELECT +
+RELOOP at power-on) skips a file whose label matches the running firmware
+(upd_flash_write 0x0C08EC44, see c850_repack.installs_over), and then shows
+COMPLETE! having written nothing. A modded CDJ-850 file is therefore
+labelled with the first digit 0 by default ("1.13" -> "0.13",
+c850_repack.mod_label): a label starting below '1' is always written, so it
+installs over stock and over any earlier modded build, and the stock file
+(1.13) always installs over it (rollback). The version screen then reads
+"Ver 0.13". --version D.DD sets another label, --keep-version keeps the
+input's (a file labelled like the running firmware is skipped). The label
+is outside the summed bytes. A "0.DD" input counts as firmware 1.DD for the
+mods' version check. Other models are unchanged.
+
 THIS IS UNTESTED ON REAL HARDWARE. The container repacks correctly and the
 patched image has been proven identical to patch_gui.py's/patch_main.py's own
 output (see emulator/tests/), but nobody has flashed one of these into a real
@@ -81,13 +95,54 @@ import validate
 from launcher import layout, mods as mod_rows
 
 
-def _section_version(header):
+def _section_version(header, fw=None):
     if isinstance(header, (bytes, bytearray)):
         header = header.decode('latin1', errors='replace')
     m = re.search(r'(?:Ver)?(\d+\.\d+)', header)
     if not m:
         raise SystemExit('patch_update: no version string in section header %r' % header)
+    if fw is not None and fw.container == 'c850':
+        return c850_repack.base_version(m.group(1))     # a modded "0.13" is 1.13
     return m.group(1)
+
+
+def label_option(args):
+    """(label option, args without it): ('keep', None), ('set', 'D.DD') or
+    ('default', None) for --keep-version, --version D.DD or neither."""
+    if '--keep-version' in args and '--version' in args:
+        die('--version and --keep-version exclude each other')
+    if '--keep-version' in args:
+        return ('keep', None), [a for a in args if a != '--keep-version']
+    if '--version' in args:
+        i = args.index('--version')
+        if i + 1 >= len(args):
+            die('--version needs a label (D.DD, like 0.13)')
+        v = args[i + 1]
+        if not re.fullmatch(r'[0-9]\.[0-9]{2}', v):
+            die('--version %r is not D.DD (like 0.13)' % v)
+        return ('set', v), args[:i] + args[i + 2:]
+    return ('default', None), args
+
+
+def c850_label(section, option):
+    """(the label the modded CDJ-850 file gets, a line saying why)."""
+    have = c850_repack.get_version(section)
+    kind, value = option
+    if kind == 'keep':
+        label = have
+    elif kind == 'set':
+        label = value
+    else:
+        label = c850_repack.mod_label(c850_repack.base_version(have))
+    stock = c850_repack.base_version(have)
+    over_stock = c850_repack.installs_over(label, stock)
+    over_self = c850_repack.installs_over(label, label)
+    why = ('label %s (%s): %s over a deck running %s, %s over a deck running %s itself; the stock %s file %s over it'
+           % (label, {'keep': 'kept, --keep-version', 'set': '--version', 'default': 'default mod label'}[kind],
+              'installs' if over_stock else 'SKIPPED by the updater', stock,
+              'installs' if over_self else 'skipped', label, stock,
+              'installs' if c850_repack.installs_over(stock, label) else 'is SKIPPED'))
+    return label, why
 
 
 def _decode_target(target, section, fw):
@@ -140,6 +195,9 @@ def main():
     model, args = modelfw.model_id(sys.argv[1:])
     force_version = '--force-version' in args
     args = [a for a in args if a != '--force-version']
+    label_opt, args = label_option(args)
+    if label_opt[0] != 'default' and modelfw.load(model).container != 'c850':
+        die('--version/--keep-version only apply to the CDJ-850 (c850) container')
 
     reg = registry(model)
     rows = {key: [n for n in knobs if n in reg] for key, knobs in conf_rows().items()}
@@ -206,7 +264,7 @@ def main():
                 % (target, idx + 1, len(sections)))
         section = sections[idx]
         header, declared, avail, image = _decode_target(target, section, fw)
-        version = _section_version(header)
+        version = _section_version(header, fw)
         mods = mod.mods_for(model)
         usable = []
         for name in target_names:
@@ -226,6 +284,10 @@ def main():
         elif target == 'main':
             profiles[target] = validate.default_main_profile(model)
         sections[idx] = _encode_target(target, section, patched, fw)
+        if target == 'main' and fw.container == 'c850':
+            label, why = c850_label(section, label_opt)
+            sections[idx] = c850_repack.set_version(sections[idx], label)
+            print('patch_update: %s' % why)
         print('patch_update: section %d (%s, Ver%s) %d -> %d bytes'
               % (idx + 1, target, version, len(section), len(sections[idx])))
 

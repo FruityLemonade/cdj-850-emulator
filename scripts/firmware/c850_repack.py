@@ -13,11 +13,13 @@ What the firmware itself does with the file (docs/cdj850-modding.md,
   4 MB buffer and programs flash from it, 64 KB sector by sector, with a
   read-back compare. The service-mode USB update (USB SELECT + RELOOP at
   power-on) writes 0x060000-0x3EFFFF and skips a file whose version at
-  0x60010 equals the running one; a second mode the firmware also has
-  writes from 0x000000, boot region included. No checksum, label or model
-  check -- so `pack` takes everything below the packed MAIN from a base
-  file and refuses a base whose boot region is not the shipped one. Bump
-  the version (`--version`) or the deck will skip the update.
+  0x60010 equals the running one (installs_over() below has the traced
+  rule: a label starting below '1', like the mod label "0.13", is always
+  written); a second mode the firmware also has writes from 0x000000,
+  boot region included. No checksum, label or model check -- so `pack`
+  takes everything below the packed MAIN from a base file and refuses a
+  base whose boot region is not the shipped one. Relabel (`--version`,
+  e.g. 0.13) or the deck will skip an update labelled like it runs.
 * Size: the packed MAIN may run up to 0x3F0000 (MAIN_END), past the
   0x200000 the stock layout ends at. Nothing else in MAIN writes flash
   below 0x3F8000 (the settings/log sectors), and an update to a 3.5 MB
@@ -116,6 +118,53 @@ def set_version(base, version):
         raise ValueError("version %r is not D.DD (like 1.13)" % version)
     field = version.encode("ascii").ljust(16, b"\0")
     return base[:VERSION_OFF] + field + base[VERSION_OFF + 16:]
+
+
+def get_version(upd):
+    """The label's version field as text ("1.13")."""
+    return upd[VERSION_OFF:VERSION_OFF + 16].split(b"\0")[0].decode("latin1")
+
+
+# What the service-mode USB update (mode 6) does with a file, traced in
+# upd_flash_write 0x0C08EC44..0x0C08ECCA: it copies the file's label bytes
+# 0x60010..0x60014 to 0x0C08EE78 and SKIPS flashing (straight to COMPLETE!)
+# only when ALL of these hold:
+#   file[0] >= '1'  (cmp/ge #0x31 on the zero-extended byte),
+#   mode == 6,
+#   memcmp(file + 2, running + 2, 2) == 0  (the two chars after the dot),
+#   file[0] == running[0].
+# The running version is 0x0CE6D242, sprintf("%s") of the label of the MAIN
+# in flash (0x0C0B8D68, 16 bytes). The dot is never compared. So a file whose
+# label starts below '1' ("0.13") is ALWAYS written, and a stock "1.13" file
+# is written over any deck running a label that starts with another char.
+MOD_MAJOR = "0"
+
+
+def installs_over(file_label, running_label):
+    """Whether the service USB update writes a file labelled `file_label` on a
+    deck running `running_label` (False = skipped, COMPLETE! with nothing written)."""
+    f = file_label.encode("latin1").ljust(4, b"\0")
+    r = running_label.encode("latin1").ljust(4, b"\0")
+    return f[0] < 0x31 or f[2:4] != r[2:4] or f[0] != r[0]
+
+
+def mod_label(version):
+    """The label a modded file of firmware `version` (D.DD) gets: the same
+    with the first digit 0 ("1.13" -> "0.13"). The updater always writes such
+    a file (first char below '1'), whatever the deck runs; the stock file
+    ("1.13") is always written over it (first chars differ); the version
+    screen shows "Ver 0.13", so a modded deck is told apart from a stock one."""
+    if not re.fullmatch(r"[0-9]\.[0-9]{2}", version):
+        raise ValueError("version %r is not D.DD (like 1.13)" % version)
+    return MOD_MAJOR + version[1:]
+
+
+def base_version(label):
+    """The firmware version a label stands for: a mod label "0.DD" is a modded
+    "1.DD" (every CDJ-850 release is 1.xx); anything else is itself."""
+    if re.fullmatch(r"0\.[0-9]{2}", label):
+        return "1" + label[1:]
+    return label
 
 
 def build_upd(base, image, check_boot=True, version=None):
