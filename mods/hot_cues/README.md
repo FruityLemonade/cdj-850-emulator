@@ -8,7 +8,7 @@ Default off. Adds a hot-cue mode to the beat-loop buttons, backed by the rekordb
 | hold BEAT SELECT, press RELOOP | toggles the mode (saved to flash, survives a restart); the display shows `HOT CUE ON` / `HOT CUE OFF` for 1.5 s | same |
 | BEAT SELECT alone / RELOOP alone | stock (fraction mode / RELOOP-EXIT) | stock |
 | BEAT 1 / 2 / 4, slot set | jump to hot cue A / B / C | stock beat loops |
-| BEAT 1 / 2 / 4, slot empty | record the position into the slot and write the ANLZ | stock |
+| BEAT 1 / 2 / 4, slot empty | record the position into the slot (the nearest beat with quantize on, below) and write the ANLZ | stock |
 | hold BEAT 8, press 1 / 2 / 4 | delete the slot and write the ANLZ | stock |
 | beat LEDs 1 / 2 / 4 | lit = set, blinking = empty; 8 lit | stock |
 
@@ -22,6 +22,15 @@ Default off. Adds a hot-cue mode to the beat-loop buttons, backed by the rekordb
 - **Loops.** A loop slot (rekordbox type 2) is armed like a memory loop; when the deck was playing
   it plays the loop. Recording into an empty slot while a loop plays stores that loop (the out in
   effect, also after a BEAT or `loop_resize` resize); otherwise a point at the play position.
+- **Quantize.** With `quant_loops` in the build and quantize on (BEAT SELECT + LOOP IN, the default), a
+  new point cue is recorded on the beat nearest the play position, the same snap LOOP IN uses
+  (`quant_loops_in_point`: a USB track whose rekordbox grid gave the deck's tempo, the beat in the
+  grid window in RAM; ties go to the earlier beat, before the first beat to the first beat). Where
+  the grid cannot say, and with quantize off, the play position is kept. A recorded loop is the
+  playing loop as it plays (one quant_loops made is on the grid already). Built without
+  `quant_loops` the payload's weak `quant_loops_in_point` returns the position: no snapping.
+  `hot_cues_snapped` counts the records that moved, `hot_cues_last_pos` holds the play position of
+  the last one. The jump itself is not quantized (it does not wait for the beat).
 - **Writes.** Record and delete use the firmware's own ANLZ hot-cue setter (`FUN_0C0C1442(ctx,
   path, record, 1)` → `FUN_0C0C166C` → section write `FUN_0C0C5960` → `FUN_0C0C5EEC`), the same
   machinery stock MEMORY uses for memory cues. Times are written in the deck's units (divisor 150,
