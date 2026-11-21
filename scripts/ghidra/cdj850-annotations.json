@@ -1334,7 +1334,7 @@
         {
           "address": "0c0b8ed8",
           "type": "PLATE",
-          "text": "idle_task_state_scan: for i = 0..16 reads the object pointer table after tick_ms (0x0CE49F58[i + 1]), follows +0x14 to a state word and compares it, and an id byte (0x0CE49CBC), with the values in 0x0CE49C74; returns the bitmask of entries that differ. idleTASK (0x0C0B8EA2) calls it in a loop until it is non-zero, which is why most interrupts land at 0x0C0B8EFA and why it dominates loads from on-chip pool 2 [static + emu]. Empty slots make it load @(0x14, NULL): tens of millions of cached reads of flash 0x00000014 while idle (40M in a 100 s headless boot), harmless."
+          "text": "idle_task_state_scan: for i = 0..16 reads the object pointer table after tick_ms (0x0CE49F58[i + 1]), follows +0x14 to a state word and compares it, and an id byte (0x0CE49CBC), with the values in 0x0CE49C74; returns the bitmask of entries that differ. idleTASK (0x0C0B8EA2) calls it in a loop until it is non-zero, which is why most interrupts land at 0x0C0B8EFA and why it dominates loads from on-chip pool 2 [static + emu]. Empty slots make it load @(0x14, NULL): tens of millions of cached reads of flash 0x00000014 while idle (40M in a 100 s headless boot), harmless. Its loop is the CPU headroom gauge: under -icount (cache-model profiles, all-mods build 0.13) it is 66% of executed instructions in the boot to NO DISC, 91% during USB FLAC play (the FLAC decoder in the payload is about 3.4% of instructions) and 95% during USB WAV play with loops and hot cues [emu]."
         },
         {
           "address": "0c0b92cc",
