@@ -15,7 +15,6 @@ import socket
 import struct
 import subprocess
 import sys
-import time
 from pathlib import Path
 
 import pytest
@@ -400,32 +399,24 @@ def test_live_info_screens(tmp_path):
         return v
 
     res = {}
-    with tr.Deck(image, flash=flash) as d:
-        d.wait_line("mode=0x0a", "[KEYAM]", timeout=300)
-        time.sleep(1.5)
-        for _ in range(4):
-            if d.rb(0x0CE6D25F) == 3:
-                break
-            d.key("play")
-            time.sleep(2.5)
-        time.sleep(1.0)
+    script = tr.LOAD_SCRIPT + ",13600:info:200,14200:rot+2"
+    with tr.Deck(image, flash=flash, script=script) as d:
+        frame, _ = d.wait_line("mode=0x0a", "[KEYAM]", "[128.00 8A *****]", timeout=300)
         res["title"] = screen(d)
-        d.key("info")
-        time.sleep(1.5)
-        for k in range(1, 6):
-            _udp(d, "0x03:1:0:rot")
-            time.sleep(1.2)
-            res["rot%d" % k] = screen(d)
-        for _ in range(5):                          # back to the title view
-            _udp(d, "0x03:-1:0:rot")
-            time.sleep(1.2)
-        _udp(d, "0x05:%d:0:lvl" % 0x56)             # pitch fader to about +3.35 %, MASTER TEMPO off
-        _udp(d, "0x06:%d:0:lvl" % 0x00)
-        time.sleep(2.5)
+        frame, _ = d.wait_line("mode=0x0b", "[make_test_stick]", "[Am]", start=frame + 1)
+        res["rot2"] = screen(d)
+        _udp(d, "0x03:3:0:rot")
+        frame, _ = d.wait_line("mode=0x0b", "[Test stick]", start=frame + 1)
+        res["rot5"] = screen(d)
+        _udp(d, "0x03:-5:0:rot")
+        frame, _ = d.wait_line("mode=0x0a", "[KEYAM]", start=frame + 1)
+        _udp(d, "0x05:86:0:lvl")                    # pitch fader to about +3.35 %
+        _udp(d, "0x06:0:0:lvl")
+        frame, _ = d.wait_line("mode=0x0a", " 3A *****]", start=frame + 1)
         res["pitch"] = screen(d)
         res["pitch"]["pitch"] = d.rh(PITCH)
-        d.key("master_tempo")                       # MT on: the key as analysed
-        time.sleep(1.5)
+        d.key("master_tempo")
+        d.wait_line("mode=0x0a", " 8A *****]", start=frame + 1)
         res["mt"] = screen(d)
     print("info_order live:", res)
     t = res["title"]
