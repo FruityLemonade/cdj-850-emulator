@@ -88,10 +88,11 @@ flowchart LR
 
 ### Service-Mode USB Updater (`0x0C08EC44`)
 - Holding **USB SELECT + RELOOP** at power-on enters USB update mode in MAIN.
-- `0x0C08F3C2` reads `C:/C850MAIN.UPD` into a 4 MB buffer at `0x0C1E8E5C` (pre-filled with `0xFF`) and dispatches `FlashTask` (`0x0C08E92C` → `0x0C08EC44`) in **mode 6**:
+- `0x0C08F3C2` reads `C:/C850MAIN.UPD` into a 4 MB buffer at `0x0C1E8E5C` (pre-filled with `0xFF`). A state nibble selects the flash-task mode. The service-mode USB trace reached `FlashTask` (`0x0C08E92C` → `0x0C08EC44`) in **mode 6**:
   - Mode 6 erases and programs 57 × 64 KB sectors (`0x060000–0x3EFFFF`), leaving the bootloader (`0x000000–0x05FFFF`) and settings (`0x3F0000–0x3FFFFF`) untouched.
   - **Version skip rule**: `0x0C08EC44` compares the version string at offset `0x060010` (`D.DD`) against the running firmware's version. **If they are equal, it skips flashing and immediately reports `COMPLETE!`.** When repacking an update for USB installation via `scripts/firmware/c850_repack.py`, pass `--version 1.14` (or another bumped `D.DD`) if installing over stock `1.13` via service mode.
   - After each sector erase (`0x0C08E842`) and word program (`0x0C08E8AE`), the updater polls **flash `RY/BY#` on Port C pin `PC2`** (`0xFFFE391E` bit 2 == 1).
+- Mode 5 programs 63 × 64 KB sectors starting at `0x000000`, including the boot region. Its entry path remains unresolved. Both modes preserve the settings sector.
 
 ---
 
@@ -110,12 +111,12 @@ MAIN runs a TOPPERS/µITRON-style real-time kernel. Tasks are registered from st
 
 ### Boot-Critical Task Roots (`mods/bootcrit.py`)
 `mods/validate.py` walks the call graph from the hardware vectors (`0x100, 0x400, 0x600, 0x800`) and the following CDJ-850 task descriptors to guarantee that no mod overwrites code needed to boot, talk to the panel/display, mount USB, or run a recovery firmware update:
-- `initTask`
-- `idleTASK`
+- `initTask` (`0x0C0B8DDC`)
+- `idleTASK` (`0x0C0B8EA2`)
 - `FlashTask` (`0x0C08E92C`)
-- `serialTask`
-- `usbTask` (`0x0C10B34A`)
-- `DjControlTask` (`0x0C014E14`)
+- `serialTask` (`0x0C0FA954`)
+- `usbTask` (`0x0C10B564`)
+- `DjControlTask` (`0x0C014FC8`)
 - `DisplayTask` (`0x0C061454`)
 
 ---
@@ -128,7 +129,7 @@ MAIN runs a TOPPERS/µITRON-style real-time kernel. Tasks are registered from st
 |---|---|---|
 | `0x0CE6D25A` | `u8 is_usb_or_data_mode` | `1` in USB/data mode (set by `FUN_0C0EEFB0`), `0` in CD mode. Mirrors `0x0CE6D25B`. |
 | `0x0CE6D252` | `u8 active_source_index` | Source index (`2` = USB). |
-| `0x0CE6D25F` | `u8 player_state` | `0x0C0E6D25D + source_idx`: `0x0A` = USB browse, `2` = loading, `3` = playing, `4` = paused (CDJ mode / CUE), `5` = paused/braking (VINYL mode), `6` = cued. |
+| `0x0CE6D25F` | `u8 player_state` | `0x0CE6D25D + source_idx`: `0x0A` = USB browse, `2` = loading, `3` = playing, `4` = paused (CDJ mode / CUE), `5` = paused/braking (VINYL mode), `6` = cued. |
 | `0x0CE6CA9D` | `u8 speed_substate` | `0` = normal pitch-tracked, `1` = VINYL scratch, `2`/`0x12` = instant start with `HOLD=1`, `3` = hold/cued, `4`/`0x24` = VINYL touch/brake/release ramp. |
 | `0x0CE6D0DD` | `u8 time_mode_remain` | `1` = `REMAIN`, `0` = elapsed `TIME` (toggled by `0x0C0D9194`). |
 | `0x0CE6D0DE` | `u8 jog_mode_vinyl` | `1` = `VINYL` (factory default), `0` = `CDJ` mode. |
@@ -232,7 +233,7 @@ MAIN's `DisplayTask` (`0x0C061454`) and panel TX builders (`0x0C065D9E..0x0C0666
    - Bytes `8..9`: `u16 BE` whole-number BPM (`1..999`, `0xFFFF` = blank; from `0x0C9D0AE0`).
    - Bytes `10..11`: `u16 BE` unsigned pitch magnitude in hundredths of a percent (or tenths in `WIDE`; paired with Page `0x02` sign/range flags).
 
-2. **Status Page `0x02` (first frame of alternating windows, built at `0x0C065DF8`)**:
+2. **Status Page `0x02` (first frame of alternating windows, tag written at `0x0C065DF6` in the shared status builder)**:
    - Byte `4`: Playing-address elapsed column count (`0..100`, built at `0x0C0637CC`).
    - Byte `5`: Panel button LEDs A (`0x02` = USB activity indicator, `0x04` = `PC`, `0x08` = `CUE`, `0x10` = `PLAY`, `0x20` = `LOOP IN`, `0x40` = `LOOP OUT`, `0x80` = `USB`).
    - Byte `6`: Panel button LEDs B (`0x01` = `RELOOP`, `0x02` = `DISC`, `0x08` = `REV`, `0x10` = `MASTER TEMPO` button LED, `0x20` = `VINYL`, `0x40` = `EJECT`).

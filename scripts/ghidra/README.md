@@ -1,9 +1,9 @@
 # CDJ-850 Ghidra annotations
 
-`cdj850-annotations.json` records the hand-authored function names and listing
-comments from the CDJ-850 v1.13 analysis project. The SHA-256 hashes identify
-the local inputs. The export contains no firmware bytes, Ghidra project files,
-or generated disassembly.
+`cdj850-annotations.json` records the hand-authored function names, labels, and
+listing comments from the CDJ-850 v1.13 analysis project. It includes the boot
+loader, MAIN, and all four DSP stages. The SHA-256 hashes identify the local
+inputs. The bundle contains annotation metadata only.
 
 1. Prepare your own CDJ-850 v1.13 firmware extracts. See the
    [firmware layout and DSP bootstrap notes](../../docs/cdj850-modding.md).
@@ -19,8 +19,7 @@ or generated disassembly.
 
    DSP imports require the DSP56300 processor extension. Use the payload of
    each SHI stage, omitting the six-byte stage header and storing each
-   24-bit word least-significant byte first. Stage 4 has no hand-authored
-   entries in this snapshot.
+   24-bit word least-significant byte first.
 3. Close the project in Ghidra. Use a Python environment with PyGhidra
    installed and point `GHIDRA_INSTALL_DIR` to your Ghidra installation.
    The commands below were tested with Ghidra 12.2.
@@ -35,6 +34,7 @@ or generated disassembly.
 Run the script once for each program you want to annotate. The second argument
 is the program's path inside the Ghidra project. The script checks the imported
 file's SHA-256, language, compiler spec and load address before making changes.
-It creates missing functions where needed and sets the bundled function names
-and comments at their recorded addresses. A rerun applies the same names and
-comments. Existing names and comments at those entries can be overwritten.
+It creates missing functions where needed and applies the bundled names,
+labels, and comments. Labels can name documented RAM addresses in a raw import
+even if it has no corresponding RAM block. Reruns apply the same annotations.
+Existing function names and comments at the bundled entries can be overwritten.
