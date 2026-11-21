@@ -36,7 +36,8 @@ flowchart LR
 |---|---|---|---|
 | `0x00000000–0x003FFFFF` | 4 MB | CS0 NOR Flash (`IC101`) | Bootloader (`0x000000`), recovery (`0x020000`), packed MAIN (`0x060000`), user settings (`0x3F8000`). Uncached alias at `0x20000000`. |
 | `0x0C000000–0x0DFFFFFF` | 32 MB | CS3 SDRAM (`IC102`) | Unpacked MAIN firmware (`0x0C000000–0x0C38FFE0`), BSS/heap/buffers (`0x0C1C14DC+`), bootloader staging (`0x0DDEFA20`). |
-| `0xFFF80000–0xFFFBFFFF` | 256 KB | On-Chip RAM | Reset stack (`0xFFF90000`), RTOS pool-2 kernel objects (`0xFFF86638+`), fast ISRs (`0xFFF8DC00+`). |
+| `0xFFF80000–0xFFF8FFFF` | 64 KB | On-Chip High-Speed RAM | Vector table (VBR), MP3 decoder buffers, SSI PCM blocks, RTOS pool 2 with ISR stubs, kernel/interrupt stack below `0xFFF90000`. See [On-Chip RAM Map](#on-chip-ram-map). The emulator maps 256 KB here; `0xFFF90000–0xFFFBFFFF` does not exist on the chip and is never touched. |
+| `0xFFFF8000–0xFFFFBFFF` | 16 KB | On-Chip Retention RAM | Unused by boot and MAIN (see the map). |
 | `0xFFFC1000` | 4 B | CCR | Cache control register. |
 | `0xFFFC1C00–0xFFFC1CFF` | 256 B | USB (`R8A66597`) | On-chip full-speed USB host (USB-A) and function (USB-B) controller (SH7263 register offsets). |
 | `0xFFFE0800–0xFFFE0FFF` | 2 KB | INTC | Interrupt controller (`ICR0/1/2`, `IRQRR`, `IPR01..IPR17`). |
@@ -46,6 +47,25 @@ flowchart LR
 | `0xFFFE8000` / `0xFFFE8800` | 64 B | SCIF0 / SCIF1 | `SCIF0`: ASCII debug UART (`115200 8N1`). `SCIF1`: clock-synchronous slave link to Panel CPU. |
 | `0xFFFEC000–0xFFFEC00F` | 16 B | CMT | Compare Match Timer `ch0` (1 ms RTOS system tick, vector `142`, level `8`). |
 | `0xFFFFC000` / `0xFFFFC800` | 32 B | SSI0 / SSI1 | Serial Sound Interfaces 0 (right) and 1 (left) feeding PCM blocks to DSP56371 ESAI. |
+
+### On-Chip RAM Map
+
+The SH7263 has 64 KB of high-speed RAM (`0xFFF80000–0xFFF8FFFF`, four 16 KB pages, one-cycle access from the CPU's instruction and data buses, and from the DMAC) and 16 KB of retention RAM (`0xFFFF8000–0xFFFFBFFF`, on the peripheral bus, several bus cycles per access; no instructions in its last 16 bytes) (hardware manual section 31).
+
+How the map was made: both regions filled with a canary through QEMU's `loader` device before reset, dumped after boot to `NO DISC`, after USB WAV play and after USB MP3 play; every load, store and fetch logged by pc and 64-byte block; and every PC-relative literal in boot and MAIN that points into each range. **[emu + static]**
+
+| Range | Contents | Users |
+|---|---|---|
+| `0xFFF80000–0xFFF803FF` | Live vector table: VBR = `0xFFF80000` at idle. The bootloader copies the flash vectors here; MAIN installs its handlers (175 entries point into MAIN, 23 at ISR stubs in pool 2). | Boot `0x11C`/`0x126`; MAIN `0x0C0C692C`, `0x0C0C699E`, `0x0C0C69D8`. |
+| `0xFFF80400–0xFFF80497` | On-chip copy of the bootloader's cache routines (flash `0x544..0x5DB`: `cache_flush_enable` at `0xFFF80400`, range invalidates at `0xFFF80434`/`0xFFF8043E`). | Boot only. |
+| `0xFFF80498–0xFFF86497` | Three 8 KB MP3 decoder work buffers at `0xFFF80498`, `0xFFF82498` and `0xFFF84498`, set up by `mp3_decoder_init` (`0x0C058DA0`). Untouched by WAV playback; MP3 playback makes ~91M loads and 49M stores there, from the decoder core at `0x0C13EC04–0x0C141FD8`. The last ~1.2 KB of the first and third buffers stayed unused in a 192 kbit/s stereo test. | MP3 playback. |
+| `0xFFF86498–0xFFF86637` | SSI PCM blocks: two blocks, each with an 8-byte header, written by `ssi_prepare_pcm_block` (`0x0C076474`), which loads the address `0xFFF86498` itself. Probably the source of the SSI TX DMA channels 1 and 2 (the high-speed RAM is on the DMAC's bus); not checked, since the emulator does not run SSI DMA. | Audio output. |
+| `0xFFF86638–0xFFF8E79F` | RTOS pool 2 (`rtos_init_objects`, `0x0C0CDDCA`): kernel objects and task control blocks, plus one ISR wrapper stub per registered interrupt (0x40-byte objects holding a copy of the template at MAIN `0x0C0C68FC` and the handler pointers). The stubs are what runs at `0xFFF866E0`, `0xFFF87BAC`, `0xFFF8DC90`, `0xFFF8DE9C`... `idleTASK` spins reading the task objects here through `idle_task_state_scan` (`0x0C0B8ED8`). | Kernel, ISRs, idle task. |
+| `0xFFF8E7A0–0xFFF8FC7F` | Never written in any run (boot, WAV, MP3); no literal in boot or MAIN points into it. Headroom between pool 2 and the stack below. | None seen. |
+| `0xFFF8FC80–0xFFF8FFFF` | The reset stack (SP vector `0xFFF90000`), kept as the kernel/interrupt stack: RTOS dispatch (`0x0C0C672E`, `0x0C0C6F6C`, `0x0C0C7132`) and ISRs push here, while tasks run on SDRAM stacks (idle task: `r15 = 0x0CE49EC8`). Deepest write seen `0xFFF8FC80` (`0x0C0C6BB4`), at run time `0xFFF8FE00`. | Kernel, ISRs. |
+| `0xFFFF8000–0xFFFFBFFF` | Retention RAM: still all canary after boot, WAV and MP3 play; no load, store or fetch; no PC-relative literal points into it. | None seen. |
+
+For mods this leaves two candidates for fast data or code: the retention RAM (16 KB, but slower than the high-speed RAM and not yet checked on hardware for being enabled and usable as is) and the ~5 KB gap below the stack. The stack's worst case is unmeasured beyond these runs (CD playback, nested interrupts), so keep a margin of at least 1 KB above `0xFFF8FC80`. The MP3 buffers and pool 2 are taken. Not covered by these runs: CD playback, USB-B PC mode and the service modes.
 
 ### SH-2A Architectural Quirks for Mod Authors
 1. **Big-Endian Only**: Instructions and literal pools are big-endian (`sh-elf-as -isa=sh2a -big`; the SH-4 assembler rejects SH-2A-only opcodes such as `movi20` and `movu.b`).

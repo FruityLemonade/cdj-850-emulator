@@ -369,6 +369,10 @@
           "name": "usb_audio_open"
         },
         {
+          "address": "0c058da0",
+          "name": "mp3_decoder_init"
+        },
+        {
           "address": "0c058ff2",
           "name": "wav_pcm_read"
         },
@@ -523,6 +527,10 @@
         {
           "address": "0c0b8ea2",
           "name": "idleTASK"
+        },
+        {
+          "address": "0c0b8ed8",
+          "name": "idle_task_state_scan"
         },
         {
           "address": "0c0b92cc",
@@ -891,6 +899,11 @@
           "text": "Opens a USB audio file (the flac mod redirects pools 0x0C0BE79C and 0x0C0BED94)."
         },
         {
+          "address": "0c058da0",
+          "type": "PLATE",
+          "text": "Stores the three 8 KB on-chip MP3 work buffers 0xFFF80498, 0xFFF82498 and 0xFFF84498 into a decoder context (+0x64..+0x6C) and calls its init routine. Only MP3 playback touches those buffers (91M loads, 49M stores in a USB MP3 run; none in WAV playback), from the decoder core at 0x0C13EC04..0x0C141FD8 [static + emu]."
+        },
+        {
           "address": "0c058ff2",
           "type": "PLATE",
           "text": "USB WAV PCM read: takes the next chunk of the file buffer (0x0C0592A6) and writes it to the output buffer: 24-bit (format byte +0x55 = 0x18) reduced to 16-bit samples bytewise, 16-bit copied with memcpy (mono duplicated to both channels), then every 16-bit sample byte-swapped in place (little-endian WAV to big-endian). The output buffer is in the uncached SDRAM mirror, so the swap is one uncached read and one uncached write per sample: ~5.5M of each, about 80% of all uncached accesses in a USB play run, which the emulator cannot show [static + emu: call trace, cache model]."
@@ -1096,6 +1109,11 @@
           "text": "At boot: memset 0x0CE6D242 (16 bytes), then sprintf the MAIN label at flash 0x060010 into it (1.13 stock, 0.13 for a patch_update.py build). The numeric version 113 at 0x0CE6D240 is a constant (0x0C0B8D86)."
         },
         {
+          "address": "0c0b8ed8",
+          "type": "PLATE",
+          "text": "idle_task_state_scan: for i = 0..16 reads the object pointer table after tick_ms (0x0CE49F58[i + 1]), follows +0x14 to a state word and compares it, and an id byte (0x0CE49CBC), with the values in 0x0CE49C74; returns the bitmask of entries that differ. idleTASK (0x0C0B8EA2) calls it in a loop until it is non-zero, which is why most interrupts land at 0x0C0B8EFA and why it dominates loads from on-chip pool 2 [static + emu]."
+        },
+        {
           "address": "0c0b92cc",
           "type": "PLATE",
           "text": "1 ms tick: increments 0x0CE49F54, then calls the power/standby part 0x0C0EF8C8 through pool 0x0C0B9310 (loaded at 0x0C0B92EA)."
@@ -1129,6 +1147,11 @@
           "address": "0c0c5960",
           "type": "PLATE",
           "text": "anlz_write_section(file, ctx, 3, buf): rewrites the ANLZ file from the hot-cue tag on (pool 0x0C0C195C, read only at 0x0C0C17CE)."
+        },
+        {
+          "address": "0c0c68fc",
+          "type": "PLATE",
+          "text": "Template of the RTOS ISR wrapper. Pool-2 objects (0xFFF86638+) hold a copy of these bytes followed by the handler pointers, one per registered interrupt (e.g. at 0xFFF866E0, 0xFFF87BAC, 0xFFF8DC90, 0xFFF8DE9C), and the on-chip vector table at 0xFFF80000 (VBR) points at the copies [emu: on-chip RAM dump]."
         },
         {
           "address": "0c0c8afa",
@@ -1484,12 +1507,21 @@
           "address": "0c1106ec",
           "type": "PLATE",
           "text": "C library memset(dst r4, byte r5, n r6), filling backwards from the end in 16-byte longword blocks. 1031 references; most bytes come from large clears (alloc_zeroed, table resets). On the write-allocate operand cache every missed line is first read from SDRAM: 609k write misses in a USB play run. The emulator's CDJ_NATIVE_COPY hook recognises it by its first opcode 0x2FE6 [static + emu]."
+        },
+        {
+          "address": "0c141f4c",
+          "type": "PLATE",
+          "text": "The hottest routine of the MP3 decoder core (0x0C13EC04..0x0C141FD8): 43M accesses to the on-chip MP3 work buffers in a 30 s USB MP3 run [emu]."
         }
       ],
       "labels": [
         {
           "address": "0c065df6",
           "name": "panel_tx_status_02"
+        },
+        {
+          "address": "0c0c68fc",
+          "name": "isr_stub_template"
         },
         {
           "address": "0c0d9194",
@@ -1922,6 +1954,46 @@
         {
           "address": "0cee505c",
           "name": "usb_mode_word"
+        },
+        {
+          "address": "fff80000",
+          "name": "ocram_vectors"
+        },
+        {
+          "address": "fff80400",
+          "name": "ocram_boot_cache_routines"
+        },
+        {
+          "address": "fff80498",
+          "name": "mp3_ocram_buf0"
+        },
+        {
+          "address": "fff82498",
+          "name": "mp3_ocram_buf1"
+        },
+        {
+          "address": "fff84498",
+          "name": "mp3_ocram_buf2"
+        },
+        {
+          "address": "fff86498",
+          "name": "ssi_ocram_pcm_blocks"
+        },
+        {
+          "address": "fff86638",
+          "name": "rtos_pool2"
+        },
+        {
+          "address": "fff8e7a0",
+          "name": "ocram_unused_gap"
+        },
+        {
+          "address": "fff90000",
+          "name": "kernel_stack_top"
+        },
+        {
+          "address": "ffff8000",
+          "name": "retention_ram_unused"
         }
       ]
     }
