@@ -154,6 +154,10 @@ class Sh2a:
             r[0] = self.load(r[m] + (op & 15), 1)
         elif op & 0xFF00 == 0x8500:                             # mov.w @(disp,Rm),R0
             r[0] = self.load(r[m] + (op & 15) * 2, 2)
+        elif op == 0x0008:                                      # clrt
+            self.t = 0
+        elif op == 0x0018:                                      # sett
+            self.t = 1
         elif op == 0x0009:
             pass
         elif op == 0x000B:                                      # rts
@@ -194,6 +198,8 @@ class Sh2a:
                 self.t = int(r[n] & r[m] == 0)                  # tst
             elif lo == 9:
                 r[n] &= r[m]
+            elif lo == 0xA:
+                r[n] ^= r[m]                                    # xor
             elif lo == 0xB:
                 r[n] |= r[m]
             elif lo == 0xE:                                     # mulu.w

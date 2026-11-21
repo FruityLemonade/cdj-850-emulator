@@ -32,12 +32,13 @@ BPM_SITE = dict(
 
 MODS = {
     'bpm_decimals': Mod(
-        what='BPM decimals: actual BPM with two decimals next to the DB BPM in the INFO view (grid tracks)',
+        what='BPM decimals: actual BPM with two decimals in place of the DB BPM in the INFO view (grid tracks)',
         target='main',
         fw_versions=('1.13',),
         args=[],
         literal=False,
         hook=True,
+        after=('info_order',),
         routine='payload:bpm_decimals_hook',
         **BPM_SITE,
     ),
