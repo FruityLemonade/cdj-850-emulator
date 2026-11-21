@@ -40,7 +40,8 @@ Fm, memory and hot cues; --print-spec shows them). A spec is JSON:
 A cue is a bar (on its first beat) or [bar, beat] with a beat from 1 to
 less than 5, fractional allowed; bars and beats count from 1. Hot cues are
 A, B, ... in list order (at most 8). key is rekordbox's Tonality ("Am",
-"F#m", "Db", ...), shown by the player as it is. bitrate is the MP3's
+"F#m", "Db", ...), shown by the player as it is; rating is the star count
+0 to 5 (left out: no Rating in the XML). bitrate is the MP3's
 constant rate in kbit/s (default 320; one of LAME's: 32, 40, 48, 56, 64, 80,
 96, 112, 128, 160, 192, 224, 256 or 320), and --bitrate overrides it. A
 lower rate makes a smaller stick: 128 takes 40% of the space of 320.
@@ -154,6 +155,12 @@ def check_spec(spec):
              "first_downbeat": _number(track, "first_downbeat", 0),
              "key": str(track.get("key", "")),
              "bitrate": bitrate}
+        if "rating" in track:
+            rating = track["rating"]
+            if isinstance(rating, bool) or not isinstance(rating, int) or not 0 <= rating <= 5:
+                raise SpecError("%s: rating must be a whole number from 0 to 5, not %r"
+                                % (t["title"], rating))
+            t["rating"] = rating
         bars = track.get("bars")
         if isinstance(bars, bool) or not isinstance(bars, int) or bars < 1:
             raise SpecError("%s: bars must be a whole number from 1 up, not %r" % (t["title"], bars))
@@ -260,7 +267,7 @@ def collection(spec, paths):
                 "bitrate": track["bitrate"] if path.lower().endswith(".mp3") else 1411, "sample_rate": RATE}
         entries.append(collection_xml.track_xml(
             i, path, tags, None, [], tempo=(track["bpm"], track["first_downbeat"]),
-            key=track["key"], marks=marks(track)))
+            key=track["key"], marks=marks(track), rating=track.get("rating")))
     return collection_xml.document(entries, spec["playlist"], product="make_test_stick.py")
 
 
