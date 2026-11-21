@@ -22,7 +22,7 @@ typedef struct {
 
 static VirtualFile files[FILE_SLOTS];
 static VirtualFile *active;
-static uint8_t pcm[FLAC_SECTOR_BYTES];
+static uint32_t pcm[FLAC_SECTOR_FRAMES]; /* one sector, WAV byte order */
 static uint32_t cached_sector = UINT32_MAX;
 static uint32_t next_frame;
 
@@ -223,8 +223,7 @@ static int virtual_read(VirtualFile *file, void *dst, uint32_t count, uint32_t p
             }
             if (take > FLAC_SECTOR_BYTES - within)
                 take = FLAC_SECTOR_BYTES - within;
-            for (uint32_t i = 0; i < take; ++i)
-                out[i] = pcm[(within + i) ^ 1u];
+            memcpy(out, (const uint8_t *)pcm + within, take);
         }
         out += take;
         position += take;

@@ -32,7 +32,7 @@ int main(int argc, char **argv)
         if (!all && flac_seek((uint32_t)strtoul(argv[i], NULL, 10)))
             return 4;
         int n;
-        uint8_t data[FLAC_SECTOR_BYTES];
+        uint32_t data[FLAC_SECTOR_FRAMES];
         do {
             n = flac_read_sector(data);
             if (n < 0)

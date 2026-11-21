@@ -4802,8 +4802,16 @@ static drflac_bool32 drflac__decode_samples_with_residual__rice__neon(drflac_bs*
 }
 #endif
 
+/* CDJ-850 local change: a build may route Rice residual decoding to its own routine (mods/flac/cdj850/payload/decoder.c). */
+#ifdef DRFLAC_RICE_RESIDUAL_HOOK
+static drflac_bool32 DRFLAC_RICE_RESIDUAL_HOOK(drflac_bs* bs, drflac_uint32 bitsPerSample, drflac_uint32 count, drflac_uint8 riceParam, drflac_uint32 lpcOrder, drflac_int32 lpcShift, drflac_uint32 lpcPrecision, const drflac_int32* coefficients, drflac_int32* pSamplesOut);
+#endif
+
 static drflac_bool32 drflac__decode_samples_with_residual__rice(drflac_bs* bs, drflac_uint32 bitsPerSample, drflac_uint32 count, drflac_uint8 riceParam, drflac_uint32 lpcOrder, drflac_int32 lpcShift, drflac_uint32 lpcPrecision, const drflac_int32* coefficients, drflac_int32* pSamplesOut)
 {
+#if defined(DRFLAC_RICE_RESIDUAL_HOOK)
+    return DRFLAC_RICE_RESIDUAL_HOOK(bs, bitsPerSample, count, riceParam, lpcOrder, lpcShift, lpcPrecision, coefficients, pSamplesOut);
+#endif
 #if defined(DRFLAC_SUPPORT_SSE41)
     if (drflac__gIsSSE41Supported) {
         return drflac__decode_samples_with_residual__rice__sse41(bs, bitsPerSample, count, riceParam, lpcOrder, lpcShift, lpcPrecision, coefficients, pSamplesOut);

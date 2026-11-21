@@ -382,6 +382,14 @@
           "name": "usb_audio_open"
         },
         {
+          "address": "0c05825a",
+          "name": "usb_audio_buffered_read"
+        },
+        {
+          "address": "0c0583aa",
+          "name": "usb_audio_read_retry"
+        },
+        {
           "address": "0c058c80",
           "name": "usb_decoder_read"
         },
@@ -724,6 +732,10 @@
         {
           "address": "0c0ce17c",
           "name": "rtos_get_message_block"
+        },
+        {
+          "address": "0c0ce5e8",
+          "name": "kernel_delay_ms"
         },
         {
           "address": "0c0d1a2c",
@@ -1887,6 +1899,41 @@
           "address": "0c141f4c",
           "type": "PLATE",
           "text": "The hottest routine of the MP3 decoder core (0x0C13EC04..0x0C141FD8): 43M accesses to the on-chip MP3 work buffers in a 30 s USB MP3 run [emu]."
+        },
+        {
+          "address": "0c05825a",
+          "type": "PLATE",
+          "text": "usb_audio_buffered_read(pos, count, *read_count, **data): USB audio file reads go through an 8 KB window: a request outside the cached window reads the 8 KB-aligned block at pos & ~0x7FF through usb_audio_read_retry (0x0C0583AA, count 0x2000) and returns a pointer into it; a request inside the window is served from it. The WAV header path (mode 1) goes to wav_header_read instead. A read error clears the window and posts -80 (0xFFFFFFB0) through pool 0x0C058448 unless 0x0CE5A9EC == 2 [static]."
+        },
+        {
+          "address": "0c0583aa",
+          "type": "PLATE",
+          "text": "usb_audio_read_retry(pos, count, *read_count): calls wav_pcm_read through pool 0x0C0585F4 (call 0x0C058460, return 0x0C058464; the flac mod redirects this pool) or the optical reader, and on a non-zero result retries up to 10 times with kernel_delay_ms(10) (0x0C0CE5E8) between tries, stopping early when 0x0CE5A9EC == 2; the result is mapped through the 6-entry table at 0x0C1C18EC [static]. With the flac mod a failed read closes the decoder, so each retry reopens the FLAC file. Emulator: no read failed in any search/jog run, stock WAV or flac mod [emu]."
+        },
+        {
+          "address": "0c058460",
+          "type": "PRE",
+          "text": "PCM read call (jsr; r4 track, r5 file offset, r6 = r8 count, r7 = r11 read_count, @r15 destination). Every USB audio read is 8 KB, sequential within a burst. Read pattern [emu: emulator, gdbstub breakpoints on 0x0C058460/0x0C058464 with tick_ms 0x0CE49F54, stock WAV and the flac mod, 150 s track, icount shift 2-5]: track load reads 16 s ahead (345 x 8 KB). Holding SEARCH reads one 0.41 s snippet (9 x 8 KB) every 7.57 s of the track across the whole track in about 350 ms (state 9); releasing SEARCH re-reads 16 s ahead of the landing point (345 x 8 KB), then fills about 11 s behind it in five chunks read forward from successively earlier starts (35, 35, 58, 58, 58 reads). Jog scratch and reverse inside the buffered range read nothing. Stock WAV refills the ring to ~1100 sectors within 1 s of a landing; the flac mod at icount shift 4 (~62 MIPS) stays at 4-56 sectors while searching and stops the DSP stream (dsp_stream_stop 0x0C005BB6) on underrun; WAV never underruns, even at shift 5."
+        },
+        {
+          "address": "0c0f1266",
+          "type": "PRE",
+          "text": "Reader timeout expiry: reached when audio_read_timeout 0x0C7F6648 counts down to 0 (decrement 0x0C0F1260) or from state 6 (0x0C0F124C); reports to the audio task with FUN_0C009310(8, .., 2, -0x6F) [static]. Not reached in search/jog runs (stock WAV, flac mod, icount shift 2-5): the countdown is only armed by the cue prefill (0x0C0F533E) [emu]."
+        },
+        {
+          "address": "0c7f6686",
+          "type": "PLATE",
+          "text": "Observed [emu]: PCM ring sectors buffered ahead of playback. Drops to 0 when the ring restarts (track load, SEARCH press, SEARCH release), rises as the audio task fills, falls by 75/s while no reads run; stock WAV holds ~900-1240."
+        },
+        {
+          "address": "0c7f6688",
+          "type": "PLATE",
+          "text": "Observed [emu]: played sectors still held in the ring behind playback. Reset on a ring restart, climbs by 75/s during playback and stops at 1001."
+        },
+        {
+          "address": "0c7f6625",
+          "type": "PLATE",
+          "text": "USB playback sub-state (record 0x0C7F6620 + 5) switched on by player_tick_usb_playback: 0x10-0x17 when +6 is 0, 0x20-0x2B when +6 is 1, 0x30-0x32 when +6 is 2 [static]. Observed [emu]: 0x30 at load, 0x10 while playing, 0x11/0x12 briefly when a refill is scheduled, 0x12 while the flac mod underruns during SEARCH."
         }
       ],
       "labels": [
@@ -2055,6 +2102,10 @@
           "name": "track_length_frames"
         },
         {
+          "address": "0c7f6625",
+          "name": "usb_play_substate"
+        },
+        {
           "address": "0c7f6627",
           "name": "audio_task_state"
         },
@@ -2069,6 +2120,14 @@
         {
           "address": "0c7f6674",
           "name": "audio_loop_playing"
+        },
+        {
+          "address": "0c7f6686",
+          "name": "usb_ring_ahead_sectors"
+        },
+        {
+          "address": "0c7f6688",
+          "name": "usb_ring_behind_sectors"
         },
         {
           "address": "0c7f671b",
@@ -2281,6 +2340,10 @@
         {
           "address": "0ce49f54",
           "name": "tick_ms"
+        },
+        {
+          "address": "0ce5a9ec",
+          "name": "usb_audio_read_abort"
         },
         {
           "address": "0ce649d0",

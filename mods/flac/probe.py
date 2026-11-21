@@ -51,8 +51,12 @@ def main():
     env = os.environ.copy()
     for key in ("CDJ850_DSP_BOOT_HLE", "CDJ850_PF16_HIGH", "CDJ850_DSP_PLAY_PF"):
         env.pop(key, None)
+    capture = args.out / "bus.scif1"
+    # QEMU will not overwrite an existing capture; a rerun into the same --out
+    # then logged no time or waveform pages and failed verify_probe.
+    capture.unlink(missing_ok=True)
     env.update({"CDJ850_PANEL_SCRIPT": args.script or SCRIPTS[args.recipe],
-           "CDJ850_SCIF1_CAPTURE": str(args.out / "bus.scif1")})
+           "CDJ850_SCIF1_CAPTURE": str(capture)})
     log_path = args.out / "panel.log"
     report_path = args.out / "summary.txt"
     parent, child = socket.socketpair()
