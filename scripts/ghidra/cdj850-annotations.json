@@ -1596,6 +1596,11 @@
           "text": "Hook span 0x0C0D8DC2..0x0C0D8DCE (TEMPO range step). Mod tempo_wide steps 16% -> WIDE on USB."
         },
         {
+          "address": "0c0d8dd0",
+          "type": "PRE",
+          "text": "TEMPO range step. r0 = *0x0CE6D25A (source, 1 = USB), r6 = *0x0CE6D0E1 (1=+-6 2=+-10 3=+-16 4=WIDE). USB: 1->2 2->3 3->1 4->3 (no WIDE); else (CD): 1->2 2->3 3->4 4->1. Next range r4 -> FUN at pool 0x0C0D8FA8. tempo_wide hooks 0x0C0D8DC2 and clears r0 so USB takes the CD table."
+        },
+        {
           "address": "0c0d9194",
           "type": "PRE",
           "text": "Toggle elapsed/remaining time at 0x0CE6D0DD. The REMAIN flag travels in status 0x02 byte 13 bit 0."

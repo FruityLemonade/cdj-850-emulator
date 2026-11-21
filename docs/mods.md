@@ -6,7 +6,7 @@ it on. All of them target CDJ-850 MAIN 1.13.
 
 | mod | what it does |
 |---|---|
-| [`tempo_wide`](../mods/tempo_wide/cdj850/patch.py) | Tempo shortcut on USB: pressing TEMPO at ±10 % switches straight to WIDE (±100 %), and enables overflow-safe WIDE pitch scaling on USB. |
+| [`tempo_wide`](../mods/tempo_wide/cdj850/patch.py) | WIDE tempo on USB: TEMPO cycles ±6 % → ±10 % → ±16 % → WIDE (±100 %) → ±6 %, and enables overflow-safe WIDE pitch scaling on USB. |
 | [`bpm999`](../mods/bpm999/README.md) | BPM up to 999: the beat-grid clamp goes from 180.0 to 999.0, and the pitched BPM shows up to 999. |
 | [`bpm_decimals`](../mods/bpm_decimals/README.md) | The actual BPM with two decimals in place of the rekordbox BPM in the INFO view (tracks with a grid). |
 | [`quant_loops`](../mods/quant_loops/README.md) | Loops snap to the nearest beat of the rekordbox grid (behind or ahead): auto beat loops, LOOP IN and LOOP OUT, with no drift over many passes (USB tracks with a grid). BEAT SELECT + LOOP IN switches quantize (saved, QUANTIZE ON/OFF on the display). |
