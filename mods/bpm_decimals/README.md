@@ -4,10 +4,9 @@ Default off. Load a track, press **INFO** and turn the jog down to the BPM item.
 rekordbox tempo of the track, e.g. `128.0 bpm` for a 127.96 BPM grid. With this mod, while a
 beat grid gave the BPM, the same item reads
 
-    128.0>132.25 bpm
+    132.25
 
-The left part is the stock text (the DB tempo). The right part is the BPM the deck is playing
-right now, with two decimals:
+Only the BPM the deck is playing right now, with two decimals (no DB tempo, no " bpm"):
 
     actual = round(grid BPMx100 at the current beat x (10000 + pitch) / 10000) / 100
 
@@ -19,8 +18,7 @@ right now, with two decimals:
 
 The item is exactly stock when no grid gave the BPM (BPM counter, CD, unanalysed file), and
 outside the loaded-track views. The BPM box, the time readout and its frame digits are not
-touched. The format fits the 100-dot matrix: 16 characters, 85 dots in the emulator's
-glyph widths (5-dot digits, 1-dot `.`, 2-dot space), from x = 7.
+touched. The format fits the 100-dot matrix: at most 6 characters (`999.99`).
 
 ## Use
     .venv/bin/python mods/patch_update.py --model cdj850 C850MAIN.UPD C850MAIN_MOD.UPD bpm_decimals
@@ -43,7 +41,6 @@ Combines with `bpm999`, `tempo_wide`, `bpm_probe` and `payload_demo`. No knobs.
 - Code: C in `cdj850/payload/bpm_decimals.c` (shared SDRAM payload, about 1.3 KB).
 
 ## Open questions for a real deck
-1. Does the panel's font have `>`? (Plain ASCII; the stock firmware sends `[`, `]`, `:`.)
-2. Width on the real glass: 16 characters. The emulator's glyph widths come from photos;
+1. Width on the real glass: 12 characters. The emulator's glyph widths come from photos;
    the real font may be wider.
-3. Attr0 `0x0D` as "BPM item" and mode 11 as "INFO view" were seen in the emulator only.
+2. Attr0 `0x0D` as "BPM item" and mode 11 as "INFO view" were seen in the emulator only.

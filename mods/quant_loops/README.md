@@ -20,8 +20,8 @@ restart; a fresh deck (or a factory reset / HISTORY name change) starts with qua
 
 | Press | Stock | With quant_loops |
 |---|---|---|
-| BEAT 1/2/4/8 (auto beat loop) | in = the playhead, out = in + beats x 4500 / whole BPM (frames; 4 beats at 128 BPM = 140) | in = the grid beat at or before the playhead (the playhead stays inside the loop, phase kept), out = the grid time of beat in + N, so variable-tempo grids are exact |
-| BEAT SELECT (fraction 1/16..1/2) + BEAT n | out = in + n x 4500 / (BPM x 16) | L = n/16 of the current beat's interval (grid times); in = the latest multiple of L after the beat that is at or before the playhead, out = in + L. 1/2 pressed 3/4 into a beat: in = beat + 1/2, out = the next beat |
+| BEAT 1/2/4/8 (auto beat loop) | in = the playhead, out = in + beats x 4500 / whole BPM (frames; 4 beats at 128 BPM = 140) | in = the grid beat nearest the playhead, behind or ahead of it (ahead: the deck plays on to it, then loops; phase kept either way), out = the grid time of beat in + N, so variable-tempo grids are exact |
+| BEAT SELECT (fraction 1/16..1/2) + BEAT n | out = in + n x 4500 / (BPM x 16) | L = n/16 of the current beat's interval (grid times); in = the multiple of L after that beat (up to the next beat) nearest the playhead, out = in + L. 1/2 pressed 2/5 into a beat: in = beat + 1/2, out = the next beat; 4/5 into it: in = the next beat |
 | LOOP IN | in = the playhead | in = the nearest grid beat |
 | LOOP OUT | out = the playhead | out = the nearest grid beat after the loop in (the next one if the nearest is not after in) |
 | RELOOP/EXIT, CALL, MEMORY, beat resize in a loop | | stock (they use the points set above) |
@@ -36,11 +36,13 @@ next pass so that the total follows the exact length: passes alternate between 1
 frames and the loop stays within half a frame (6.7 ms) of the grid however long it plays, also
 after EXIT. See "Drift correction" below.
 
-Every auto loop keeps the playhead inside it (in <= playhead < out); a case that would not
-(past the end of a grid) stays stock. All points are whole frames (1/75 s): grid ms convert with `(ms x 75 + 500) / 1000`. A loop is
+Every auto loop has the playhead before its out (playhead < out); a case that would not (past
+the end of a grid) stays stock. An in ahead of the playhead (the nearest beat is the next one)
+is reached by playing on, exactly like a LOOP OUT ahead of it: emulator, BEAT 4 at frame 301 on
+128 BPM gave in 308, the deck played on and wrapped 447 -> 308. All points are whole frames (1/75 s): grid ms convert with `(ms x 75 + 500) / 1000`. A loop is
 at least one frame long. When the 1000-beat grid window in RAM does not reach beat in + N, the
 out uses the in beat's grid tempo (`N x 60000 / BPM` ms). Before the first beat of the grid
-(lead-in) the auto loop is stock. If the snapped point's ring sector is not buffered (right
+(lead-in) the first beat is the nearest. If the snapped point's ring sector is not buffered (right
 after a jump) the in stays stock and the out keeps the grid length; LOOP IN/OUT stay stock.
 
 Interaction with stock features (checked in the emulator, see the test):

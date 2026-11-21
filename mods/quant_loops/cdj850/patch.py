@@ -13,7 +13,8 @@ docs/cdj850-modding.md has the trace.
   0x0C0E5C0E in auto_beat_loop_set's USB new-loop path (FUN_0C073954, track
   -> length slot). It runs after D1C0 (the in frame) and the in ring sector
   0x0C7F6468 are set and before beat_loop_out_from_bpm: the payload moves
-  both to the grid beat at or before the in point and computes the grid out.
+  both to the grid beat nearest the in point (behind or ahead) and computes
+  the grid out.
 * quant_loops_auto_send / _auto_send2: pools 0x0C0E5FC8 and 0x0C0E5D08
   (audio_send_cmd), read only inside auto_beat_loop_set: the cmd 6 request
   of a new loop gets the grid out (resize sends, flag 1, are untouched).
@@ -72,7 +73,7 @@ MODS = {
     # 0x0C0E5C0A: mov.l r2,@r5 (D1C0); mov.w r4,@r12; mov.l @(0x0C0E5D4C),r5; jsr/n @r5;
     # and #3,r0; mov r15,r5; mov r0,r6
     'quant_loops': _redirect(
-        'quant loops: auto beat loop in on the grid beat at or before it',
+        'quant loops: auto beat loop in on the nearest grid beat',
         [0x2522, 0x2C41, 0xD54F, 0x454B, 0xC903, 0x65F3, 0x6603], 2,
         0x0C073954, 'quant_loops_auto_in'),
     # 0x0C0E5D8A: mov #6,r4; mov.l @(D1C0),r12; mov.l @r12,r6; mov.l @(0x0C0E5FC8),r3;

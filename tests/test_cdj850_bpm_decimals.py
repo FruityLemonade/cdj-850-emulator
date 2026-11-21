@@ -1,6 +1,6 @@
 # SPDX-License-Identifier: GPL-2.0-or-later
 """bpm_decimals on the CDJ-850 MAIN 1.13: the actual BPM with two decimals next to the rekordbox
-BPM in the INFO view ("128.0 bpm" -> "128.0>132.25 bpm") while a beat grid gave the BPM.
+BPM in the INFO view ("128.0 bpm" -> "132.25") while a beat grid gave the BPM.
 
 * static: the two patch sites (display_stage_bpm tail hook at 0x0C0642AA, grid_find_beat pool
   redirect at 0x0C073830), stock bytes, both outside the boot-critical closure, and the
@@ -202,7 +202,7 @@ def test_beat_search_follows_a_variable_grid():
 
 
 def ref_format(number, x100):
-    return "%s>%d.%02d bpm" % (number, x100 // 100, x100 % 100)
+    return "%d.%02d" % (x100 // 100, x100 % 100)     # the DB number is not shown
 
 
 def _rows_mem(p, base, pitch, frame, row_items, entries, grid_ok=1, grid_bpm100=12796, usb=1, mode=11):
@@ -244,9 +244,9 @@ def test_format_and_stock_number_on_the_interpreter():
                          ("999.0", 99999), ("60.0", 6000), ("1.0", 5)):
         mem = _payload_mem(p)
         mem.add(0x0DDFE000, number.encode().ljust(0x1000, b"\0"))
-        n = _call(p, mem, "bpm_decimals_format", 0x0DDFE800, 0x0DDFE000, len(number), x100)
+        n = _call(p, mem, "bpm_decimals_format", 0x0DDFE800, x100)
         assert mem.read(0x0DDFE800, n).decode() == ref_format(number, x100), (number, x100)
-    assert ref_format("128.0", 13225) == "128.0>132.25 bpm"
+    assert ref_format("128.0", 13225) == "132.25"
     for text, n in (("128.0 bpm", 5), ("74.5 bpm", 4), ("999.9 bpm", 5), ("128 bpm", 0), ("128.0bpm", 0),
                     ("1x8.0 bpm", 0), ("Test stick", 0), ("128.0 bpm ", 0)):
         mem = _payload_mem(p)
@@ -259,16 +259,16 @@ def test_info_row_rewrite_on_the_interpreter():
     p = payloadbuild.build(["bpm_decimals"], "cdj850")
     writes = payloadbuild.lookup(p.symbols, "bpm_decimals_writes")
     grid = [((i % 4) + 1, 12796, (i * 60000) // 12796) for i in range(64)]
-    # 127.96 at +3.35 %: 132.2467 -> "128.0>132.25 bpm"; the other rows are untouched
+    # 127.96 at +3.35 %: 132.2467 -> "132.25"; the other rows are untouched
     mem = _rows_mem(p, 1280, 335, 900, INFO_ROWS, grid)
     _call(p, mem, "bpm_decimals_rows")
-    assert _row_texts(mem) == [(0x02, "Test stick"), (0x0D, "128.0>132.25 bpm"), (0x00, "")]
+    assert _row_texts(mem) == [(0x02, "Test stick"), (0x0D, "132.25"), (0x00, "")]
     assert mem.u32(writes) == 1
     _call(p, mem, "bpm_decimals_rows")                 # unchanged value: the row is not rewritten
     assert mem.u32(writes) == 1
     mem.write(PITCH, struct.pack(">h", 0))             # fader back: 127.96
     _call(p, mem, "bpm_decimals_rows")
-    assert _row_texts(mem)[1] == (0x0D, "128.0>127.96 bpm") and mem.u32(writes) == 2
+    assert _row_texts(mem)[1] == (0x0D, "127.96") and mem.u32(writes) == 2
     # the gate closes (base from the BPM counter): the row goes back to the stock text
     mem.write(BASE_TENTHS, struct.pack(">H", 1279))
     _call(p, mem, "bpm_decimals_rows")
@@ -442,7 +442,7 @@ def test_live_info_view_bpm_row(tmp_path):
     for title, db, x100 in (("T12796", "128.0", 12796), ("T12800", "128.0", 12800), ("T17450", "174.5", 17450)):
         v = seen[title]
         assert v["mode"] == 11 and v["pitch"] == 0, v
-        assert v["bpm_row"] == [ref_format(db, x100)], v              # 128.0>127.96 bpm
+        assert v["bpm_row"] == [ref_format(db, x100)], v              # 127.96
         w = seen[title + " again"]
         assert w["bpm_row"] == v["bpm_row"], (v, w)
     for title, db, bpm100 in (("T12796", "128.0", 12796), ("T17450", "174.5", 17450)):

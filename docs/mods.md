@@ -8,8 +8,8 @@ it on. All of them target CDJ-850 MAIN 1.13.
 |---|---|
 | [`tempo_wide`](../mods/tempo_wide/cdj850/patch.py) | Tempo shortcut on USB: pressing TEMPO at ±10 % switches straight to WIDE (±100 %), and enables overflow-safe WIDE pitch scaling on USB. |
 | [`bpm999`](../mods/bpm999/README.md) | BPM up to 999: the beat-grid clamp goes from 180.0 to 999.0, and the pitched BPM shows up to 999. |
-| [`bpm_decimals`](../mods/bpm_decimals/README.md) | The actual BPM with two decimals next to the rekordbox BPM in the INFO view (tracks with a grid). |
-| [`quant_loops`](../mods/quant_loops/README.md) | Loops snap to the rekordbox beat grid: auto beat loops, LOOP IN and LOOP OUT, with no drift over many passes (USB tracks with a grid). BEAT SELECT + LOOP IN switches quantize (saved, QUANTIZE ON/OFF on the display). |
+| [`bpm_decimals`](../mods/bpm_decimals/README.md) | The actual BPM with two decimals in place of the rekordbox BPM in the INFO view (tracks with a grid). |
+| [`quant_loops`](../mods/quant_loops/README.md) | Loops snap to the nearest beat of the rekordbox grid (behind or ahead): auto beat loops, LOOP IN and LOOP OUT, with no drift over many passes (USB tracks with a grid). BEAT SELECT + LOOP IN switches quantize (saved, QUANTIZE ON/OFF on the display). |
 | [`loop_resize`](../mods/loop_resize/README.md) | While a loop plays, CUE/LOOP CALL < halves it and CALL > doubles it (grid aware); outside a loop CALL works as stock. |
 | [`hot_cues`](../mods/hot_cues/README.md) | Hot-cue mode (BEAT SELECT + RELOOP, saved, HOT CUE ON/OFF on the display): BEAT 1/2/4 are hot cues A–C from the rekordbox ANLZ (jump, record, hold 8 + pad to delete, saved to the stick); the beat LEDs show the set slots. |
 | [`auto_standby`](../mods/auto_standby/README.md) | AUTO STANDBY after `CDJ850_STANDBY_MINUTES` (default 20) without use, instead of 4 hours. |

@@ -74,6 +74,10 @@ Every word and its reader are outside the boot-critical closure (`mods/bootcrit.
 ## Open hardware questions
 - Only the emulator was used. The jump-to-play latency, gaplessness and the LED look on a real
   panel are not verified.
+- **Jump latency on a deck.** A jump is a stock CALL: the firmware buffers 400 sectors (5.33 s of
+  audio) at the cue before it takes PLAY (docs section 4b.11, "cue prefill"), so on a deck it takes
+  as long as a memory cue CALL (seconds). The constant is boot-critical audio-task code and is
+  left as it is.
 - **LEDs** (no free hook: `display_stage_navigation_leds` is boot-critical). The LED stage's inputs
   (`0x0CE6D154` fraction mode, `0x0C1E1088` beats) hold the pattern only while playertask waits in
   its loop and their real values while it runs (playertask, priority 2, is the only other reader;

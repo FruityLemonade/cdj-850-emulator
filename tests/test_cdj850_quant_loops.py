@@ -127,23 +127,36 @@ class Grid:
         return self.e[i][2] + (k * 6000000 + bpm100 // 2) // bpm100
 
     def auto_points(self, pos, beats, frac):
-        i = self.at_or_before(pos)
-        if i is None or i == "away" or not self.ok(i):
-            return None
-        t_beat = self.e[i][2]
+        """The in is the grid point nearest the playhead, behind or ahead (ties to the earlier one)."""
         if frac:
+            i = self.at_or_before(pos)
+            if i is None:
+                i = 0
+            if i == "away" or not self.ok(i):
+                return None
+            t_beat = self.e[i][2]
             d = self.ms_after(i, 1) - t_beat
-            k = 16 // beats - 1                     # latest sub-beat step at or before pos
-            while k > 0 and ms_to_frames(t_beat + (k * beats * d + 8) // 16) > pos:
-                k -= 1
+            steps = 16 // beats                     # k == steps: the next beat
+            k = min(range(steps + 1), key=lambda k: (abs(ms_to_frames(t_beat + (k * beats * d + 8) // 16) - pos), k))
+            if k == steps:
+                if i + 1 >= self.n:
+                    return None
+                i += 1
+                t_beat = self.e[i][2]
+                d = self.ms_after(i, 1) - t_beat
+                k = 0
             t_in = t_beat + (k * beats * d + 8) // 16
             t_out = t_beat + ((k + 1) * beats * d + 8) // 16
         else:
-            t_in, t_out = t_beat, self.ms_after(i, beats)
+            i = self.nearest(pos)
+            if i == "away" or not self.ok(i):
+                return None
+            t_beat = t_in = self.e[i][2]
+            t_out = self.ms_after(i, beats)
         fin, fout = ms_to_frames(t_in), ms_to_frames(t_out)
         fout = max(fout, fin + 1)
-        if not fin <= pos < fout:
-            return None                             # the playhead must be inside the loop
+        if fout <= pos:
+            return None                             # the playhead must be before the out
         return fin, fout, ms_to_frames(t_in + self.ms_after(i, 8) - t_beat)
 
     def in_point(self, pos):
@@ -345,27 +358,30 @@ def test_auto_points_on_the_interpreter():
                 for frac in (0, 1):
                     got = _points(p, mem, pos, beats, frac)
                     assert got == g.auto_points(pos, beats, frac), (label, pos, beats, frac, got)
-                    assert got is None or got[0] <= pos < got[1], (label, pos, beats, frac, got)
-    # hand-checked examples (128.00 from 0.35 s: beat k at 350 + 468.75 k ms)
+                    assert got is None or (got[0] < got[1] and pos < got[1]), (label, pos, beats, frac, got)
+    # hand-checked examples (128.00 from 0.35 s: beat k at 350 + 468.75 k ms): the in is the grid
+    # point nearest the playhead, behind or ahead of it
     g = Grid(GRIDS["128 @0.35"])
-    assert g.auto_points(231, 4, 0) == (202, 343, 483)       # beat 5 (2693.75 ms) .. beat 9 (4568.75 ms)
-    assert g.auto_points(231, 1, 0) == (202, 237, 483)
+    assert g.auto_points(231, 4, 0) == (237, 378, 518)       # beat 6 (3162.5 ms, 6 ahead) .. beat 10
+    assert g.auto_points(231, 1, 0) == (237, 272, 518)
+    assert g.auto_points(215, 4, 0) == (202, 343, 483)       # beat 5 (13 behind) .. beat 9 (4568.75 ms)
     # fraction loops on the sub-beat grid (beat 5 = 2694 ms = frame 202, beat 6 = 3163 ms = 237):
-    # 1/2 pressed at 231 (3/4 into the beat): in = 2694 + 235 ms (2929 ms, frame 220), out = beat 6
-    assert g.auto_points(231, 8, 1) == (220, 237, 501)
-    # 1/4 at 231: steps at 2694, 2811, 2929, 3046 ms (202, 211, 220, 228): in 228, out = beat 6
+    # 1/2 pressed at 231 (3/4 into the beat): steps 202, 220, 237 -> beat 6, out = 3397 ms
+    assert g.auto_points(231, 8, 1) == (237, 255, 518)
+    # 1/4 at 231: steps at 2694, 2811, 2929, 3046 ms (202, 211, 220, 228), beat 6 (237): in 228
     assert g.auto_points(231, 4, 1) == (228, 237, 510)
     assert g.auto_points(205, 8, 1) == (202, 220, 483)      # early in the beat: from the beat
-    assert g.auto_points(236, 1, 1) == (235, 237, 516)      # 1/16: 3134 ms (235) .. beat 6
+    assert g.auto_points(236, 1, 1) == (235, 237, 516)      # 1/16: 235 and 237 tie: the earlier one
     v = Grid(var_grid())
     assert v.auto_points(1140, 4, 0) == (1125, 1268, 1403)   # 15.0 s, 15.5, 16.0, 16.45 -> 16.9 s; 8: 18.7 s
+    assert v.auto_points(1150, 4, 0) == (1163, 1301, 1436)   # 15.5 s is nearer: .. 17.35 s
     # no grid tempo: stock
     mem = _mem(p, GRIDS["128 @0.35"], base=1300)
     assert _points(p, mem, 231, 4, 0) is None
     mem = _mem(p, GRIDS["128 @0.35"], usb=0)
     assert _points(p, mem, 231, 4, 0) is None
     mem = _mem(p, GRIDS["128 @0.35"])
-    assert _points(p, mem, 10, 4, 0) is None                 # lead-in before the first beat
+    assert _points(p, mem, 10, 4, 0) == (26, 167, 308)       # lead-in: the first beat is nearest
     # the window (1000 beats) ends before in + N, more beats follow: the grid tempo of the in beat
     e = const_grid(127.96, 350, 1200)
     g = Grid(e[:1000], total=1200)
@@ -375,13 +391,13 @@ def test_auto_points_on_the_interpreter():
         assert _points(p, mem, pos, 4, 0) == g.auto_points(pos, 4, 0)
     pos = g.f(995) + 3
     assert g.auto_points(pos, 8, 0)[1] == ms_to_frames(e[995][2] + (8 * 6000000 + 6398) // 12796)
-    # every position up to the window edge: whole and fraction loops keep in <= pos < out
+    # every position up to the window edge: whole and fraction loops keep in < out and pos < out
     for pos in range(g.f(990), g.f(999) + 30):
         for beats in (1, 2, 4, 8):
             for frac in (0, 1):
                 got = _points(p, mem, pos, beats, frac)
                 assert got == g.auto_points(pos, beats, frac), (pos, beats, frac, got)
-                assert got is None or got[0] <= pos < got[1], (pos, beats, frac, got)
+                assert got is None or (got[0] < got[1] and pos < got[1]), (pos, beats, frac, got)
     # past the last beat of a grid that ends (no more windows): stock once the beat is behind
     e = const_grid(128.0, 350, 40)
     g = Grid(e)
@@ -510,12 +526,13 @@ def test_auto_loop_entry_points_end_to_end():
     _call(p, mem, "quant_loops_auto_in", 1)
     assert mem.u32(D1C0) == 231 and struct.unpack(">h", mem.read(IN_SECTOR, 2))[0] == 1000
     _call(p, mem, "quant_loops_auto_send", 6, 0, 371, 0, stack=(0, 1, 0, 2))
-    assert _log(mem, log)[2] == 231 + (343 - 202)
+    assert _log(mem, log)[2] == 231 + (378 - 237)                           # beat 6 is nearest 231
     mem.write(NEXT_SECTOR, struct.pack(">h", 1001))
     _call(p, mem, "quant_loops_auto_keep")                                 # nothing snapped: stock refresh
     assert struct.unpack(">h", mem.read(IN_SECTOR, 2))[0] == 1001
-    # the track ends inside the loop: out clamps to its last frame; ends at the playhead: stock
-    for tracklen, want in ((240, (202, 239)), (232, None)):
+    # the track ends inside the loop: out clamps to its last frame; ends at the playhead or at the
+    # in (beat 6 = 237, nearest 231): stock
+    for tracklen, want in ((240, (237, 239)), (232, None), (238, None)):
         mem, log = _entry_mem(p, GRIDS["128 @0.35"])
         for slot in range(4):
             mem.put32(TRACKLEN_TABLE + slot * 0x3A4, tracklen)
@@ -527,7 +544,7 @@ def test_auto_loop_entry_points_end_to_end():
         _call(p, mem, "quant_loops_auto_send", 6, 0, 231, 0, stack=(0, 1, 0, 2))
         sector = struct.unpack(">h", mem.read(IN_SECTOR, 2))[0]
         if want:
-            assert (mem.u32(D1C0), sector, _log(mem, log)[2]) == (want[1], 1000 - 29, want[1])
+            assert (mem.u32(D1C0), sector, _log(mem, log)[2]) == (want[1], 1000 + (want[0] - 231), want[1])
             assert mem.u32(CA90) == tracklen - 1
         else:
             assert (mem.u32(D1C0), sector, _log(mem, log)[2]) == (231, 1000, 231)
@@ -631,7 +648,7 @@ MEMCUE_LIST, CUE_FRAME = 0x0CE649D4, 0x0CE6D158
 LIVE_PLAN = {
     12800: [("auto4", "beat_4", 300), ("auto1", "beat_1", 600), ("frac8", "beat_8", 900),
             ("frac8q", "beat_8", ("q", 1050)), ("frac4q", "beat_4", ("q", 1150)), ("manual", None, (1250, 76))],
-    12000: [("auto4", "beat_4", 1140), ("auto1", "beat_1", 1400), ("frac8", "beat_8", 1600),
+    12000: [("auto4", "beat_4", 1135), ("auto1", "beat_1", 1400), ("frac8", "beat_8", 1600),
             ("frac8q", "beat_8", ("q", 1700)), ("frac4q", "beat_4", ("q", 1780)), ("manual", None, (1880, 80))],
     12796: [("auto4", "beat_4", 300), ("auto1", "beat_1", 600), ("frac8", "beat_8", 900),
             ("frac8q", "beat_8", ("q", 1050)), ("frac4q", "beat_4", ("q", 1150)), ("manual", None, (1250, 76))],
@@ -699,14 +716,20 @@ def drive(stick, flash=None, syms=None):
         been played after the first wrap, or 30 s of host time."""
         fr, need, end = [d.rw(PLAY_FRAME)], int(secs * 75), time.monotonic() + 30
         played = wraps = 0
+        first = None
         while time.monotonic() < end and (wraps == 0 or played < need):
             time.sleep(0.03)
             fr.append(d.rw(PLAY_FRAME))
             if fr[-1] < fr[-2]:
                 wraps += 1
+                first = first or len(fr) - 1
             elif wraps:
                 played += fr[-1] - fr[-2]
-        return {"min": min(fr), "max": max(fr), "wraps": wraps}
+        # a loop whose in is ahead of the playhead: the deck plays on to the in, then loops; "min"
+        # counts from the first wrap, "start" is where the watch began
+        looped = fr[first:] if first else fr
+        return {"min": min(looped), "max": max(fr), "wraps": wraps, "start": fr[0],
+                "wrap": [fr[first - 1], fr[first]] if first else None}
 
     def set_frac(d, want):
         """BEAT SELECT toggles fraction mode (u8 0x0CE6D154); press until it reads `want`."""
@@ -842,10 +865,13 @@ def test_live_loops_on_the_grid(tmp_path):
             assert w["min"] >= v["in"] and w["max"] <= want["out"] and w["wraps"] >= 1, (bpm, name, v)
             assert v["exit_state"] == 3, (bpm, name, v)
             if name != "manual":
-                assert v["ca90"] == want["ca90"] and v["in"] <= v["q_last_pos"], (bpm, name, v)
+                assert v["ca90"] == want["ca90"], (bpm, name, v)
                 bit, frac = {"auto4": (4, 0), "auto1": (1, 0)}.get(name, (FRACTION.get(name), 1))
                 assert v["beats"] == bit
-                assert v["in"] <= v["q_last_pos"] < v["req"], (bpm, name, v)   # playhead inside
+                assert v["q_last_pos"] < v["req"], (bpm, name, v)   # the playhead is before the out
+                # the deck played on (an in ahead: no jump back) and wrapped at the out to the in
+                assert w["start"] >= min(v["in"], v["q_last_pos"]) - 2, (bpm, name, v)
+                assert w["wrap"][0] >= want["out"] - 6 and v["in"] <= w["wrap"][1] <= v["in"] + 6, (bpm, name, v)
                 lit = (0, bit) if frac else (0xF, 0xF ^ bit)    # stock: active bit blinks
                 assert v["led6"] & 1 and v["led7"] & 0xF in lit, (bpm, name, v)
             else:
@@ -857,12 +883,12 @@ def test_live_loops_on_the_grid(tmp_path):
                 cw = v["call"]["watch"]
                 assert cw["min"] >= v["in"] and cw["max"] <= v["out"], (bpm, v)
         g = Grid([tuple(e) for e in grid["entries"]], total=grid["count"])
-        for name in ("frac8q", "frac4q"):
+        for name in ("frac8q", "frac4q"):                     # 3/4 into a beat: a step of it or the next beat
             v = t[name]
             b = g.at_or_before(v["q_last_pos"])
-            assert g.f(b) < v["in"] and v["req"] <= g.f(b + 1), (bpm, name, v)
+            assert g.f(b) < v["in"] <= g.f(b + 1) and v["req"] <= g.f(b + 2), (bpm, name, v)
         a4 = t["auto4"]                                       # beat 1 inside it: stock resize from CA90
         assert a4["resize1_req"] == a4["in"] + (a4["ca90"] - a4["in"]) // 8, a4
-    # the variable grid: the 4-beat loop at ~15.2 s spans the change at 16 s
+    # the variable grid: the 4-beat loop pressed at ~15.15 s (15.0 s nearer than 15.5 s) spans the change at 16 s
     v = res[12000]["auto4"]
     assert (v["in"], v["req"]) == (1125, 1268), v           # 15.0 s .. 16.9 s (15.5, 16.0, 16.45)

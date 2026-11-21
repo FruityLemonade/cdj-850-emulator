@@ -1,11 +1,11 @@
 /* SPDX-License-Identifier: GPL-2.0-or-later */
 /*
- * bpm_decimals: the actual BPM with two decimals next to the track's BPM in
- * the INFO view of a loaded track (see ../patch.py).
+ * bpm_decimals: the actual BPM with two decimals in place of the track's BPM
+ * in the INFO view of a loaded track (see ../patch.py).
  *
  * The INFO item list shows the rekordbox DB BPM as "128.0 bpm" (row record
  * attr0 0x0D, text built by FUN_0C06734E). While a beat grid gave the BPM,
- * that row reads "128.0>132.25 bpm": DB value as stock prints it, then
+ * that row reads "132.25" (the DB value is dropped):
  *
  *   x100 = round(grid BPMx100 at the current beat * (10000 + pitch) / 10000)
  *
@@ -157,16 +157,13 @@ int bpm_decimals_stock_number(const volatile u8 *t, int len)
     return n;
 }
 
-/* "<number>>" + whole "." hundredths + " bpm" into out; returns the length. */
-int bpm_decimals_format(u8 *out, const volatile u8 *number, int n, u32 x100)
+/* whole "." hundredths into out (nothing else); returns the length. */
+int bpm_decimals_format(u8 *out, u32 x100)
 {
     u8 digits[4];
     u32 whole = x100 / 100u, frac = x100 % 100u;
-    int i, k = 0, len = 0;
+    int k = 0, len = 0;
 
-    for (i = 0; i < n; i++)
-        out[len++] = number[i];
-    out[len++] = '>';
     do {
         digits[k++] = (u8)('0' + whole % 10u);
         whole /= 10u;
@@ -176,10 +173,6 @@ int bpm_decimals_format(u8 *out, const volatile u8 *number, int n, u32 x100)
     out[len++] = '.';
     out[len++] = (u8)('0' + frac / 10u);
     out[len++] = (u8)('0' + frac % 10u);
-    out[len++] = ' ';
-    out[len++] = 'b';
-    out[len++] = 'p';
-    out[len++] = 'm';
     return len;
 }
 
@@ -230,7 +223,7 @@ void bpm_decimals_rows(void)
             for (len = 0; len < slen; len++)
                 text[len] = src[len];
         } else {
-            len = bpm_decimals_format(text, src, n, x100);
+            len = bpm_decimals_format(text, x100);
             bpm_decimals_x100_last = x100;
         }
         bpmd_set_row(row, text, len);
