@@ -103,8 +103,8 @@ class Model:
 
     @property
     def is_rig(self):
-        """The two-board real-DSP rig (rig.py); any other model starts as one
-        MAIN emulator (deck.py)."""
+        """MODEL_LAUNCH=rig, which load() refuses: this tree has no rig. Every
+        model starts as one MAIN emulator (deck.py)."""
         return self.launch == "rig"
 
     @property
@@ -143,7 +143,7 @@ class Model:
 
 
 def load(model_id=None):
-    """The named profile (CDJ_MODEL, else cdj2000nxs2). Raises ModelError with
+    """The named profile (CDJ_MODEL, else cdj850). Raises ModelError with
     the script's message on an unknown id or an incomplete profile."""
     model_id = (model_id or os.environ.get("CDJ_MODEL") or DEFAULT).strip().lower()
     path = os.path.join(models_dir(), model_id + ".conf")
@@ -157,11 +157,10 @@ def load(model_id=None):
     launch = values.get("MODEL_LAUNCH") or "rig"
     if launch not in ("rig", "deck"):
         raise ModelError("model profile %s: MODEL_LAUNCH is '%s', not rig or deck" % (path, launch))
-    # The rig starts the CDJ-2000NXS2's machines, and a deck model sharing
-    # extract/ would overwrite the NXS2's firmware.
-    if launch == "rig" and values["MODEL_MAIN_MACHINE"] != "cdj2000nxs2":
-        raise ModelError("model profile %s: only a model on the cdj2000nxs2 machine starts the rig "
-                         "(MODEL_LAUNCH=deck is missing)" % path)
+    # This tree has no two-board rig (no rig.py, no machine for it), so a
+    # profile without MODEL_LAUNCH=deck could never start.
+    if launch == "rig":
+        raise ModelError("model profile %s: MODEL_LAUNCH=deck is missing (this tree has no rig)" % path)
     if launch == "deck" and values["MODEL_EXTRACT"] == "extract":
         raise ModelError("model profile %s: a deck model installs to its own folder, not extract "
                          "(MODEL_EXTRACT is wrong)" % path)
