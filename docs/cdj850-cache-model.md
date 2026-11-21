@@ -161,14 +161,14 @@ Where the playback time goes (USB WAV, profile plus a call trace of
 
 - Every PCM byte is copied three times, which is why `memcpy_block32`
   (`0x0C1105D4`) and `memset` (`0x0C1106EC`) top the line-fill ranking:
-  1. `wav_pcm_read` (`0x0C058FF2`) copies the file buffer into the output buffer
+  1. `wav_decode_block` (`0x0C058FF2`) copies the file buffer into the output buffer
      at `0x2DFE0000`, in the uncached mirror (see the uncached-buffer map in
      [cdj850-modding.md](cdj850-modding.md#uncached-buffers--dma-map)).
   2. `pcm_rate_copy` (`0x0C0F95E6`) copies it out at 44.1 kHz; other rates are
      resampled.
   3. `pcm_ring_write` (`0x0C0EFB9A`) copies it into the CD-sector-sized slots of
      the PCM ring.
-- `wav_pcm_read` then byte-swaps every sample in place in that uncached
+- `wav_decode_block` then byte-swaps every sample in place in that uncached
   buffer. That is 79% of all uncached accesses in the run, the largest
   bus-bound cost of WAV playback. The emulator does not show it.
 - `memset`'s bytes come mostly from large clears (`alloc_zeroed` and table

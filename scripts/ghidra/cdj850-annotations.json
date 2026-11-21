@@ -386,7 +386,7 @@
         },
         {
           "address": "0c058ff2",
-          "name": "wav_pcm_read"
+          "name": "wav_decode_block"
         },
         {
           "address": "0c060c4c",
@@ -1034,7 +1034,7 @@
         {
           "address": "0c058c80",
           "type": "PLATE",
-          "text": "Decodes the next block of a USB audio file into the caller's buffer (usb_decode_fill passes the uncached 0x2DFE0000). Codec type 1-3 -> mp3_frame_read (0x900 samples, one MPEG-1 Layer III frame), 4 -> 0x0C058EF6, 5 -> wav_pcm_read, other -> 0x0C05915E."
+          "text": "Decodes the next block of a USB audio file into the caller's buffer (usb_decode_fill passes the uncached 0x2DFE0000). Codec type 1-3 -> mp3_frame_read (0x900 samples, one MPEG-1 Layer III frame), 4 -> 0x0C058EF6, 5 -> wav_decode_block, other -> 0x0C05915E."
         },
         {
           "address": "0c058da0",
@@ -1044,7 +1044,7 @@
         {
           "address": "0c058ff2",
           "type": "PLATE",
-          "text": "USB WAV PCM read: takes the next chunk of the file buffer (0x0C0592A6) and writes it to the output buffer: 24-bit (format byte +0x55 = 0x18) reduced to 16-bit samples bytewise, 16-bit copied with memcpy (mono duplicated to both channels), then every 16-bit sample byte-swapped in place (little-endian WAV to big-endian). The output buffer is in the uncached SDRAM mirror, so the swap is one uncached read and one uncached write per sample: ~5.5M of each, about 80% of all uncached accesses in a USB play run, which the emulator cannot show [static + emu: call trace, cache model]."
+          "text": "USB WAV decode block (codec type 5 of usb_decoder_read; the file-level read is wav_pcm_read, 0x0C0BE3E4): takes the next chunk of the file buffer (0x0C0592A6) and writes it to the output buffer: 24-bit (format byte +0x55 = 0x18) reduced to 16-bit samples bytewise, 16-bit copied with memcpy (mono duplicated to both channels), then every 16-bit sample byte-swapped in place (little-endian WAV to big-endian). The output buffer is in the uncached SDRAM mirror, so the swap is one uncached read and one uncached write per sample: ~5.5M of each, about 80% of all uncached accesses in a USB play run, which the emulator cannot show [static + emu: call trace, cache model]."
         },
         {
           "address": "0c060c4c",
@@ -1664,7 +1664,7 @@
         {
           "address": "0c0f95e6",
           "type": "PLATE",
-          "text": "pcm_rate_copy(src, dst, ?, samples, &frames_out): if pcm_sample_rate (0x0CE6DBAC) is 44100, memcpy samples * 2 bytes from src (wav_pcm_read's uncached buffer) to dst and report samples / 2 frames; otherwise resamples block by block through 0x0C0F97B8, keeping the remainder in a carry buffer. Called from 0x0C0BF6BA [static + emu]."
+          "text": "pcm_rate_copy(src, dst, ?, samples, &frames_out): if pcm_sample_rate (0x0CE6DBAC) is 44100, memcpy samples * 2 bytes from src (wav_decode_block's uncached buffer) to dst and report samples / 2 frames; otherwise resamples block by block through 0x0C0F97B8, keeping the remainder in a carry buffer. Called from 0x0C0BF6BA [static + emu]."
         },
         {
           "address": "0c0f9ee8",
@@ -1744,12 +1744,12 @@
         {
           "address": "0c1100b8",
           "type": "PLATE",
-          "text": "C library memcpy(dst r4, src r5, n r6); word-aligned copies go to memcpy_aligned (0x0C11066C). The emulator's CDJ_NATIVE_COPY hook recognises it by its first opcode 0xE218. During USB WAV playback three callers move ~87% of its bytes: wav_pcm_read, pcm_rate_copy and pcm_ring_write [static + emu: call trace]."
+          "text": "C library memcpy(dst r4, src r5, n r6); word-aligned copies go to memcpy_aligned (0x0C11066C). The emulator's CDJ_NATIVE_COPY hook recognises it by its first opcode 0xE218. During USB WAV playback three callers move ~87% of its bytes: wav_decode_block, pcm_rate_copy and pcm_ring_write [static + emu: call trace]."
         },
         {
           "address": "0c1105d4",
           "type": "PLATE",
-          "text": "Inner loop of memcpy: 32 bytes per iteration in eight longword loads and stores (r9-r14 saved), byte tail. The function the cache model's USB-play profile charges most line fills to, as memcpy runs over large PCM buffers; ~1.4M of its reads and writes go through the uncached SDRAM mirror (wav_pcm_read's buffer) [static + emu]."
+          "text": "Inner loop of memcpy: 32 bytes per iteration in eight longword loads and stores (r9-r14 saved), byte tail. The function the cache model's USB-play profile charges most line fills to, as memcpy runs over large PCM buffers; ~1.4M of its reads and writes go through the uncached SDRAM mirror (wav_decode_block's buffer) [static + emu]."
         },
         {
           "address": "0c11066c",
