@@ -22,7 +22,7 @@ In the launcher, the FLAC toggle (`mod.conf`) turns on all eight knobs. Patch fr
 
 ## Verification
 
-`make -C mods/flac/cdj850 test` checks bit-exact PCM, sample-accurate reads with and without seek tables, final-sector padding, and sample-rate rejection (host build of `payload/decoder.c`). `pytest tests/test_cdj850_flac_patch.py` checks the signatures, the eight gated writes, the moved classifier entry, the private stack, the boot-critical closure and that no FPU code reaches the payload; `tests/test_cdj850_service_gate.py` runs the gates.
+`make -C mods/flac/cdj850 test` checks bit-exact PCM in the WAV's byte order (LPC orders up to 32 from `--lax -l 32`, wasted bits, all four stereo decorrelations), sample-accurate reads with and without seek tables, final-sector padding, and sample-rate rejection (host build of `payload/decoder.c`, which runs the C predictor; the SH-2A `mac.l` path is checked by the QEMU folder probe below). `pytest tests/test_cdj850_flac_patch.py` checks the signatures, the eight gated writes, the moved classifier entry, the private stack, the boot-critical closure and that no FPU code reaches the payload; `tests/test_cdj850_service_gate.py` runs the gates.
 
 Use the repository Python environment with `pyfatfs` and the bundled `baken` tool for the end-to-end QEMU probes.
 
@@ -53,4 +53,14 @@ Eight writes to MAIN, none in the boot-critical closure, each behind the service
 
 The decoder (`payload/decoder.c`, dr_flac) runs on a 16 KB stack of its own (`payload/flac_stack.s`, which also keeps `MACH`/`MACL` for MAIN): dr_flac's open takes a 4.4 KB frame, and the audio task (mp3ActTask, 7.5 KB of on-chip RAM) reached the file read 5.8 KB deep with it in the original build, against 2.5 KB for stock WAV playback. RAM in the payload's `.bss`: a 256 KB decoder arena, the 16 KB stack, a 2352-byte PCM sector and the 8 file slots, about 280 KB in all, between the other mods' variables (the stack's low end borders FLAC's own file slots).
 
-dr_flac is vendored at revision `7f032b984ae5dd3ab8a58721375aca9200f91965`. Its license is in the header. [Upstream source](https://github.com/mackron/dr_libs/blob/7f032b984ae5dd3ab8a58721375aca9200f91965/dr_flac.h)
+### Decode speed
+
+The decoder runs on a 200 MHz SH-2A without FPU, and the firmware asks for a lot of it at once: holding SEARCH reads a 0.41 s snippet every 7.57 s of the track, and every landing re-reads 16 s ahead and about 11 s behind (`docs/cdj850-modding.md`, section 4b.13). With stock dr_flac most of the time went to its 64-bit LPC predictor (taken for nearly all 16-bit subframes from `flac -5` to `-8`, since 16 + 15 + log2(order) > 32), its 4-way unrolled Rice loop, which spills on the SH-2A's 16 registers, and byte-wise PCM conversion and copies. `payload/decoder.c` now:
+
+- decodes each Rice partition in `rice_residual()`, reached through `DRFLAC_RICE_RESIDUAL_HOOK`, the one local change in `vendor/dr_flac.h`. A code inside the current cache word is read in place, a code that runs into the next buffered word is joined inline with dr_flac's CRC-16 update, and anything else (refills, long runs) goes through dr_flac's own reader, so the bitstream and CRC state move exactly as in dr_flac;
+- predicts with `mac.l` (32 x 32 + 64 into `MACH:MACL`): `braf` enters a 32-step ladder for the order, so every order and precision is exact with one instruction per coefficient. If `SR.S` is set (`mac.l` would saturate; the SH-2A has no `clrs`), the partition goes to dr_flac's scalar code;
+- builds the WAV's little-endian sample words straight from the decoded subframes (`swap.b`/`xtrct`), and `memcpy` copies whole words.
+
+Emulator instruction counts (`-icount`, the payload alone, a 150 s 16-bit track in the SEARCH/scratch scenario): 395 instructions per stereo sample before, 207 after. With the emulated CPU slowed to about 62 MIPS (`-icount shift=4`) a SEARCH snippet takes 155 ms instead of 244 ms, the first 2 s after releasing SEARCH arrive in about 0.4 s instead of 0.6 s, and the 16 s re-read takes 3.6 s instead of 5.7 s (stock WAV at the same speed: 21 ms per snippet, 0.9 s for the 16 s; the emulator's USB costs no time, so real USB adds to both). The decoded PCM matches the source WAV bit for bit in the QEMU folder probe, for the synthetic fixture and for real music encoded with `-8` and with `--lax -l 32`.
+
+dr_flac is vendored at revision `7f032b984ae5dd3ab8a58721375aca9200f91965`, with the `DRFLAC_RICE_RESIDUAL_HOOK` hook as its only change. Its license is in the header. [Upstream source](https://github.com/mackron/dr_libs/blob/7f032b984ae5dd3ab8a58721375aca9200f91965/dr_flac.h)

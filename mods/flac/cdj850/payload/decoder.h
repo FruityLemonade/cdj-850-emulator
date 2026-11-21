@@ -16,7 +16,9 @@ typedef struct {
 /* One decoder. Calls belong to the audio producer task. */
 uint32_t flac_open(FlacSource source);
 int flac_seek(uint32_t frame);
-int flac_read_sector(uint8_t *pcm);
+/* The next sector: 588 stereo frames as they sit in a 16-bit PCM WAV
+ * (little-endian), zero-padded at the end of the track. */
+int flac_read_sector(uint32_t *pcm);
 void flac_close(void);
 
 #endif
