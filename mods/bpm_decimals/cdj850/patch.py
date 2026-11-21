@@ -2,7 +2,7 @@
 """bpm_decimals on the CDJ-850 MAIN 1.13: the actual BPM with two decimals in
 the INFO view of a loaded track, next to the rekordbox BPM.
 
-The INFO item "128.0 bpm" (DB tempo) reads "128.0>132.25 bpm" while a beat
+The INFO item "128.0 bpm" (DB tempo) reads "128.0 132.25" while a beat
 grid gave the BPM: the grid BPMx100 at the current beat times the pitch.
 Without a grid (BPM counter, CD) the row is exactly stock. Code is C in
 payload/bpm_decimals.c (shared SDRAM payload, mods/payloadbuild.py).

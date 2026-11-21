@@ -5,7 +5,7 @@
  *
  * The INFO item list shows the rekordbox DB BPM as "128.0 bpm" (row record
  * attr0 0x0D, text built by FUN_0C06734E). While a beat grid gave the BPM,
- * that row reads "128.0>132.25 bpm": DB value as stock prints it, then
+ * that row reads "128.0 132.25": DB value as stock prints it, a space, then
  *
  *   x100 = round(grid BPMx100 at the current beat * (10000 + pitch) / 10000)
  *
@@ -157,7 +157,7 @@ int bpm_decimals_stock_number(const volatile u8 *t, int len)
     return n;
 }
 
-/* "<number>>" + whole "." hundredths + " bpm" into out; returns the length. */
+/* "<number> " + whole "." hundredths into out (no " bpm"); returns the length. */
 int bpm_decimals_format(u8 *out, const volatile u8 *number, int n, u32 x100)
 {
     u8 digits[4];
@@ -166,7 +166,7 @@ int bpm_decimals_format(u8 *out, const volatile u8 *number, int n, u32 x100)
 
     for (i = 0; i < n; i++)
         out[len++] = number[i];
-    out[len++] = '>';
+    out[len++] = ' ';
     do {
         digits[k++] = (u8)('0' + whole % 10u);
         whole /= 10u;
@@ -176,10 +176,6 @@ int bpm_decimals_format(u8 *out, const volatile u8 *number, int n, u32 x100)
     out[len++] = '.';
     out[len++] = (u8)('0' + frac / 10u);
     out[len++] = (u8)('0' + frac % 10u);
-    out[len++] = ' ';
-    out[len++] = 'b';
-    out[len++] = 'p';
-    out[len++] = 'm';
     return len;
 }
 
