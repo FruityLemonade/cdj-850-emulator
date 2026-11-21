@@ -161,13 +161,14 @@ Where the playback time goes (USB WAV, profile plus a call trace of
 
 - Every PCM byte is copied three times, which is why `memcpy_block32`
   (`0x0C1105D4`) and `memset` (`0x0C1106EC`) top the line-fill ranking:
-  1. `wav_pcm_read` (`0x0C058FF2`) copies the file buffer into an output buffer
-     in the uncached mirror.
+  1. `wav_decode_block` (`0x0C058FF2`) copies the file buffer into the output buffer
+     at `0x2DFE0000`, in the uncached mirror (see the uncached-buffer map in
+     [cdj850-modding.md](cdj850-modding.md#uncached-buffers--dma-map)).
   2. `pcm_rate_copy` (`0x0C0F95E6`) copies it out at 44.1 kHz; other rates are
      resampled.
   3. `pcm_ring_write` (`0x0C0EFB9A`) copies it into the CD-sector-sized slots of
      the PCM ring.
-- `wav_pcm_read` then byte-swaps every sample in place in that uncached
+- `wav_decode_block` then byte-swaps every sample in place in that uncached
   buffer. That is 79% of all uncached accesses in the run, the largest
   bus-bound cost of WAV playback. The emulator does not show it.
 - `memset`'s bytes come mostly from large clears (`alloc_zeroed` and table
@@ -178,6 +179,54 @@ Before the exception-entry hook existed, the push was invisible. The same boot
 then reported 7 false findings on interrupt frames (stale-read and
 writeback-clobber at RTOS and RTE code). Those are what the `WARNING` line
 guards against.
+
+## Results (all mods, build 0.13)
+
+The image: `patch_update.py C850MAIN.UPD out.UPD tempo_wide bpm999 bpm_decimals
+quant_loops loop_resize hot_cues auto_standby flac` (44 declared writes, a
+358,464-byte payload, 28 calls into it), and the same mods through
+`patch_main.py --flash` for the emulator. The two differ only in the version
+byte at `0x60010`, so the runs below boot the bytes a deck would get. The
+probes and `payload_demo` are left out.
+
+| Run | Fetches | I-miss | O-read miss | DMA armed | Findings |
+| --- | --- | --- | --- | --- | --- |
+| Boot to `NO DISC` | 373 M | 0.10% | 0.61% | 0 | 0 |
+| FLAC folder: load `Candidate.flac`, play the whole 18 s file (`mods/flac/probe.py --recipe folder`) | 4.6 G | 0.11% | 0.43% | 7,379 | 0 |
+| FLAC export: WAV and FLAC, cue, call, beat loop, reverse, vinyl, jog, master tempo (`--recipe export`) | 8.6 G | 0.13% | 0.48% | 21,738 | 0 |
+| Loops: auto beat loop, CALL halve and double, LOOP IN/OUT, MEMORY, quantize toggle (saved), INFO, TEMPO to WIDE, next track | 12.2 G | 0.12% | 0.33% | 16,296 | 0 |
+| Hot cues: mode on (saved), jump A, record C, loop B, delete A, record A, paused jump, mode off (saved) | 10.7 G | 0.12% | 0.34% | 16,619 | 0 |
+
+The last two run on the hot-cue test stick (`tests/test_cdj850_hot_cues.py`,
+`build_stick`) with a `--script` in virtual milliseconds. The live tests'
+own drivers wait in host time and time out under the plugin, which runs about
+30× slower than real time. The profiles show every hook running. In the
+hot-cue run, `hot_cues_anlz_write` writes the stick 3 times, the settings save
+(`0x0C08E9B0`) runs twice, and `usb_dma_start` runs 3,221 times.
+
+Why it comes out clean:
+
+- The payload does no cache maintenance and never touches the uncached mirror,
+  the DMAC or its own code. The only write around the cache is the loader
+  stub's copy to `0x2DE00000`. That copy comes before anything caches the
+  region, and the I-cache fills payload code from memory.
+- Every USB transfer, the ANLZ writes included, goes through
+  `usb_dma_start`, and every flash write through the stock settings save.
+- FLAC hands the stock WAV path a byte-swapped virtual WAV. Its PCM takes the
+  stock route: `memcpy_block32` into `0x2DFE0000`, where the stock in-place
+  swap (`0x0C0590F6`/`0x0C059106`) runs on it.
+- The cache pressure is the stock firmware's: I-miss 0.10-0.13% here against
+  0.10-0.12% stock.
+
+CPU headroom (the deck runs 200 MHz, the emulator counts 250 M instructions
+per virtual second and never stalls): the idle loop (`idle_task_state_scan`)
+takes 91% of all instructions during FLAC play and 95% during WAV play with
+loops and hot cues. The FLAC decoder (mostly
+`drflac__decode_samples_with_residual__rice__scalar`) runs about 8 M
+instructions per second of audio. Estimated with guessed penalties (24
+cycles per line fill, 18 per write-back and uncached read, 9 per uncached
+write), that is 11 M cycles/s, 6% of the core, or 5-7% across ±50% on those
+penalties. The other mods together come to under 0.2%.
 
 ## Not modelled
 

@@ -289,6 +289,10 @@
           "name": "grid_find_beat"
         },
         {
+          "address": "0c003294",
+          "name": "delay_flash_rd32x200"
+        },
+        {
           "address": "0c003e56",
           "name": "frames_to_minutes_seconds_frames"
         },
@@ -369,8 +373,24 @@
           "name": "usb_audio_open"
         },
         {
+          "address": "0c058c80",
+          "name": "usb_decoder_read"
+        },
+        {
+          "address": "0c058da0",
+          "name": "mp3_decoder_init"
+        },
+        {
+          "address": "0c058e0a",
+          "name": "mp3_frame_read"
+        },
+        {
           "address": "0c058ff2",
-          "name": "wav_pcm_read"
+          "name": "wav_decode_block"
+        },
+        {
+          "address": "0c060c4c",
+          "name": "cd_sector_ring_dma_init"
         },
         {
           "address": "0c061454",
@@ -517,6 +537,14 @@
           "name": "ssi_init_0"
         },
         {
+          "address": "0c076288",
+          "name": "ssi0_dma_start"
+        },
+        {
+          "address": "0c0763d8",
+          "name": "ssi1_dma_start"
+        },
+        {
           "address": "0c076444",
           "name": "ssi_dma_dei2_isr"
         },
@@ -543,6 +571,10 @@
         {
           "address": "0c0894cc",
           "name": "alloc_zeroed"
+        },
+        {
+          "address": "0c08e80a",
+          "name": "flash_reset_cmd"
         },
         {
           "address": "0c08e842",
@@ -597,12 +629,20 @@
           "name": "idleTASK"
         },
         {
+          "address": "0c0b8ed8",
+          "name": "idle_task_state_scan"
+        },
+        {
           "address": "0c0b92cc",
           "name": "tick_1ms"
         },
         {
           "address": "0c0be3e4",
           "name": "wav_pcm_read"
+        },
+        {
+          "address": "0c0bf6ba",
+          "name": "usb_decode_fill"
         },
         {
           "address": "0c0c1442",
@@ -647,6 +687,10 @@
         {
           "address": "0c0ce17c",
           "name": "rtos_get_message_block"
+        },
+        {
+          "address": "0c0d1a2c",
+          "name": "usb_vbus_read_debounced"
         },
         {
           "address": "0c0d1c42",
@@ -809,6 +853,14 @@
           "name": "serialTask"
         },
         {
+          "address": "0c0faada",
+          "name": "cd_sector_ring_clear"
+        },
+        {
+          "address": "0c0fb5c8",
+          "name": "cd_ring_slot_check"
+        },
+        {
           "address": "0c0fb97e",
           "name": "ocache_purge_range"
         },
@@ -849,6 +901,10 @@
           "name": "irq2_spindle_flag_isr"
         },
         {
+          "address": "0c107932",
+          "name": "delay_flash_rd8"
+        },
+        {
           "address": "0c10b20c",
           "name": "usbi_mode_dispatch_isr"
         },
@@ -883,6 +939,10 @@
         {
           "address": "0c1106ec",
           "name": "memset"
+        },
+        {
+          "address": "0c140b0c",
+          "name": "mp3_pcm_out"
         }
       ],
       "comments": [
@@ -900,6 +960,11 @@
           "address": "0c0012e4",
           "type": "PLATE",
           "text": "grid_find_beat(ctx, time_ms, mode): index of the beat in the current grid window, -1 on error. Entries at ctx+0x80 are {u16 beat_in_bar, u16 bpm*100, u32 time_ms}. Only caller: the beat-grid tempo setter 0x0C073788."
+        },
+        {
+          "address": "0c003294",
+          "type": "PLATE",
+          "text": "Bus delay: r4 * 200 dummy longword reads of flash 0x20000000 through the uncached mirror. Used by usb_vbus_read_debounced."
         },
         {
           "address": "0c00585a",
@@ -967,9 +1032,24 @@
           "text": "Opens a USB audio file (the flac mod redirects pools 0x0C0BE79C and 0x0C0BED94)."
         },
         {
+          "address": "0c058c80",
+          "type": "PLATE",
+          "text": "Decodes the next block of a USB audio file into the caller's buffer (usb_decode_fill passes the uncached 0x2DFE0000). Codec type 1-3 -> mp3_frame_read (0x900 samples, one MPEG-1 Layer III frame), 4 -> 0x0C058EF6, 5 -> wav_decode_block, other -> 0x0C05915E."
+        },
+        {
+          "address": "0c058da0",
+          "type": "PLATE",
+          "text": "Stores the three 8 KB on-chip MP3 work buffers 0xFFF80498, 0xFFF82498 and 0xFFF84498 into a decoder context (+0x64..+0x6C) and calls its init routine. Only MP3 playback touches those buffers (91M loads, 49M stores in a USB MP3 run; none in WAV playback), from the decoder core at 0x0C13EC04..0x0C141FD8 [static + emu]."
+        },
+        {
           "address": "0c058ff2",
           "type": "PLATE",
-          "text": "USB WAV PCM read: takes the next chunk of the file buffer (0x0C0592A6) and writes it to the output buffer: 24-bit (format byte +0x55 = 0x18) reduced to 16-bit samples bytewise, 16-bit copied with memcpy (mono duplicated to both channels), then every 16-bit sample byte-swapped in place (little-endian WAV to big-endian). The output buffer is in the uncached SDRAM mirror, so the swap is one uncached read and one uncached write per sample: ~5.5M of each, about 80% of all uncached accesses in a USB play run, which the emulator cannot show [static + emu: call trace, cache model]."
+          "text": "USB WAV decode block (codec type 5 of usb_decoder_read; the file-level read is wav_pcm_read, 0x0C0BE3E4): takes the next chunk of the file buffer (0x0C0592A6) and writes it to the output buffer: 24-bit (format byte +0x55 = 0x18) reduced to 16-bit samples bytewise, 16-bit copied with memcpy (mono duplicated to both channels), then every 16-bit sample byte-swapped in place (little-endian WAV to big-endian). The output buffer is in the uncached SDRAM mirror, so the swap is one uncached read and one uncached write per sample: ~5.5M of each, about 80% of all uncached accesses in a USB play run, which the emulator cannot show [static + emu: call trace, cache model]."
+        },
+        {
+          "address": "0c060c4c",
+          "type": "PLATE",
+          "text": "CD sector ring set-up: clears the 12-byte header and the flag byte +0xAC9 of 150 slots of 0xAD0 bytes at 0x2DF79F50 (uncached mirror of cd_sector_ring), then programs DMAC ch0 SSIRDR_3 (0xFFFFD80C) -> CD-ROM decoder STRMDIN0 (0xFFFC2200) and ch4 STRMDOUT0 (0xFFFC2204) -> 0x2DF79F50, DMATCR 0x19578 longwords = 150 x 2768 bytes; DMARS0/2 and DMAOR.DME. Leaves DE clear. The CPU only reaches the ring through the uncached mirror, so DMA data is never shadowed by a cache line."
         },
         {
           "address": "0c061454",
@@ -1157,6 +1237,16 @@
           "text": "Returns the track-length slot of a track; length = *(u32 *)(0x0CE59B58 + slot*0x3A4)."
         },
         {
+          "address": "0c076288",
+          "type": "PLATE",
+          "text": "ssi0_dma_start(src, count): DMAC ch1 SAR/DMATCR, CHCR |= DE|IE, DMAOR.DME. The feeder arms it with SAR 0xFFF86498 (on-chip SSI PCM block), DAR SSITDR_0 (0xFFFFC008), 45 longwords, CHCR 0x1815. [emu: 2,911 arms in a WAV run]"
+        },
+        {
+          "address": "0c0763d8",
+          "type": "PLATE",
+          "text": "ssi1_dma_start(src, count): as ssi0_dma_start for DMAC ch2; SAR 0xFFF86568, DAR SSITDR_1 (0xFFFFC808), 45 longwords."
+        },
+        {
           "address": "0c076444",
           "type": "PLATE",
           "text": "SSI DMA channel 2 completion, DEI2 vector 116. Re-enables IRQ7/DSPDREQ priority after the paired SSI PCM transfer."
@@ -1164,7 +1254,7 @@
         {
           "address": "0c076474",
           "type": "PLATE",
-          "text": "Builds two 45-longword SSI DMA buffers from interleaved PCM. Each carries leading zero, right/left header 0xCE5C0000/0xCA5A0000, 42 packed sample words and trailing zero."
+          "text": "Builds two 45-longword SSI DMA buffers from interleaved PCM. Each carries leading zero, right/left header 0xCE5C0000/0xCA5A0000, 42 packed sample words and trailing zero. The blocks at 0xFFF86498 and 0xFFF86568 are the sources of DMAC ch1 (ssi0_dma_start) and ch2 (ssi1_dma_start) into SSITDR_0/SSITDR_1."
         },
         {
           "address": "0c076624",
@@ -1190,6 +1280,11 @@
           "address": "0c0894cc",
           "type": "PLATE",
           "text": "alloc_zeroed(n): p = 0x0C088BC4(n) (allocator), memset(p, 0, n) if p != 0, return p. Over 200 call sites [static]."
+        },
+        {
+          "address": "0c08e80a",
+          "type": "PLATE",
+          "text": "Writes the flash read/reset command 0x00F0 to 0x20000000 (uncached mirror of the NOR flash). The unlock cycles of flash_erase_sector/flash_program_word go to 0x20000AAA/0x20000554."
         },
         {
           "address": "0c08e842",
@@ -1237,6 +1332,11 @@
           "text": "At boot: memset 0x0CE6D242 (16 bytes), then sprintf the MAIN label at flash 0x060010 into it (1.13 stock, 0.13 for a patch_update.py build). The numeric version 113 at 0x0CE6D240 is a constant (0x0C0B8D86)."
         },
         {
+          "address": "0c0b8ed8",
+          "type": "PLATE",
+          "text": "idle_task_state_scan: for i = 0..16 reads the object pointer table after tick_ms (0x0CE49F58[i + 1]), follows +0x14 to a state word and compares it, and an id byte (0x0CE49CBC), with the values in 0x0CE49C74; returns the bitmask of entries that differ. idleTASK (0x0C0B8EA2) calls it in a loop until it is non-zero, which is why most interrupts land at 0x0C0B8EFA and why it dominates loads from on-chip pool 2 [static + emu]. Empty slots make it load @(0x14, NULL): tens of millions of cached reads of flash 0x00000014 while idle (40M in a 100 s headless boot), harmless. Its loop is the CPU headroom gauge: under -icount (cache-model profiles, all-mods build 0.13) it is 66% of executed instructions in the boot to NO DISC, 91% during USB FLAC play (the FLAC decoder in the payload is about 3.4% of instructions) and 95% during USB WAV play with loops and hot cues [emu]."
+        },
+        {
           "address": "0c0b92cc",
           "type": "PLATE",
           "text": "1 ms tick: increments 0x0CE49F54, then calls the power/standby part 0x0C0EF8C8 through pool 0x0C0B9310 (loaded at 0x0C0B92EA)."
@@ -1250,6 +1350,11 @@
           "address": "0c0be3e4",
           "type": "PLATE",
           "text": "Reads WAV PCM data from a USB audio file (the flac mod redirects pool 0x0C0585F4)."
+        },
+        {
+          "address": "0c0bf6ba",
+          "type": "PLATE",
+          "text": "USB playback decode step: usb_decoder_read(0x2DFE0000, &n), memset(0x2DFE0000, 0, n*4) to pad a short block, then pcm_rate_copy(0x2DFE0000 + skip*2, ...) into the PCM sector ring. 0x2DFE0000 is the uncached mirror of usb_pcm_decode_buf (0x0DFE0000); nothing touches it through the cached address, so no cache maintenance is needed. Used extent: WAV 0x0DFE0000-0x0DFE09FF, MP3 0x0DFE0000-0x0DFE11FF."
         },
         {
           "address": "0c0c1442",
@@ -1270,6 +1375,11 @@
           "address": "0c0c5960",
           "type": "PLATE",
           "text": "anlz_write_section(file, ctx, 3, buf): rewrites the ANLZ file from the hot-cue tag on (pool 0x0C0C195C, read only at 0x0C0C17CE)."
+        },
+        {
+          "address": "0c0c68fc",
+          "type": "PLATE",
+          "text": "Template of the RTOS ISR wrapper. Pool-2 objects (0xFFF86638+) hold a copy of these bytes followed by the handler pointers, one per registered interrupt (e.g. at 0xFFF866E0, 0xFFF87BAC, 0xFFF8DC90, 0xFFF8DE9C), and the on-chip vector table at 0xFFF80000 (VBR) points at the copies [emu: on-chip RAM dump]."
         },
         {
           "address": "0c0c8afa",
@@ -1305,6 +1415,11 @@
           "address": "0c0ce17c",
           "type": "PLATE",
           "text": "RTOS: wait for a free message block; the only place audio_send_cmd can block, before it queues."
+        },
+        {
+          "address": "0c0d1a2c",
+          "type": "PLATE",
+          "text": "Returns USB INTSTS0.VBSTS (0xFFFC1C40 bit 7) once three reads one delay_flash_rd32x200(1) apart agree."
         },
         {
           "address": "0c0d1c42",
@@ -1549,7 +1664,7 @@
         {
           "address": "0c0f95e6",
           "type": "PLATE",
-          "text": "pcm_rate_copy(src, dst, ?, samples, &frames_out): if pcm_sample_rate (0x0CE6DBAC) is 44100, memcpy samples * 2 bytes from src (wav_pcm_read's uncached buffer) to dst and report samples / 2 frames; otherwise resamples block by block through 0x0C0F97B8, keeping the remainder in a carry buffer. Called from 0x0C0BF6BA [static + emu]."
+          "text": "pcm_rate_copy(src, dst, ?, samples, &frames_out): if pcm_sample_rate (0x0CE6DBAC) is 44100, memcpy samples * 2 bytes from src (wav_decode_block's uncached buffer) to dst and report samples / 2 frames; otherwise resamples block by block through 0x0C0F97B8, keeping the remainder in a carry buffer. Called from 0x0C0BF6BA [static + emu]."
         },
         {
           "address": "0c0f9ee8",
@@ -1572,6 +1687,16 @@
           "text": "SCIF1 TXI1 vector 199 services further 16-byte frames in the same PNL_XBUSY window until MAIN clears TIE."
         },
         {
+          "address": "0c0faada",
+          "type": "PLATE",
+          "text": "Clears the CD sector ring: memset(0x2DF79F50, 0, 0x660B0) through the uncached mirror, 151 slots of 0xAD0 ending exactly at 0x0DFE0000 (the size is a movi20 immediate, so no literal shows it). Runs at boot (104,492 longword stores). Not a function in a fresh import; created by the annotation script."
+        },
+        {
+          "address": "0c0fb5c8",
+          "type": "PLATE",
+          "text": "Reads ring slot r4 of the CD sector ring through the uncached mirror (0x2DF79F50 + slot * 0xAD0), checks its header and copies 8 bytes from slot+0x10 or +0x18 to 0x0CEE3110. Called per slot from the loop at 0x0C0FB6A2. [static; CD playback is not emulated]"
+        },
+        {
           "address": "0c0fb97e",
           "type": "PLATE",
           "text": "ocache_purge_range(r4 = start, r5 = length): for each 16-byte line stores start & 0x1FFFF800 (tag, U = V = 0) to 0xF0800008 + (start & 0x7F0), stepping both by 16 (the entry wraps into the don't-care address bits). Associative operand-cache address-array writes: a dirty line is written back, then dropped (SH7263 manual 8.4.3). Runs from cached SDRAM, unlike the boot's copy in on-chip RAM; MAIN's only cache maintenance (382k array writes in a USB play run) [static + emu]."
@@ -1585,6 +1710,11 @@
           "address": "0c0fd7cc",
           "type": "PLATE",
           "text": "Bring up the CD servo on its Port E bus. PE7 is SRVRST."
+        },
+        {
+          "address": "0c107932",
+          "type": "PLATE",
+          "text": "Bus delay: r4 dummy byte reads of flash 0x20000000 through the uncached mirror (the decompiler drops the dead load). Called by servo_transfer and the CD servo bit-bang routines 0x0C0FC886-0x0C0FD3C0; ~100k uncached reads per boot."
         },
         {
           "address": "0c10b20c",
@@ -1614,12 +1744,12 @@
         {
           "address": "0c1100b8",
           "type": "PLATE",
-          "text": "C library memcpy(dst r4, src r5, n r6); word-aligned copies go to memcpy_aligned (0x0C11066C). The emulator's CDJ_NATIVE_COPY hook recognises it by its first opcode 0xE218. During USB WAV playback three callers move ~87% of its bytes: wav_pcm_read, pcm_rate_copy and pcm_ring_write [static + emu: call trace]."
+          "text": "C library memcpy(dst r4, src r5, n r6); word-aligned copies go to memcpy_aligned (0x0C11066C). The emulator's CDJ_NATIVE_COPY hook recognises it by its first opcode 0xE218. During USB WAV playback three callers move ~87% of its bytes: wav_decode_block, pcm_rate_copy and pcm_ring_write [static + emu: call trace]."
         },
         {
           "address": "0c1105d4",
           "type": "PLATE",
-          "text": "Inner loop of memcpy: 32 bytes per iteration in eight longword loads and stores (r9-r14 saved), byte tail. The function the cache model's USB-play profile charges most line fills to, as memcpy runs over large PCM buffers; ~1.4M of its reads and writes go through the uncached SDRAM mirror (wav_pcm_read's buffer) [static + emu]."
+          "text": "Inner loop of memcpy: 32 bytes per iteration in eight longword loads and stores (r9-r14 saved), byte tail. The function the cache model's USB-play profile charges most line fills to, as memcpy runs over large PCM buffers; ~1.4M of its reads and writes go through the uncached SDRAM mirror (wav_decode_block's buffer) [static + emu]."
         },
         {
           "address": "0c11066c",
@@ -1650,12 +1780,26 @@
           "address": "0c9d0b14",
           "type": "PRE",
           "text": "TX 0x80 byte 11: bits 0..4 header status code (display_stage_header_status), bits 5..7 per-row flags for rows 1..3 (display_set_row_flag)."
+        },
+        {
+          "address": "0c140b0c",
+          "type": "PLATE",
+          "text": "MP3 output stage: converts one granule (576 stereo frames, or 288 mono) from float to clipped 16-bit pairs packed in longwords and stores them through the uncached mirror into usb_pcm_decode_buf (0x2DFE0000). 1.27M uncached stores in a short MP3 run."
+        },
+        {
+          "address": "0c141f4c",
+          "type": "PLATE",
+          "text": "The hottest routine of the MP3 decoder core (0x0C13EC04..0x0C141FD8): 43M accesses to the on-chip MP3 work buffers in a 30 s USB MP3 run [emu]."
         }
       ],
       "labels": [
         {
           "address": "0c065df6",
           "name": "panel_tx_status_02"
+        },
+        {
+          "address": "0c0c68fc",
+          "name": "isr_stub_template"
         },
         {
           "address": "0c0d9194",
@@ -2208,6 +2352,54 @@
         {
           "address": "0cee505c",
           "name": "usb_mode_word"
+        },
+        {
+          "address": "0df79f50",
+          "name": "cd_sector_ring"
+        },
+        {
+          "address": "0dfe0000",
+          "name": "usb_pcm_decode_buf"
+        },
+        {
+          "address": "fff80000",
+          "name": "ocram_vectors"
+        },
+        {
+          "address": "fff80400",
+          "name": "ocram_boot_cache_routines"
+        },
+        {
+          "address": "fff80498",
+          "name": "mp3_ocram_buf0"
+        },
+        {
+          "address": "fff82498",
+          "name": "mp3_ocram_buf1"
+        },
+        {
+          "address": "fff84498",
+          "name": "mp3_ocram_buf2"
+        },
+        {
+          "address": "fff86498",
+          "name": "ssi_ocram_pcm_blocks"
+        },
+        {
+          "address": "fff86638",
+          "name": "rtos_pool2"
+        },
+        {
+          "address": "fff8e7a0",
+          "name": "ocram_unused_gap"
+        },
+        {
+          "address": "fff90000",
+          "name": "kernel_stack_top"
+        },
+        {
+          "address": "ffff8000",
+          "name": "retention_ram_unused"
         }
       ]
     }
