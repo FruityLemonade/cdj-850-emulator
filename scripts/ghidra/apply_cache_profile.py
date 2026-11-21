@@ -42,6 +42,11 @@ def misses(t):
     return t["ic_miss"] + t["rd_miss"] + t["wr_miss"] + t["pref_miss"]
 
 
+def uncached(t):
+    """Accesses through the cache-disabled mirror: each is a bus cycle."""
+    return t["unc_rd"] + t["unc_wr"]
+
+
 def summary(t):
     def pct(a, b):
         return f"{100.0 * a / b:.2f}%" if b else "-"
@@ -101,6 +106,9 @@ def main():
     ap.add_argument("profile", type=Path, help="<out>-profile.csv from the cache plugin")
     ap.add_argument("--top", type=int, default=30, help="functions to print (default 30)")
     ap.add_argument("--pcs", type=int, default=50, help="hottest single pcs to bookmark (default 50)")
+    ap.add_argument("--rank", choices=("fills", "uncached"), default="fills",
+                    help="order by line fills (default) or by uncached accesses, which cost a "
+                         "full bus cycle each on the chip and never show as misses")
     ap.add_argument("--csv", type=Path, help="also write the per-function totals here")
     ap.add_argument("--dry-run", action="store_true", help="print only, change nothing")
     args = ap.parse_args()
@@ -120,7 +128,8 @@ def main():
                     from ghidra.util.task import TaskMonitor
                     program.getDomainFile().save(TaskMonitor.DUMMY)
 
-    ranked = sorted(per_fn.items(), key=lambda kv: misses(kv[1][1]), reverse=True)
+    key = misses if args.rank == "fills" else uncached
+    ranked = sorted(per_fn.items(), key=lambda kv: key(kv[1][1]), reverse=True)
     total = dict.fromkeys(FIELDS, 0)
     for _, (_, t) in per_fn.items():
         for k in FIELDS:
@@ -129,16 +138,17 @@ def main():
     print(f"{args.program}: {len(per_pc)} profiled pcs in {len(per_fn)} functions "
           f"({outside} pcs outside any function)")
     print(f"all functions: {summary(total)}")
-    print(f"\n{'entry':>10}  {'line fills':>10}  {'share':>6}  function")
-    all_miss = misses(total) or 1
+    print(f"\n{'entry':>10}  {'line fills':>10}  {'share':>6}  {'uncached':>10}  {'share':>6}  function")
+    all_miss, all_unc = misses(total) or 1, uncached(total) or 1
     for entry, (name, t) in ranked[:args.top]:
-        print(f"{entry:#010x}  {misses(t):>10}  {100.0 * misses(t) / all_miss:5.1f}%  {name}")
+        print(f"{entry:#010x}  {misses(t):>10}  {100.0 * misses(t) / all_miss:5.1f}%  "
+              f"{uncached(t):>10}  {100.0 * uncached(t) / all_unc:5.1f}%  {name}")
     if args.csv:
         with open(args.csv, "w", newline="") as f:
             w = csv.writer(f)
-            w.writerow(("entry", "function", "line_fills") + FIELDS)
+            w.writerow(("entry", "function", "line_fills", "uncached") + FIELDS)
             for entry, (name, t) in ranked:
-                w.writerow((f"{entry:#010x}", name, misses(t)) + tuple(t[k] for k in FIELDS))
+                w.writerow((f"{entry:#010x}", name, misses(t), uncached(t)) + tuple(t[k] for k in FIELDS))
     if not args.dry_run:
         print(f"\nbookmarks ({CATEGORY}) written to {args.program}")
 

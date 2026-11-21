@@ -54,7 +54,9 @@ python scripts/ghidra/apply_cache_profile.py extract/cdj850/ghidra/cdj850.gpr \
     /main_unpacked.bin runs/play-profile.csv --csv runs/play-functions.csv
 ```
 
-This prints the functions that fill the most cache lines. It sets a `Note`
+This prints the functions that fill the most cache lines (`--rank uncached`
+orders them by accesses through the uncached mirror instead: those never show
+as misses, but each costs a full bus cycle on the chip). It sets a `Note`
 bookmark in category `CacheProfile` at every function entry with that
 function's totals, and one in `CacheProfile-pc` at each of the 50 hottest
 single pcs. Names and comments are not touched. A rerun replaces the previous
@@ -153,6 +155,24 @@ Cache maintenance seen:
 - During USB traffic, MAIN's own `ocache_purge_range` (`0x0C0FB97E`): 382k
   associative operand-cache writes, called by `usb_dma_start` (`0x0C019006`)
   on every buffer before the DMAC is armed.
+
+Where the playback time goes (USB WAV, profile plus a call trace of
+`memcpy`/`memset` arguments):
+
+- Every PCM byte is copied three times, which is why `memcpy_block32`
+  (`0x0C1105D4`) and `memset` (`0x0C1106EC`) top the line-fill ranking:
+  1. `wav_pcm_read` (`0x0C058FF2`) copies the file buffer into an output buffer
+     in the uncached mirror.
+  2. `pcm_rate_copy` (`0x0C0F95E6`) copies it out at 44.1 kHz; other rates are
+     resampled.
+  3. `pcm_ring_write` (`0x0C0EFB9A`) copies it into the CD-sector-sized slots of
+     the PCM ring.
+- `wav_pcm_read` then byte-swaps every sample in place in that uncached
+  buffer. That is 79% of all uncached accesses in the run, the largest
+  bus-bound cost of WAV playback. The emulator does not show it.
+- `memset`'s bytes come mostly from large clears (`alloc_zeroed` and table
+  resets). On the write-allocate operand cache, each missed line is read
+  before it is overwritten.
 
 Before the exception-entry hook existed, the push was invisible. The same boot
 then reported 7 false findings on interrupt frames (stale-read and
