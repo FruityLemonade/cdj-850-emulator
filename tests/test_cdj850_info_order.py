@@ -1,5 +1,5 @@
 # SPDX-License-Identifier: GPL-2.0-or-later
-"""info_order on the CDJ-850 MAIN 1.13: the INFO screens in the order Track, "128.23 12A",
+"""info_order on the CDJ-850 MAIN 1.13: the INFO screens in the order Track, "128.23 12A *****",
 waveform / Artist, Rating, Key / Album, Comment.
 
 * static: the hook on display_stage_bpm's tail (the bpm999 span), outside the boot-critical
@@ -149,11 +149,15 @@ def test_hook_is_outside_the_boot_critical_closure_and_runs_before_bpm_decimals(
     stock = MAIN.read_bytes()
     closure = bootcrit.closure(stock, BASE, byteorder=">")
     assert not closure.hit(HOOK_SITE - BASE, HOOK_SITE + 14 - BASE)
-    mods = ["info_order", "bpm_decimals", "bpm_decimals_grid"]
+    rating_pool = 0x0C052D80 - BASE
+    assert not closure.hit(rating_pool, rating_pool + 4)
+    mods = ["info_order", "info_order_rating", "bpm_decimals", "bpm_decimals_grid"]
     report = {}
     out = patch_main.patch(stock, mods, "cdj850", report)
     assert {n: st for n, (st, _) in report.items() if n in mods} == {n: "applied" for n in mods}
     p = payloadbuild.build(["info_order", "bpm_decimals"], "cdj850")
+    assert int.from_bytes(out[rating_pool:rating_pool + 4], "big") == payloadbuild.lookup(
+        p.symbols, payloadbuild.gate_name("info_order_track_info"))
     # call site: mov.l @(lit),r1; jmp @r1; nop; .long trampoline; the trampoline calls
     # info_order_hook before bpm_decimals_hook
     h = HOOK_SITE - BASE
@@ -169,7 +173,7 @@ def test_hook_is_outside_the_boot_critical_closure_and_runs_before_bpm_decimals(
 @needs_toolchain
 @pytest.mark.skipif(not FLASH.is_file(), reason="extract/cdj850/flash_cdj850.bin is not present")
 def test_composes_with_the_other_mods():
-    mods = ["info_order", "bpm_decimals", "bpm_decimals_grid", "bpm999", "hot_cues", "quant_loops"]
+    mods = ["info_order", "info_order_rating", "bpm_decimals", "bpm_decimals_grid", "bpm999", "hot_cues", "quant_loops"]
     patch_main.patch_flash(FLASH.read_bytes(), mods, "cdj850")
 
 
@@ -243,18 +247,21 @@ def test_key_semitones_and_text_on_the_interpreter():
                                      (0, 0, "F#m", 0, -600), (17450, 1, "foo", 0, 0), (99999, 1, "12B", 0, 10000),
                                      (6000, 1, "Dbm", 0, -1600)):
         mem.write(SCRATCH, key.encode() + b"\0")
-        n = _call(p, mem, "info_order_title_text", SCRATCH + 0x40, x100, ok, SCRATCH, mt, pitch)
+        n = _call(p, mem, "info_order_title_text", SCRATCH + 0x40, x100, ok, SCRATCH, mt, pitch, 0)
         assert mem.read(SCRATCH + 0x40, n + 1) == ref_title(x100, ok, key, mt, pitch).encode() + b"\0"
     for bpm100, pitch in ((12800, 0), (12796, 327), (12800, -1600), (65535, 10000)):
         assert _call(p, mem, "info_order_x100", bpm100, pitch) == ref_x100(bpm100, pitch)
 
 
-def _screen_mem(p, items, mode=10, key="Am", bpm100=12823, bpm_ok=1, pitch=0, mt=1, usb=1, track=7):
+def _screen_mem(p, items, mode=10, key="Am", bpm100=12823, bpm_ok=1, pitch=0,
+                mt=1, usb=1, track=7, rating=None):
     mem = _mem(p)
     recs = bytearray(3 * 0x864)
     struct.pack_into(">I", recs, 0, 3)                         # slot 0: in use
     struct.pack_into(">h", recs, 0x14, track)
     struct.pack_into(">II", recs, 0x18, bpm_ok, bpm100)
+    if rating is not None:
+        recs[0x5A8:0x5AD] = b"\x04" * rating + b"\x05" * (5 - rating)
     recs[0x730:0x730 + len(key) + 1] = key.encode() + b"\0"
     recs[0x851] = len(items)
     recs[0x852:0x852 + len(items)] = bytes(items)
@@ -317,6 +324,18 @@ def test_pass_reorders_and_writes_the_title_row():
     assert _row(mem, 1) == (0x0D, "11A")
 
 
+@needs_toolchain
+@pytest.mark.parametrize("rating", range(6))
+def test_title_row_rating_on_the_interpreter(rating):
+    p = _payload()
+    mem = _screen_mem(p, STOCK + [0x0A], key="12A", bpm100=12345, rating=rating)
+    _call(p, mem, "info_order_pass")
+    want = "123.45 12A" + (" " + "*" * rating if rating else "")
+    assert _row(mem, 1) == (0x0D, want)
+    assert _src(mem, 1) == want
+    assert len(want) <= 16
+
+
 # ---- live ----
 
 _STICK = r'''
@@ -339,7 +358,7 @@ stick.render_audio = render
 stick.file_name = lambda n, title: f'{title}.wav'
 pathlib.Path(out_dir).mkdir(parents=True, exist_ok=True)
 spec = {"device_name": "INFOORD", "playlist": "Info", "tracks": [
-    {"title": "KEYAM", "bpm": 128.0, "first_downbeat": 0, "bars": 32, "key": "Am"}]}
+    {"title": "KEYAM", "bpm": 128.0, "first_downbeat": 0, "bars": 32, "key": "Am", "rating": 5}]}
 sp = pathlib.Path(out_dir) / 'spec.json'
 sp.write_text(json.dumps(spec))
 raise SystemExit(stick.main(['--spec', str(sp), '--out', out_dir + '/wav-stick', '--image', image,
@@ -367,7 +386,7 @@ def test_live_info_screens(tmp_path):
                     str(image), str(BAKEN)], check=True, capture_output=True, text=True, timeout=300)
     flash = tmp_path / "flash.bin"
     flash.write_bytes(patch_main.patch_flash(FLASH.read_bytes(),
-                                             ["info_order", "bpm_decimals", "bpm_decimals_grid"], "cdj850"))
+                                             ["info_order", "info_order_rating", "bpm_decimals", "bpm_decimals_grid"], "cdj850"))
     sys.path.insert(0, str(ROOT / "scripts" / "debug"))
     import cdj850_trace as tr
 
@@ -411,17 +430,17 @@ def test_live_info_screens(tmp_path):
     print("info_order live:", res)
     t = res["title"]
     n = t["list"][0]
-    assert t["list"][1:1 + n] == [0x04, 0x0D, 0x07, 0x0F, 0x02, 0x23], t
+    assert t["list"][1:1 + n] == [0x04, 0x0D, 0x07, 0x0A, 0x0F, 0x02, 0x23], t
     assert t["mode"] == 10 and t["r0"] == (0x04, "KEYAM") and t["r2"][0] == 0x00, t
-    assert t["r1"] == (0x0D, "128.00 8A"), t                       # grid 128, Am, pitch 0
+    assert t["r1"] == (0x0D, "128.00 8A *****"), t                       # grid 128, Am, pitch 0
     r = res["rot2"]
-    assert r["mode"] == 11 and [r["r0"][0], r["r1"][0], r["r2"][0]] == [0x07, 0x0F, 0x02], r
+    assert r["mode"] == 11 and [r["r0"][0], r["r1"][0], r["r2"][0]] == [0x07, 0x0A, 0x0F], r
     r = res["rot5"]
-    assert r["mode"] == 11 and r["r0"][0] == 0x23, r
+    assert r["mode"] == 11 and [r["r0"][0], r["r1"][0]] == [0x02, 0x23], r
     v = res["pitch"]
     pitch = v["pitch"] - 0x10000 if v["pitch"] & 0x8000 else v["pitch"]
     assert v["mode"] == 10 and v["mt"] == 0 and 294 <= pitch < 906, v          # one semitone up
-    assert v["r1"] == (0x0D, ref_title(ref_x100(12800, pitch), True, "Am", False, pitch)), v
-    assert v["r1"][1].endswith(" 3A"), v                                        # Am + 1 = Bbm = 3A
+    assert v["r1"] == (0x0D, ref_title(ref_x100(12800, pitch), True, "Am", False, pitch) + " *****"), v
+    assert v["r1"][1].endswith(" 3A *****"), v                                        # Am + 1 = Bbm = 3A
     v = res["mt"]
-    assert v["mt"] == 1 and v["r1"][1].endswith(" 8A"), v
+    assert v["mt"] == 1 and v["r1"][1].endswith(" 8A *****"), v

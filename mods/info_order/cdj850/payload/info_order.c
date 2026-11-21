@@ -2,7 +2,7 @@
 /*
  * info_order: the loaded-track / INFO screens in the order
  *
- *   screen 1 (title view)   Track, "128.23 12A" (actual BPM, Camelot key), waveform
+ *   screen 1 (title view)   Track, "128.23 12A *****" (actual BPM, Camelot key, rating), waveform
  *   screen 2 (jog on)       Artist, Rating, Key
  *   screen 3                Album, Comment, then any other item
  *
@@ -28,7 +28,7 @@
  *      list has both a title and a BPM entry; otherwise the list stays stock;
  *   2. in the title view of a track whose list is in that order, shows in row 1
  *      (attr0 0x0D, the BPM item) instead of the artist: the BPM the deck plays
- *      with two decimals and the key in Camelot notation, "128.23 12A".
+ *      with two decimals, the key in Camelot notation and the rating as asterisks.
  *        BPM  mods/bpm_decimals' grid value at the current beat when that mod
  *             is built and the grid gave the tempo (bpm_decimals_actual_x100,
  *             weak here), else the record's BPMx100 (+0x1C) times the pitch.
@@ -36,9 +36,11 @@
  *             "Am", "F#m", "Db", "8A" or Open Key "1m"), as Camelot; with
  *             MASTER TEMPO off it moves by the semitones the pitch is away
  *             from 0 (nearest semitone; +1 semitone = +7 on the wheel).
+ *        rating  filled stars in the record's INFO item, one asterisk per star.
  *      Row and text source are both written (the source is not in the stock
  *      "NNN.N bpm" form, so bpm_decimals leaves the row alone).
- * Nothing changes the count; only RAM is written.
+ * The database request wrapper enables the USB rating field for the stock
+ * metadata builder. The display hook only reorders the resulting fields.
  */
 #include "c850.h"
 
@@ -58,11 +60,13 @@
 
 #define IO_CODE_TITLE       0x04
 #define IO_CODE_ARTIST      0x07
+#define IO_CODE_RATING      0x0A
 #define IO_CODE_BPM         0x0D
 #define IO_TEXT_MAX         32
+#define IO_RATED_ROW_MAX    16                   /* full BPM, Camelot key and five stars */
 
 /* The wanted order; codes not named here follow in their stock order. */
-static const u8 io_order[] = { 0x04 /* title */, 0x0D /* BPM */, 0x07 /* artist */, 0x0A /* rating */,
+static const u8 io_order[] = { 0x04 /* title */, 0x0D /* BPM */, 0x07 /* artist */, IO_CODE_RATING,
                                0x0F /* key */, 0x02 /* album */, 0x23 /* comment */ };
 
 volatile u32 info_order_on = 1;        /* run-time switch: 0 = stock */
@@ -114,7 +118,25 @@ static void io_order_record(u32 rec)
     info_order_lists++;
 }
 
-/* ---- BPM and key text ---- */
+/* The 0x2002 server request builds and caches its metadata synchronously.
+ * Enable the rating field for that request when USB INFO has it disabled.
+ * The stock builder reads the rating with the other
+ * fields and adds its normal type 0x0A item to the response. */
+int info_order_track_info(u32 db, u32 request, u32 selection, u32 args)
+{
+    int (*stock)(u32, u32, u32, u32) = C850_FN(C850_DB_TRACK_INFO, int, (u32, u32, u32, u32));
+    int result;
+
+    if (!info_order_on || (selection & 0xFFFFu) != C850_DB_USB_INFO || C850_DB_USB_INFO_RATING(db))
+        return stock(db, request, selection, args);
+
+    C850_DB_USB_INFO_RATING(db) = 1;
+    result = stock(db, request, selection, args);
+    C850_DB_USB_INFO_RATING(db) = 0;
+    return result;
+}
+
+/* ---- BPM, key and rating text ---- */
 
 #define IO_REC_KEY(rec)     ((rec) + 0x730)      /* key text, NUL-terminated (FUN_0C074824 case 0x0F) */
 #define IO_KEY_MAX          16
@@ -232,11 +254,31 @@ static int io_put_u(u8 *out, u32 v)
     return len;
 }
 
-/* "128.23 12A" into out (NUL-terminated, at most IO_TEXT_MAX - 1 bytes); the
- * BPM part needs bpm_ok, the key part a key text. Returns the length. */
-int info_order_title_text(u8 *out, u32 x100, int bpm_ok, const volatile u8 *key, int mt_on, s32 pitch)
+static int io_rating(u32 rec)
 {
-    int len = 0, n, minor = 0, i;
+    const volatile u8 *text = (const volatile u8 *)C850_INFO_RATING_TEXT(rec);
+    int i, n = IO_REC_COUNT(rec), stars = 0;
+
+    for (i = 0; i < n && i < IO_MAX_ITEMS; i++) {
+        if (IO_REC_ITEM(rec, i) == IO_CODE_RATING) {
+            for (i = 0; i < C850_INFO_RATING_MAX && text[i]; i++)
+                stars += text[i] == C850_INFO_RATING_FILLED;
+            return stars;
+        }
+    }
+    return 0;
+}
+
+/* The parts that have a value, separated by spaces. Returns the length. */
+int info_order_title_text(u8 *out, u32 x100, int bpm_ok, const volatile u8 *key,
+                          int mt_on, s32 pitch, int stars)
+{
+    int len = 0, n, minor = 0, i, key_limit = IO_TEXT_MAX - 1;
+
+    if (stars < 0 || stars > C850_INFO_RATING_MAX)
+        stars = 0;
+    if (stars)
+        key_limit = IO_RATED_ROW_MAX - 1 - stars;
 
     if (bpm_ok) {
         len += io_put_u(out + len, x100 / 100u);
@@ -254,9 +296,15 @@ int info_order_title_text(u8 *out, u32 x100, int bpm_ok, const volatile u8 *key,
             len += io_put_u(out + len, (u32)n);
             out[len++] = minor ? 'A' : 'B';
         } else {                               /* not a key we know: as it is */
-            for (i = 0; key[i] && i < IO_KEY_MAX && len < IO_TEXT_MAX - 1; i++)
+            for (i = 0; i < IO_KEY_MAX && len < key_limit && key[i]; i++)
                 out[len++] = key[i];
         }
+    }
+    if (stars) {
+        if (len)
+            out[len++] = ' ';
+        for (i = 0; i < stars; i++)
+            out[len++] = '*';
     }
     out[len] = 0;
     return len;
@@ -274,7 +322,7 @@ static u32 io_shown_record(void)
     return 0;
 }
 
-/* Title view: row 1 shows "128.23 12A" instead of the artist. */
+/* Title view: row 1 shows the BPM, key and rating. */
 static void io_title_row(void)
 {
     volatile u8 *row = (volatile u8 *)C850_MATRIX_ROW(1);
@@ -296,7 +344,7 @@ static void io_title_row(void)
     else
         bpm_ok = 1;
     len = info_order_title_text(text, x100, bpm_ok, (const volatile u8 *)IO_REC_KEY(rec),
-                                C850_MASTER_TEMPO == 1, pitch);
+                                C850_MASTER_TEMPO == 1, pitch, io_rating(rec));
     same = row[1] == IO_CODE_BPM && row[4] == (u8)len;
     for (i = 0; i <= len; i++) {
         same &= i == len || row[5 + i] == text[i];

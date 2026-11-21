@@ -77,6 +77,8 @@ int main(void) {
     assert(playing_dots[11][8] == 0); /* unknown artist stays absent */
     assert(playing_dots[26][0] == 0); /* unknown overview stays absent */
     assert(fl_text_width("DJ ") + 1 == 15); /* P in photo starts at 8+15 */
+    assert(8 + fl_text_width("999.99 12A *****") <= FL_COLS);
+    assert(fl_glyph('*', 0) == 0 && fl_glyph('*', 3) == 31);
     s.playing.artist_known = true;
     strcpy(s.playing.artist, "DJ Piyuli vs DJ S...");
     s.playing.waveform_known = true;

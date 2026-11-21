@@ -370,12 +370,32 @@
           "name": "usb_host_handle_interrupt"
         },
         {
+          "address": "0c0220e8",
+          "name": "db_format_info_item"
+        },
+        {
+          "address": "0c026a26",
+          "name": "db_collect_track_info_reply"
+        },
+        {
           "address": "0c038642",
           "name": "db_record_copy_info_list"
         },
         {
+          "address": "0c03876e",
+          "name": "db_read_track_info_reply"
+        },
+        {
           "address": "0c040c90",
           "name": "usb_classify_dir_entry"
+        },
+        {
+          "address": "0c054424",
+          "name": "db_build_track_info"
+        },
+        {
+          "address": "0c054a36",
+          "name": "db_track_info_request"
         },
         {
           "address": "0c057ce4",
@@ -934,6 +954,14 @@
           "name": "ocache_purge_range"
         },
         {
+          "address": "0c0fc036",
+          "name": "info_decode_panel_glyph"
+        },
+        {
+          "address": "0c0fc136",
+          "name": "info_decode_panel_text"
+        },
+        {
           "address": "0c0fc170",
           "name": "loader_init"
         },
@@ -1091,6 +1119,16 @@
           "text": "Start of the documented USB host control-transfer path. SUREQ starts setup, default control pipe BRDY handles the data packets, and a control read sends its zero-length OUT status through pipe 5."
         },
         {
+          "address": "0c0220e8",
+          "type": "PLATE",
+          "text": "Formats the INFO item data. For type 0x0A, a numeric rating 0 to 5 selects one of six five-star strings via the table at 0x0C1C165C [static]."
+        },
+        {
+          "address": "0c026a26",
+          "type": "PLATE",
+          "text": "Fetches the item count for a track (local USB 0x2002 request), renders the requested rows and assembles the compact reply. The synthetic stick produced six items with rating disabled and seven with it enabled [static + emu]."
+        },
+        {
           "address": "0c038642",
           "type": "PLATE",
           "text": "db_record_copy_info_list(dst, src): copies fields of the track-metadata reply into a DB record; +0x840 = src+0x2E, +0x841 = the INFO item count (src+0x5DC), +0x842.. = 18 item codes (src+0x5DD). The codes are rekordbox field IDs in the order the reader got the fields (04 title, 07 artist, 02 album, 0D BPM, 23 comment, 0F key, 0A rating, ...) [emu: gdb write watches]."
@@ -1101,9 +1139,29 @@
           "text": "Track-metadata reader loop: per received field (u8 type at entry+1, u16 length at +4) the text goes to a per-type slot and the type is appended to the INFO list at +0x5C1 (count at +0x5C0, written at 0x0C038A38). So the INFO order is the order of the fields, not a rekordbox category setting: swapping the export.pdb category tables 17/18 changed nothing [emu]."
         },
         {
+          "address": "0c038924",
+          "type": "PLATE",
+          "text": "Track INFO type 0x0A: converts up to five words into reply scratch +0x318 using info_decode_panel_text. The normalized DB record holds the resulting rating text at +0x5A8 [static + emu]."
+        },
+        {
           "address": "0c040c90",
           "type": "PLATE",
           "text": "Directory entry classifier (drive, dir entry, mode, flags) -> file type; upper-cases the extension. Called by bsr from 0x0C040ACE and 0x0C0408A0 (no pool word). The flac mod redirects its entry."
+        },
+        {
+          "address": "0c052d80",
+          "type": "PLATE",
+          "text": "Pool word for the 0x2002 dispatch, loaded at 0x0C052C1E. Stock target db_track_info_request (0x0C054A36), redirected by info_order_rating [static]."
+        },
+        {
+          "address": "0c054424",
+          "type": "PLATE",
+          "text": "Builds the stock rekordbox track INFO items. The drive config at db+0x280C+(drive-2)*0x130 holds a count at +0, per-field enables at +4 and ordered u16 field IDs at +0x68. Field 6 is rating, from the track data the builder reads at entry. USB drive 3 uses enable byte db+0x2946. Enabling it in GDB on the synthetic export produced the five filled, one filled, and zero filled glyph patterns for the three tracks [static + emu]."
+        },
+        {
+          "address": "0c054a36",
+          "type": "PLATE",
+          "text": "Server handler for dbserver request 0x2002. Selection low byte 1 selects the rekordbox path, selection bits 8..15 select the drive (3 = USB). Calls db_build_track_info at 0x0C054A76 [static + emu]."
         },
         {
           "address": "0c057ce4",
@@ -1836,6 +1894,11 @@
           "text": "ocache_purge_range(r4 = start, r5 = length): for each 16-byte line stores start & 0x1FFFF800 (tag, U = V = 0) to 0xF0800008 + (start & 0x7F0), stepping both by 16 (the entry wraps into the don't-care address bits). Associative operand-cache address-array writes: a dirty line is written back, then dropped (SH7263 manual 8.4.3). Runs from cached SDRAM, unlike the boot's copy in on-chip RAM; MAIN's only cache maintenance (382k array writes in a USB play run) [static + emu]."
         },
         {
+          "address": "0c0fc036",
+          "type": "PLATE",
+          "text": "Maps INFO text words 0x0526 and 0x0626 to panel bytes 0x04 (filled star) and 0x05 (open star) [static, words confirmed in QEMU]."
+        },
+        {
           "address": "0c0fc9dc",
           "type": "PLATE",
           "text": "MAIN-side transfer on the CD servo bus to IC201 (TC94A15FG). PE6 is SRVCCE, PE8 is SRVBCLK and PE12..15 are SRVBUS0..3."
@@ -1992,6 +2055,10 @@
         }
       ],
       "labels": [
+        {
+          "address": "0c052d80",
+          "name": "db_track_info_request_pool"
+        },
         {
           "address": "0c065df6",
           "name": "panel_tx_status_02"

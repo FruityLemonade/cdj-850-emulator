@@ -141,6 +141,8 @@ static uint8_t fl_glyph(unsigned char ch, int row)
     case ')': return row == 0 || row == 6 ? 8 : 4;
     case 0xb1: return row == 6 ? 31 : row == 2 ? 14 :
                       row == 1 || row == 3 ? 4 : 0;
+    case '*': return row == 3 ? 31 : row == 2 || row == 4 ? 10 :
+                     row == 1 || row == 5 ? 4 : 0;
     case '+': return row == 3 ? 14 : row >= 1 && row <= 5 ? 4 : 0;
     case '%': return row == 0 || row == 6 ? 17 : 1 << (row * 4 / 6);
     default: return row == 0 ? 14 : row == 1 ? 17 :
