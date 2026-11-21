@@ -104,15 +104,16 @@ def test_cave_reservation_and_room_left():
     ps = patch_main.PATCH_SETS["cdj850"]
     offsets, total = sigpatch.layout(lambda n: patch_main.blob_path(n, "cdj850"), ps.mods, ps.profile.gate)
     assert "payload_demo" not in offsets and "bpm_decimals" not in offsets
-    # 416 without the service gate; the gate adds 24 bytes to each of the two trampolines
-    # (display_stage_bpm with its 6 hooks, tempo_wide's TEMPO site): 48 bytes with the 16-byte padding.
-    # hot_cues_flash and quant_loops_flash (one routine, c850_ui_flash_hook) took 32 of the 416.
-    assert total == 464
-    assert sigpatch.layout(lambda n: patch_main.blob_path(n, "cdj850"), ps.mods)[1] == 416
+    # 432 without the service gate; the gate adds 24 bytes to each of the two trampolines
+    # (display_stage_bpm with its 7 hooks, tempo_wide's TEMPO site): 48 bytes with the 16-byte padding.
+    # hot_cues_flash and quant_loops_flash (one routine, c850_ui_flash_hook) took 32 of the 432,
+    # info_order 16.
+    assert total == 480
+    assert sigpatch.layout(lambda n: patch_main.blob_path(n, "cdj850"), ps.mods)[1] == 432
     if MAIN.is_file():
         img = sigpatch.Image(ps.profile, MAIN.read_bytes())
         start, end = sigpatch.find_cave(img)
-        assert end - ((start + 3) & ~3) - total == 652
+        assert end - ((start + 3) & ~3) - total == 636
 
 
 @needs_toolchain

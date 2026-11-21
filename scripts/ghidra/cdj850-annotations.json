@@ -370,6 +370,10 @@
           "name": "usb_host_handle_interrupt"
         },
         {
+          "address": "0c038642",
+          "name": "db_record_copy_info_list"
+        },
+        {
           "address": "0c040c90",
           "name": "usb_classify_dir_entry"
         },
@@ -510,6 +514,10 @@
           "name": "display_pack_saved_cues"
         },
         {
+          "address": "0c0669d6",
+          "name": "info_screen_fill"
+        },
+        {
           "address": "0c0676c0",
           "name": "display_set_jog_markers"
         },
@@ -536,6 +544,30 @@
         {
           "address": "0c073954",
           "name": "track_length_slot"
+        },
+        {
+          "address": "0c073f7c",
+          "name": "db_record_of_track"
+        },
+        {
+          "address": "0c0745f8",
+          "name": "db_record_bpm_valid"
+        },
+        {
+          "address": "0c07460c",
+          "name": "db_record_bpm100"
+        },
+        {
+          "address": "0c0747ec",
+          "name": "info_item_count"
+        },
+        {
+          "address": "0c074804",
+          "name": "info_item_at"
+        },
+        {
+          "address": "0c074824",
+          "name": "info_item_text"
         },
         {
           "address": "0c075e40",
@@ -1027,6 +1059,16 @@
           "text": "Start of the documented USB host control-transfer path. SUREQ starts setup, default control pipe BRDY handles the data packets, and a control read sends its zero-length OUT status through pipe 5."
         },
         {
+          "address": "0c038642",
+          "type": "PLATE",
+          "text": "db_record_copy_info_list(dst, src): copies fields of the track-metadata reply into a DB record; +0x840 = src+0x2E, +0x841 = the INFO item count (src+0x5DC), +0x842.. = 18 item codes (src+0x5DD). The codes are rekordbox field IDs in the order the reader got the fields (04 title, 07 artist, 02 album, 0D BPM, 23 comment, 0F key, 0A rating, ...) [emu: gdb write watches]."
+        },
+        {
+          "address": "0c038816",
+          "type": "PRE",
+          "text": "Track-metadata reader loop: per received field (u8 type at entry+1, u16 length at +4) the text goes to a per-type slot and the type is appended to the INFO list at +0x5C1 (count at +0x5C0, written at 0x0C038A38). So the INFO order is the order of the fields, not a rekordbox category setting: swapping the export.pdb category tables 17/18 changed nothing [emu]."
+        },
+        {
           "address": "0c040c90",
           "type": "PLATE",
           "text": "Directory entry classifier (drive, dir entry, mode, flags) -> file type; upper-cases the extension. Called by bsr from 0x0C040ACE and 0x0C0408A0 (no pool word). The flac mod redirects its entry."
@@ -1207,6 +1249,11 @@
           "text": "Normalizes saved cue and loop starts to columns 0..99 and packs their positions into the MSB-first bitmap for page 0x60."
         },
         {
+          "address": "0c0669d6",
+          "type": "PLATE",
+          "text": "info_screen_fill: the loaded-track / INFO screen rows. Cursor (0x0CE6D1E4) 0 or 1: title view (mode word 10), rows = item texts of codes 4 (title) and 7 (artist), row 2 the waveform. Cursor >= 2: mode 11, rows = info_item_at(track, k) for k in the page of three (k from 2). Each row record's attr0 is the item code. Boot-critical [static + emu]."
+        },
+        {
           "address": "0c0676c0",
           "type": "PLATE",
           "text": "Sets the jog cue marker (arg 2, only if display_cue_lamp_state(0)) and playhead (arg 1) in both staging copies S[0]/S[0xE] and S[2]/S[0x10] and directly in both TX status pages, so the jog ring updates from either page."
@@ -1240,6 +1287,21 @@
           "address": "0c073954",
           "type": "PLATE",
           "text": "Returns the track-length slot of a track; length = *(u32 *)(0x0CE59B58 + slot*0x3A4)."
+        },
+        {
+          "address": "0c073f7c",
+          "type": "PLATE",
+          "text": "db_record_of_track(track): the DB record of a loaded track in db_track_records (3 slots of 0x864 bytes at 0x0C9D44D4: +0 == 3 in use, +0x14 s16 track number), only on USB (active source 2, 0x0C1E109C == 2). Record: +0x18 BPM valid (1), +0x1C BPM x 100, +0x38 title, +0xB8 artist, +0x138 album, +0x428 genre, +0x4A8 comment, +0x5A8 rating, +0x630 label, +0x730 key text, +0x851 INFO item count, +0x852.. item codes [static + emu]."
+        },
+        {
+          "address": "0c074804",
+          "type": "PLATE",
+          "text": "info_item_at(track, i): code of INFO item i = record+0x852+i (0 if the track has no record). Read by info_screen_fill and the row filler FUN_0C06543E. mods/info_order reorders the list in RAM."
+        },
+        {
+          "address": "0c074824",
+          "type": "PLATE",
+          "text": "info_item_text(track, code, dest): strcpy of the record text of an INFO item through a jump table on code-2 (0x0C07486C): 2 +0x138, 4 +0x38, 6 +0x428, 7 +0xB8, 0A +0x5A8, 0B +0x83C, 0E +0x630, 0F +0x730, 10 +0x7B0, 11 +0x848, 13..22 +0x7BC, 23 +0x4A8, 28 +0x6B0, 29 +0x5B0. Code 0D (BPM) is formatted by info_screen_fill with FUN_0C06734E [static]."
         },
         {
           "address": "0c076288",
@@ -2177,6 +2239,10 @@
           "name": "display_matrix_dirty"
         },
         {
+          "address": "0c9d1d96",
+          "name": "info_track"
+        },
+        {
           "address": "0c9d1dd0",
           "name": "browse_cursor_row_by_source"
         },
@@ -2199,6 +2265,10 @@
         {
           "address": "0c9d2578",
           "name": "beat_grid_window_entries"
+        },
+        {
+          "address": "0c9d44d4",
+          "name": "db_track_records"
         },
         {
           "address": "0c9da23c",
@@ -2359,6 +2429,14 @@
         {
           "address": "0ce6d1c0",
           "name": "auto_loop_point_frame"
+        },
+        {
+          "address": "0ce6d1e4",
+          "name": "info_cursor"
+        },
+        {
+          "address": "0ce6d1e5",
+          "name": "info_item_total"
         },
         {
           "address": "0ce6d240",
