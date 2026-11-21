@@ -65,5 +65,4 @@ at zero pitch, shifts to `3A` with the fader at +3.35 % and MASTER TEMPO off, an
 with MASTER TEMPO on.
 
 ## Open questions for a real deck
-The panel's font and icon for attr0 `0x0D` in the title view's second row (the emulator only
-shows the text).
+The hardware panel’s font and icon for attr0 `0x0D` in the title view’s second row still need verification.

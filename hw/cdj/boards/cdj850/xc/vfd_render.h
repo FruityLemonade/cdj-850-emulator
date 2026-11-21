@@ -600,7 +600,9 @@ static void fl_playing_matrix(uint8_t dots[FL_ROWS][FL_COLS], const FlState *s)
                 dots[y+1][x] = !(note[y] & (64 >> x));
         fl_matrix_text(dots, 8, 1, s->rows[0], true);
     }
-    if (s->playing.artist_known) {
+    if (s->playing.title_info_known) {
+        fl_matrix_text(dots, 8, 11, s->rows[1], false);
+    } else if (s->playing.artist_known) {
         for (int y = 0; y < 6; y++)
             for (int x = 0; x < 5; x++)
                 dots[y+12][x+1] = !!(person[y] & (16 >> x));

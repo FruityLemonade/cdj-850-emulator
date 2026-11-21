@@ -79,6 +79,12 @@ int main(void) {
     assert(fl_text_width("DJ ") + 1 == 15); /* P in photo starts at 8+15 */
     assert(8 + fl_text_width("999.99 12A *****") <= FL_COLS);
     assert(fl_glyph('*', 0) == 0 && fl_glyph('*', 3) == 31);
+    s.playing.title_info_known = true;
+    strcpy(s.rows[1], "999.99 12A *****");
+    memset(playing_dots, 0, sizeof(playing_dots));
+    fl_playing_matrix(playing_dots, &s);
+    assert(playing_dots[14][8 + fl_text_width(s.rows[1]) - 1] == 1);
+    s.playing.title_info_known = false;
     s.playing.artist_known = true;
     strcpy(s.playing.artist, "DJ Piyuli vs DJ S...");
     s.playing.waveform_known = true;

@@ -15,6 +15,7 @@ import socket
 import struct
 import subprocess
 import sys
+import time
 from pathlib import Path
 
 import pytest
@@ -365,6 +366,19 @@ raise SystemExit(stick.main(['--spec', str(sp), '--out', out_dir + '/wav-stick',
 '''
 
 
+def _jog_info(deck, steps):
+    cursor_addr = 0x0CE6D1E4
+    delta = 1 if steps > 0 else -1
+    cursor = deck.rb(cursor_addr)
+    for _ in range(abs(steps)):
+        cursor += delta
+        _udp(deck, f"0x03:{delta}:0:rot")
+        deadline = time.monotonic() + 60
+        while deck.rb(cursor_addr) != cursor:
+            assert time.monotonic() < deadline, f"INFO jog did not move to item {cursor}"
+            time.sleep(0.2)
+
+
 def _udp(deck, msg):
     import cdj_panelsock
     s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
@@ -399,16 +413,16 @@ def test_live_info_screens(tmp_path):
         return v
 
     res = {}
-    script = tr.LOAD_SCRIPT + ",13600:info:200,14200:rot+2"
+    script = tr.LOAD_SCRIPT + ",13600:info:200,14200:rot+1,14800:rot+1"
     with tr.Deck(image, flash=flash, script=script) as d:
         frame, _ = d.wait_line("mode=0x0a", "[KEYAM]", "[128.00 8A *****]", timeout=300)
         res["title"] = screen(d)
         frame, _ = d.wait_line("mode=0x0b", "[make_test_stick]", "[Am]", start=frame + 1)
         res["rot2"] = screen(d)
-        _udp(d, "0x03:3:0:rot")
+        _jog_info(d, 3)
         frame, _ = d.wait_line("mode=0x0b", "[Test stick]", start=frame + 1)
         res["rot5"] = screen(d)
-        _udp(d, "0x03:-5:0:rot")
+        _jog_info(d, -4)
         frame, _ = d.wait_line("mode=0x0a", "[KEYAM]", start=frame + 1)
         _udp(d, "0x05:86:0:lvl")                    # pitch fader to about +3.35 %
         _udp(d, "0x06:0:0:lvl")

@@ -10,6 +10,7 @@
 
 typedef struct Cdj850Playing {
     bool artist_known;
+    bool title_info_known;
     char artist[256];
     bool waveform_known;
     uint8_t waveform[CDJ850_OVERVIEW_COLUMNS];
