@@ -137,7 +137,8 @@ checks the linked payload has no relocations left.
 ## Reuse
 - `quant_loops_beat_at_or_before`, `quant_loops_beat_nearest`, `quant_loops_beat_frame`,
   `quant_loops_beat_ms_after` and `quant_loops_ms_to_frames`: grid lookups in frames for
-  `hot_cues` (snap a hot cue / quantised jump) and `loop_resize`.
+  `hot_cues` (a quantised jump, not done) and `loop_resize`. `quant_loops_in_point` also places a
+  new `hot_cues` point cue on the nearest beat (hot_cues' weak default keeps the position without this mod).
 - `quant_loops_sector_of(sector, pos, frame)`: the ring sector of another frame, checked
   against the sector table (`frame` must be buffered, same track).
 - `loop_resize` (CALL halves/doubles via `audio_send_cmd(6, 0, new_out, 1, ...)`): new out =

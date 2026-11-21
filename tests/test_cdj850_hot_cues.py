@@ -7,10 +7,11 @@
 * the compiled payload on the SH-2A interpreter (tests/sh2a.py) with small stand-ins for the MAIN
   routines: the key filter (BEAT SELECT + RELOOP toggles and saves the mode and undoes the fraction
   toggle, pads are kept from stock and queued, 8 + pad = delete, stock without ANLZ), the CALL
-  selection, the ANLZ delete/count fix and the LED inputs around wai_flg;
+  selection, the ANLZ delete/count fix, the LED inputs around wai_flg and the frame a new point cue
+  is recorded at (the nearest beat with quant_loops and quantize on, else the play position);
 * live (QEMU + a baken stick: GRID128 with hot cues A = point, B = 1-bar loop, C empty; GRID96
   without ANLZ), every branch mod built in: toggle, LEDs, jump while playing (keeps playing),
-  record C, jump to the loop B, delete A, record A as the playing loop, jump to it, jump while
+  record C (snapped to the nearest beat: quantize is on), jump to the loop B, delete A, record A as the playing loop, jump to it, jump while
   paused (cued), mode off = stock BEAT loop, GRID96 = stock, the ANLZ file on the stick image
   afterwards, and the mode bit after a reboot from the written flash.
 """
@@ -470,6 +471,37 @@ def test_effective_out_follows_a_resize():
     assert _call(p, mem, "hot_cues_effective_out", 601) == 900
 
 
+@needs_toolchain
+def test_point_record_snaps_to_the_nearest_beat_with_quantize():
+    """hot_cues_point: the frame a new point cue is recorded at. hot_cues alone keeps the play position (its
+    weak quant_loops_in_point); with quant_loops it is LOOP IN's nearest beat while quantize is on (and the
+    grid gave the deck's tempo), the play position with quantize off."""
+    import test_cdj850_quant_loops as ql
+    alone = _payload()
+    mem = _mem(alone)
+    for pos in (0, 202, 215, 231, 600):
+        assert _call(alone, mem, "hot_cues_point", pos) == pos
+    assert struct.unpack(">I", mem.read(_sym(alone, "hot_cues_snapped"), 4))[0] == 0
+
+    both = payloadbuild.build(["hot_cues", "quant_loops"], "cdj850")
+    for label, entries in ql.GRIDS.items():
+        g = ql.Grid(entries)
+        base = (entries[0][1] + 5) // 10
+        on, off = ql._mem(both, entries, base=base), ql._mem(both, entries, base=base, flags=0x53)
+        wrong = ql._mem(both, entries, base=base + 10)          # the grid is not the deck's tempo
+        moved = 0
+        for pos in range(0, g.f(len(entries) - 1) + 40, 7):
+            want = g.in_point(pos)
+            assert _call(both, on, "hot_cues_point", pos) == want, (label, pos)
+            assert _call(both, off, "hot_cues_point", pos) == pos, (label, pos)
+            assert _call(both, wrong, "hot_cues_point", pos) == pos, (label, pos)
+            moved += want != pos
+            assert struct.unpack(">I", on.read(_sym(both, "hot_cues_last_pos"), 4))[0] == pos
+        assert moved and struct.unpack(">I", on.read(_sym(both, "hot_cues_snapped"), 4))[0] == moved, label
+    g = ql.Grid(ql.GRIDS["128 @0.35"])
+    assert g.in_point(231) == 237 and g.in_point(215) == 202
+
+
 # ---- live ----
 
 # Stick: GRID128 (128 BPM, 32 bars, memory cue bar 13, hot cue A = bar 3 point, B = bar 9 one-bar
@@ -527,7 +559,8 @@ subprocess.run([sys.executable, os.path.join(root, 'make_usb_image.py'), device,
 STATE_USB, FRAME, LOOP_IN, OUT_REC, ACTIVE = 0x0CE6D25F, 0x0C7F647C, 0x0C7F6498, 0x0C7F64B0, 0x0CE6D0ED
 LED7, MODE_BYTE = 0x0C9D0AEB, SETTINGS + 0x22
 EV = ["toggles", "jumps", "records", "deletes", "plays", "failed", "last_slot", "last_in", "last_out",
-      "last_result", "avail", "mask"]
+      "last_result", "avail", "mask", "snapped", "last_pos"]
+GRID_CTX = 0x0C9D24FC
 
 
 def build_stick(path):
@@ -661,6 +694,9 @@ def drive(stick, flash, syms, work):
         d.key("beat_4")                                   # C is empty: record while playing
         time.sleep(2.5)
         snap(d, "record_c")
+        raw = d.dump(GRID_CTX + 0x7C, 8 * 80)               # the grid window: where C may snap to
+        res["grid"] = {"w": d.rh(GRID_CTX + 0x78), "ms": [struct.unpack_from(">I", raw, 8 * i + 4)[0]
+                                                         for i in range(80)]}
         res["leds_c"] = leds(d)
         d.key("beat_2")                                   # B: the loop
         time.sleep(0.5)
@@ -759,11 +795,16 @@ def test_live_hot_cues_with_every_branch_mod(tmp_path):
     assert ja["jumps"] == 1 and ja["last_in"] == A and ja["state"] == 3 and ja["plays"] >= 1, ja
     _, plays = _moved_from(r["jump_a_frames"], A)
     assert plays
-    # record C while playing (about frame 600), the deck plays on
+    # record C while playing (about frame 600), the deck plays on; quantize is on (fresh deck) and GRID128's
+    # grid gave the tempo, so C is the beat nearest the play position (quant_loops_in_point)
     rc = r["record_c"]
     assert rc["records"] == 1 and rc["last_result"] == 0 and rc["state"] == 3 and rc["mask"] == 7, rc
-    c = rc["last_in"]
-    assert 600 <= c <= 640 and rc["slots"][2] == (3, 1, 150, 2 * c, 1), rc
+    c, pos = rc["last_in"], rc["last_pos"]
+    beats = [(ms * 75 + 500) // 1000 for ms in r["grid"]["ms"]]
+    assert r["grid"]["w"] == 0 and beats[8] == A                                          # A = bar 3 = beat 8
+    assert 600 <= pos <= 640 and c == min(beats, key=lambda f: (abs(f - pos), f)), (pos, c, beats[15:20])
+    assert rc["snapped"] == (c != pos) and abs(c - pos) <= 18, rc                         # half a beat at 128
+    assert rc["slots"][2] == (3, 1, 150, 2 * c, 1), rc
     assert r["leds_c"] == [0xF]
     # B: the loop plays
     jb = r["jump_b"]

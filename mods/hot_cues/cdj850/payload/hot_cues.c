@@ -11,7 +11,8 @@
  *                         paused/cued stays cued at the cue); a loop slot arms the
  *                         loop (and plays it when the deck was playing).
  *                         empty slot: record the position (in a playing loop: the
- *                         loop) into the slot and write the ANLZ.
+ *                         loop) into the slot and write the ANLZ. With quant_loops
+ *                         and quantize on, a point goes to the nearest beat.
  *   hold BEAT 8 + pad     delete the slot and write the ANLZ.
  *   LEDs                  1/2/4 lit = slot set, blinking = empty; 8 lit.
  *
@@ -94,6 +95,8 @@ volatile u32 hot_cues_failed;        /* actions that did nothing (no cue, write 
 volatile u32 hot_cues_last_slot;     /* 1..3 */
 volatile u32 hot_cues_last_in;       /* frame of the last jump/record */
 volatile u32 hot_cues_last_out;      /* its loop out, 0 = none */
+volatile u32 hot_cues_snapped;       /* point records moved to a beat (quantize) */
+volatile u32 hot_cues_last_pos;      /* play position of the last point record */
 volatile s32 hot_cues_last_result;   /* FUN_0C0C1442's result of the last write */
 volatile u32 hot_cues_avail;         /* 1 = the loaded track's ANLZ is in the cache */
 volatile u32 hot_cues_mask;          /* set slots (bit n-1 = hot cue n) at the last look */
@@ -354,8 +357,32 @@ static int hc_write(u32 key, u32 rec)
     return r;
 }
 
-/* The cue list entry for a new hot cue n: a point at the play position, or
- * the playing loop. Fields as memory_cue_add's USB branch builds them. */
+/* Quantize for a new point cue: the nearest beat, exactly as LOOP IN snaps
+ * with mods/quant_loops (its strong quant_loops_in_point: quantize on, a USB
+ * track whose grid gave the deck's tempo, the beat in the grid window in RAM;
+ * otherwise the position itself). Built without quant_loops, this weak default
+ * keeps the play position, as stock MEMORY stores a memory cue. */
+u32 quant_loops_in_point(u32 pos) __attribute__((weak, noinline));
+u32 quant_loops_in_point(u32 pos)
+{
+    return pos;
+}
+
+/* Frame a new point cue at play position pos is recorded at. */
+u32 hot_cues_point(u32 pos)
+{
+    u32 q = quant_loops_in_point(pos);
+
+    hot_cues_last_pos = pos;
+    if (q != pos)
+        hot_cues_snapped++;
+    return q;
+}
+
+/* The cue list entry for a new hot cue n: a point at the play position (the
+ * nearest beat with quantize), or the playing loop as it plays (a loop
+ * quant_loops made is on the grid already). Fields as memory_cue_add's USB
+ * branch builds them. */
 static void hc_new_entry(u32 n, u32 st, u32 *e)
 {
     u32 in = C850_PLAY_FRAME, out = 0, loop = 0, k;
@@ -367,6 +394,8 @@ static void hc_new_entry(u32 n, u32 st, u32 *e)
         if (!loop)
             out = 0;
     }
+    if (!loop)
+        in = hot_cues_point(in);
     for (k = 0; k < 9; k++)
         e[k] = 0;
     e[0] = (n << 16) | loop;
