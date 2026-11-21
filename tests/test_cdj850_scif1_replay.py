@@ -359,13 +359,19 @@ def test_replay_auto_cue_status_and_reset(scif1_replay_exe, tmp_path):
 
 
 def test_replay_navigation_status_and_reset(scif1_replay_exe, tmp_path):
-    def status_lamps(value):
+    def status_lamps(leds, legends11=0, legends12=0):
+        # Byte 7 holds the button LEDs, bytes 11/12 the FL legends (0x0c062f80).
         frame = bytearray(status_remain(False))
-        frame[7] = value
+        frame[7] = leds
+        frame[11] = legends11
+        frame[12] = legends12
         frame[15] = sum8ec(frame[:15])
         return bytes(frame)
 
-    browse, tag, info, menu = (status_lamps(value) for value in (0x1F, 0x2F, 0x4F, 0x8F))
+    browse = status_lamps(0x1F, 0x04)
+    tag = status_lamps(0x2F, 0x08)
+    info = status_lamps(0x4F, 0, 0x80)
+    menu = status_lamps(0x8F)
     bad_off = browse[:-1] + bytes([browse[-1] ^ 1])
     other = bytes([0x71] + [0] * 14 + [0x71])
     page1 = status_track(1, (0, 1, 0x5F))
@@ -468,6 +474,7 @@ def test_replay_cue_strips_and_legends_follow_status_over_matrix_messages(scif1_
         frame = bytearray([0x02] + [0] * 15)
         frame[10] = cue
         frame[11] = 0x10 if memory_lamp else 0
+        frame[12] = 0x08 if cue else 0  # CUE legend, as MAIN sends it with a cue.
         frame[15] = sum8ec(frame[:15])
         return bytes(frame)
 
@@ -544,3 +551,50 @@ def test_replay_overview_ignores_partial_and_pre_reset_packets(scif1_replay_exe,
         "playing wave=1 memory=0 position=0 cue=0 (9 ms)",
         "playing wave=0 memory=0 position=0 cue=0 (18 ms)",
     ]
+
+
+def test_replay_fl_legends_follow_legend_bits_not_button_leds(scif1_replay_exe, tmp_path):
+    """Captured stock frames: the FL legends and the button LEDs are separate bits.
+
+    BROWSE/TAG LIST/INFO legends are page 2 byte 11 bits 2/3 and byte 12 bit 7
+    (0x0c062f80); byte 7 bits 4..6 are the button LEDs. The CUE legend is byte 12
+    bit 3 (0x0c0634f8(0)), not the cue column in byte 10.
+    """
+    def page2(b5, b6, b7, b10, b11, b12, b13=0x2F, b14=0x4A):
+        frame = bytearray([0x02, 0, 0x58, 0, 0, b5, b6, b7, 0, 0, b10, b11, b12, b13, b14, 0])
+        frame[15] = sum8ec(frame[:15])
+        return bytes(frame)
+
+    other = bytes([0x69] + [0] * 14 + [0x69])
+    loaded = make_display_burst(1, 0x0A, [(0x24, 0, 0, "TRACK"), (0, 0, 0, ""), (0, 0, 0, "")])
+    stages = [
+        # Playing after load (emulator capture): INFO LED and legend, no cue yet.
+        ("info", page2(0xF2, 0x20, 0x4F, 0, 0x00, 0xD0), dict(info=1, browse=0, cue=0)),
+        # CUE pressed: legend bit 3 is set before MAIN sends a cue column.
+        ("cue-legend", page2(0xEA, 0x30, 0x4F, 0, 0x80, 0xD8), dict(info=1, browse=0, cue=1)),
+        # A cue column alone (legend clear) does not light the CUE legend.
+        ("column-only", page2(0xF2, 0x30, 0x4F, 0x15, 0x80, 0xD0), dict(info=1, browse=0, cue=0)),
+        # BROWSE pressed: LED byte 0x1F, legend byte 11 bit 2, INFO legend off.
+        ("browse", page2(0xFA, 0x31, 0x1F, 0x15, 0x84, 0x58), dict(info=0, browse=1, cue=1)),
+        # Menu level open: MAIN drops the view LEDs, the BROWSE legend stays
+        # (cue cleared here to show the legend follows bit 3 alone).
+        ("menu", page2(0xFA, 0x31, 0x8F, 0x15, 0x84, 0x50), dict(info=0, browse=1, cue=0)),
+    ]
+    transactions = [(status_track(1, (0, 30, 0)), *loaded)]
+    for name, frame, want in stages:
+        transactions.append((frame, other))
+        record = tmp_path / "legends.scif1"
+        ppm = tmp_path / f"{name}.ppm"
+        write_capture(record, transactions)
+        subprocess.run([str(scif1_replay_exe), str(record), "--ppm", str(ppm)],
+                       capture_output=True, check=True, timeout=30)
+        pixels = ppm.read_bytes().split(b"\n", 3)[-1]
+
+        def rgb(x, y):
+            offset = (y * 1280 + x) * 3
+            return pixels[offset:offset + 3]
+
+        blue = b"\x9f\xe8\xff"
+        assert (rgb(89, 314) == blue) == bool(want["info"]), name
+        assert (rgb(89, 164) == blue) == bool(want["browse"]), name
+        assert (rgb(52, 424) == blue) == bool(want["cue"]), name
