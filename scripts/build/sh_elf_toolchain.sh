@@ -28,7 +28,7 @@ PREFIX="$ROOT/tools/sh-elf"
 B=binutils-2.47; G=gcc-15.3.0
 mkdir -p "$SRC"
 cd "$SRC"
-for f in gnu-keyring.gpg; do [ -f $f ] || curl -fsSLO https://ftp.gnu.org/gnu/$f; done
+[ -f gnu-keyring.gpg ] || curl -fsSLO https://ftp.gnu.org/gnu/gnu-keyring.gpg
 for u in binutils/$B.tar.xz gcc/$G/$G.tar.xz; do
   n=$(basename $u); [ -f $n ] || curl -fsSLO https://ftp.gnu.org/gnu/$u; [ -f $n.sig ] || curl -fsSLO https://ftp.gnu.org/gnu/$u.sig
   gpg --no-default-keyring --keyring ./gnu-keyring.gpg --verify $n.sig $n

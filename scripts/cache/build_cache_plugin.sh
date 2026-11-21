@@ -18,7 +18,7 @@ HDR="$SRC/include/plugins/qemu-plugin.h"
 [ -f "$HDR" ] || { echo "no QEMU plugin header at $HDR (run ./build.sh source first)" >&2; exit 1; }
 
 case "$(uname -s)" in
-    Darwin) EXT=dylib; LINK=(-bundle -Wl,-undefined,dynamic_lookup) ;;
+    Darwin) EXT=dylib; LINK=(-bundle "-Wl,-undefined,dynamic_lookup") ;;
     MINGW* | MSYS* | CYGWIN*) EXT=dll; LINK=(-shared) ;;
     *) EXT=so; LINK=(-shared -fPIC) ;;
 esac
