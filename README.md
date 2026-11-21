@@ -28,8 +28,10 @@ The **CDJ-850** boots its original firmware, mounts a virtual USB stick, and loa
 
 Based on the [Pioneer CDJ & XDJ Emulator](https://github.com/Stijn-Jacobs/cdj-nxs2-qemu) project.
 
-**For an easy way to mod your firmware see my [CDJ-850 Firmware Patcher](https://fruitylemonade.github.io/cdj-850-mods/)**
-The emulator is aimed at people developing firmware mods.
+**For an easy way to mod your firmware see my [CDJ-850 Firmware Patcher](https://fruitylemonade.github.io/cdj-850-mods/).**
+<br>
+  The emulator is aimed at people developing firmware mods.
+</br>
 
 <a id="features"></a>
 
