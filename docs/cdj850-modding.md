@@ -696,7 +696,7 @@ Code several payload mods need lives once in `mods/payload/common/`; a mod lists
 
 ### Reference Mods Included in the Repository
 - **[`mods/tempo_wide/`](../mods/tempo_wide/cdj850/patch.py)**:
-  - Hooks `0x0C0D8DC2..0x0C0D8DCE` in the `TEMPO` button handler (`main_tempowide.s`): when current range `r6 == 2` (±10%), rewrites saved `r6` at `@(24,r4)` to `3` (±16%) so the firmware's next increment steps `3 -> 4` (`WIDE`, ±100%) on USB.
+  - Hooks `0x0C0D8DC2..0x0C0D8DCE` in the `TEMPO` button handler (`main_tempowide.s`). The handler picks the next range from the source flag `*0x0CE6D25A` (in `r0`) and the current range (`r6`, 1=±6, 2=±10, 3=±16, 4=`WIDE`): on USB (`r0 == 1`) `1->2, 2->3, 3->1, 4->3`, otherwise (CD) `1->2, 2->3, 3->4, 4->1` **[static]**. The routine clears saved `r0` at `@(0,r4)`, so USB uses the CD table and `TEMPO` cycles ±6 → ±10 → ±16 → `WIDE` → ±6. (Before 2026-11-21 it also rewrote `r6` 2 → 3, which skipped ±16.)
   - Applies two `DataPatch` edits (`tempowidemath1`, `tempowidemath2`) in `FUN_0C0D59B8` so USB mode uses the overflow-safe `WIDE` pitch multiplier.
 - **[`mods/bpm999/`](../mods/bpm999/README.md)**: beat-grid tempo clamp 180.0 -> 999.0 (`movi20` at `0x0C0737D6`), sync range upper bound 199.9 -> 999.0 (`0x0C0D1C80`), and a clamp of the staging BPM word to 999 hooked at `display_stage_bpm`'s tail (`0x0C0642AA..0x0C0642B8`).
 - **[`mods/bpm_decimals/`](../mods/bpm_decimals/README.md)** (off): the actual BPM with two decimals in place of the rekordbox BPM in the INFO view (`132.25`) on grid tracks; a payload hook on `display_stage_bpm`'s tail (bpm999's span) and a pool redirect of `grid_find_beat` for `FUN_0C073788`, see section 4b.8.
