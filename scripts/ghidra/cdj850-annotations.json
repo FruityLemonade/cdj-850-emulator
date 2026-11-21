@@ -1682,6 +1682,16 @@
           "text": "audio_build_loop_in_record(sector): builds the loop-in record 0x0C7F6498.. (frame, MSF, ring sector) from the s16 sector 0x0C7F6468 (writer 0x0C0F022A). Called by 0x0C009DB4 for audio cmd 6 and cmd 7/2. A sector ahead of the playhead works for cmd 6: the feeder plays on to it, then loops in..out (BEAT 4 at frame 301 with the sector of 308: wrap 447 -> 308) [emu]."
         },
         {
+          "address": "0c0f533e",
+          "type": "PRE",
+          "text": "USB cue prefill (CALL of a memory cue, a hot_cues jump; state 6 with 0x0CE6D26A = 0xFF): mov #100,r14; shll2 r14 = 400 sectors (5.33 s of audio), requested at 0x0C0F534E as FUN_0C008C8A(4, *0x0C7F6494, .., 0x0C7F673E, 400, 120, ..): fill ring slots from 120. r14 + 100 = 500 goes to the reader timeout 0x0C7F6648 (0x0C0F535A..0x0C0F5362), which the reader counts down (0x0C0F1258). Emulator (WAV stick, stock): write index 120 -> 520, ready 100 ms of guest time after the CALL. On a deck, reading and decoding these 5.33 s is the several-second CALL/hot-cue delay. Inside the boot-critical closure (0x0C0F494C..0x0C0F63F0), so no mod changes it [static + emu]."
+        },
+        {
+          "address": "0c0f5500",
+          "type": "PRE",
+          "text": "Cue ready: when the prefill read is done (0x0C7F663D != 0, 0x0C7F656E == 0) this branch rebuilds the loop-in record, clears 0x0C7F6640 and calls FUN_0C009272(7, 0, 0, 5, ..) and FUN_0C009310(5, 1, 32, ..), which sets 0x0C7F6627 = 5 (from 0x15 while prefilling); playertask then sets 0x0CE6D26A = 5 (0x0C0EDA6C) and the state-6 handler takes PLAY [emu: gdb write watches]."
+        },
+        {
           "address": "0c0f6e6c",
           "type": "PLATE",
           "text": "USB playback state handler and refill scheduler. USB state at 0x0CE6D25F includes browse 0x0A, load 2, play 3, pause 4 and brake/pause 5. Refills the circular PCM ring while fill is below 500 sectors."
@@ -1985,6 +1995,14 @@
         {
           "address": "0c7f6627",
           "name": "audio_task_state"
+        },
+        {
+          "address": "0c7f663d",
+          "name": "audio_read_done"
+        },
+        {
+          "address": "0c7f6648",
+          "name": "audio_read_timeout"
         },
         {
           "address": "0c7f6674",
@@ -2369,6 +2387,10 @@
         {
           "address": "0ce6d25f",
           "name": "usb_player_state"
+        },
+        {
+          "address": "0ce6d26a",
+          "name": "player_cue_ready"
         },
         {
           "address": "0ce6dbac",
