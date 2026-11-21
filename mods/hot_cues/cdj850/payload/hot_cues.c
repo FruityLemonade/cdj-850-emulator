@@ -340,9 +340,10 @@ static void hc_jump(u32 n, u32 rec, u32 st)
     hot_cues_last_slot = n;
     hot_cues_last_in = hc_entry[3];
     hot_cues_last_out = (hc_entry[0] & 1u) ? hc_entry[4] : 0;
-    if ((st == C850_STATE_PLAYING || st == C850_STATE_LOOPING) && C850_PLAYER_STATE == C850_STATE_CUED)
+    if ((st == C850_STATE_PLAYING || st == C850_STATE_LOOPING) && C850_PLAYER_STATE == C850_STATE_CUED) {
         hc_play = HC_PLAY_TRIES;
         hc_play_wait = 1;
+    }
 }
 
 /* Write hot cue n (rec) through the stock ANLZ hot-cue setter. */
