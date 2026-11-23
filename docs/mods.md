@@ -13,6 +13,8 @@ it on. All of them target CDJ-850 MAIN 1.13.
 | [`info_order`](../mods/info_order/README.md) | INFO screens in the order Track, `128.23 12A *****` (actual BPM, Camelot key, track rating as asterisks), waveform / Artist, Rating, Key / Album, Comment (USB tracks). |
 | [`loop_resize`](../mods/loop_resize/README.md) | While a loop plays, CUE/LOOP CALL < halves it and CALL > doubles it (grid aware); outside a loop CALL works as stock. |
 | [`hot_cues`](../mods/hot_cues/README.md) | Hot-cue mode (BEAT SELECT + RELOOP, saved, HOT CUE ON/OFF on the display): BEAT 1/2/4 are hot cues A–C from the rekordbox ANLZ (jump, record, hold 8 + pad to delete, saved to the stick); the beat LEDs show the set slots. |
+| [`bpm_lock`](../mods/bpm_lock/README.md) | BPM Lock from CDJ-350 (±100% range): BEAT SELECT + MASTER TEMPO short toggles lock/unlock, hold 1 s edits Master BPM via the rotary selector. |
+| [`phase_meter`](../mods/phase_meter/README.md) | Beat & phase meter from CDJ-350 on INFO Page 2 (shifts stock INFO pages down; works with BPM Lock on or off). |
 | [`auto_standby`](../mods/auto_standby/README.md) | AUTO STANDBY after `CDJ850_STANDBY_MINUTES` (default 20) without use, instead of 4 hours. |
 | [`flac`](../mods/flac/README.md) | FLAC playback from USB (stereo, 16- or 24-bit, 44.1 or 48 kHz). |
 | [`loader`](../mods/loader/README.md) | Infrastructure: at boot, copies a blob of custom code and data to unused SDRAM (`0x0DE00000`) for payload mods to run from. Added automatically when a mod needs it. |
