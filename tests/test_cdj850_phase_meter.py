@@ -149,6 +149,7 @@ def test_grid_and_bpm_phase_rendering_with_and_without_lock():
     mem.write(BASE_TENTHS, struct.pack(">H", 1200))
     mem.put32(DISPLAY_MODE, 11)
     mem.write(INFO_CURSOR, b"\x02")
+    mem.write(INFO_COUNT, b"\x08")
     # frame = 54 -> ms = 720 ms -> beat 2 (500..1000 ms), off = 220 ms -> fine = (220*13)//500 = 5
     mem.put32(PLAY_FRAME, 54)
     mem.write(PITCH, struct.pack(">h", 500))   # +5.00% -> 126.00 BPM
@@ -158,6 +159,23 @@ def test_grid_and_bpm_phase_rendering_with_and_without_lock():
     assert rows[0] == "B2/4 126.00 GRID"
     assert rows[1] == "_1_ (2) _3_ _4_"
     assert rows[2] == "[-----+-------]"
+    # Centered, unhighlighted, icon-free rows (tag 0x11..0x13, attr0 0x00)
+    for r in range(3):
+        hdr = mem.read(ROWS + r * 0x105, 4)
+        assert hdr[0] == 0x11 + r and hdr[1] == 0x00, (r, hdr)
+
+    # Single-click Page 2 snap transitions: 2 -> 3 => 5 (Page 3), 5 -> 4 => 2 (Page 2)
+    mem.write(INFO_CURSOR, b"\x03")
+    _call(p, mem, "phase_meter_hook", 0, 0)
+    assert mem.read(INFO_CURSOR, 1)[0] == 5
+    mem.write(INFO_CURSOR, b"\x04")
+    _call(p, mem, "phase_meter_hook", 0, 0)
+    assert mem.read(INFO_CURSOR, 1)[0] == 2
+    # When INFO_COUNT <= 5 (no Page 3), 2 -> 3 snaps back to 2
+    mem.write(INFO_COUNT, b"\x05")
+    mem.write(INFO_CURSOR, b"\x03")
+    _call(p, mem, "phase_meter_hook", 0, 0)
+    assert mem.read(INFO_CURSOR, 1)[0] == 2
 
     # With BPM Lock active (+10.00%), uses BL_PITCH regardless of PITCH fader
     mem.write(BL_ACTIVE, b"\x01")
@@ -219,7 +237,7 @@ def test_live_info_page2_phase_meter_and_page3_shift(tmp_path):
         out = []
         for r in range(3):
             b = d.dump(ROWS + r * 0x105, 0x30)
-            out.append((b[1], b[5:5 + b[4]].decode("latin1")))
+            out.append((b[0], b[1], b[5:5 + b[4]].decode("latin1")))
         cur = d.rb(INFO_CURSOR)
         cnt = d.rb(INFO_COUNT)
         mode = d.rw(DISPLAY_MODE)
@@ -241,19 +259,28 @@ def test_live_info_page2_phase_meter_and_page3_shift(tmp_path):
         time.sleep(0.5)
         mode, cur, cnt, page2_a = read_rows(d)
         assert mode == 11 and cur == 2 and cnt >= 5, (mode, cur, cnt)
-        assert page2_a[0][1].startswith("B") and "128.00" in page2_a[0][1], page2_a
-        assert "(" in page2_a[1][1] and ")" in page2_a[1][1], page2_a
-        assert page2_a[2][1].startswith("[") and "+" in page2_a[2][1], page2_a
+        assert [(r, tag, attr) for r, (tag, attr, _) in enumerate(page2_a)] == [
+            (0, 0x11, 0), (1, 0x12, 0), (2, 0x13, 0)], page2_a
+        assert page2_a[0][2].startswith("B") and "128.00" in page2_a[0][2], page2_a
+        assert "(" in page2_a[1][2] and ")" in page2_a[1][2], page2_a
+        assert page2_a[2][2].startswith("[") and "+" in page2_a[2][2], page2_a
 
         # While playing, phase updates across consecutive snapshots
         time.sleep(1.2)
         _, _, _, page2_b = read_rows(d)
-        assert page2_b != page2_a or page2_b[0][1].startswith("B")
+        assert page2_b != page2_a or page2_b[0][2].startswith("B")
 
-        # Scroll down 3 clicks -> Page 3 (cursor = 5): original Page 2 items (incl. 0x0D BPM)
-        for _ in range(3):
-            _udp(d, "0x03:1:0:rot")
-            time.sleep(0.8)
+        # 1 click CW from Page 2 snaps straight to Page 3 (cursor = 5): original Page 2 items (incl. 0x0D BPM)
+        _udp(d, "0x03:1:0:rot")
+        time.sleep(0.8)
         mode3, cur3, _, page3 = read_rows(d)
-        assert mode3 == 11 and cur3 == 5
-        assert any(attr == 0x0D and "128.0 bpm" in text for attr, text in page3), page3
+        assert mode3 == 11 and cur3 == 5, (mode3, cur3, page3)
+        assert any(attr == 0x0D and "128.0 bpm" in text for _, attr, text in page3), page3
+
+        # 1 click CCW from Page 3 snaps straight back to Page 2 (cursor = 2)
+        _udp(d, "0x03:-1:0:rot")
+        time.sleep(0.8)
+        mode2b, cur2b, _, page2_back = read_rows(d)
+        assert mode2b == 11 and cur2b == 2, (mode2b, cur2b, page2_back)
+        assert [(r, tag, attr) for r, (tag, attr, _) in enumerate(page2_back)] == [
+            (0, 0x11, 0), (1, 0x12, 0), (2, 0x13, 0)], page2_back

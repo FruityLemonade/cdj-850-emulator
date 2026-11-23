@@ -24,6 +24,7 @@ Original INFO items (Album, BPM, Comment, Key, etc.) move cleanly to **Page 3** 
 Combines cleanly with `bpm_lock`, `bpm999`, `bpm_decimals`, `hot_cues`, `quant_loops`, `loop_resize`, and `tempo_wide`.
 
 ## How
-- Single payload hook (`phase_meter_hook`) on the shared `display_stage_bpm` tail (`0x0C0642AA`, outside the boot-critical closure), running after `bpm999`, `bpm_decimals`, and `bpm_lock_display` and before `c850_ui_flash_hook`.
+- Single payload hook (`phase_meter_hook`) on the shared `display_stage_bpm` tail (`0x0C0642AA`, outside the boot-critical closure), running after `bpm999`, `bpm_decimals`, `bpm_lock_display`, and `info_order` and before `c850_ui_flash_hook`.
 - Injects three safe unused DB metadata codes (`0x13, 0x14, 0x15`, all pointing to valid zeroed strings in `FUN_0C074824`) at indices `2, 3, 4` of each active track DB record (`0x0C9D44D4`), shifting existing items right by 3 (capped at 18).
-- When `C850_DISPLAY_MODE == 11` and `2 <= C850_INFO_CURSOR <= 4`, computes beat and phase in 32-bit integer arithmetic from the rekordbox beat grid (`0x0C9D24FC`, primary) or base BPM (`0x0C9D23EC`, fallback) and writes changed rows to `C850_MATRIX_ROW(0..2)` and `C850_ROW_SOURCE(0..2)` before `FUN_0C064CA4` serialises them.
+- Snaps `C850_INFO_CURSOR` across `3..4` so Page 2 advances cleanly between Page 1, Page 2, and Page 3 in a single rotary click (`2 -> 3 => 5`, `5 -> 4 => 2`).
+- When `C850_DISPLAY_MODE == 11` and `C850_INFO_CURSOR == 2`, computes beat and phase in 32-bit integer arithmetic from the rekordbox beat grid (`0x0C9D24FC`, primary) or base BPM (`0x0C9D23EC`, fallback) and writes centered, unhighlighted, icon-free rows (`tag = 0x11..0x13`, `attr0 = 0x00`) to `C850_MATRIX_ROW(0..2)` and `C850_ROW_SOURCE(0..2)` before `FUN_0C064CA4` serialises them.
