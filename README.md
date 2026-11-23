@@ -101,6 +101,10 @@ Hold **USB** until the library appears. Turn the **SELECT** knob to **TRACK**, p
 
 The virtual deck shows the two-line VFD, segmented time and tempo readouts, INFO, BROWSE, BPM LOCK, and firmware-driven button lamps. USB playback was verified through the app with stereo audio output and a counting-down REMAIN display. The USB, USB STOP, and PLAY/PAUSE lamps lit during playback. A 128 BPM WAV also verified switching between INFO and BROWSE and engaging BPM LOCK after setting a master BPM.
 
+Enable **USB FLAC playback** in setup to play supported FLAC files on the
+CDJ-350 emulator. The [FLAC documentation](mods/flac/README.md) covers building
+and validating a modified v1.14 update.
+
 [CDJ-350 bring-up and panel protocol](docs/cdj350.md) · [CDJ-350 Ghidra annotations](scripts/ghidra/cdj350-annotations.json)
 
 <a id="what-works"></a>

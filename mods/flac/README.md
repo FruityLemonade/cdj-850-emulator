@@ -1,6 +1,6 @@
-# CDJ-850 FLAC mod
+# CDJ USB FLAC mod
 
-Opt-in native USB FLAC playback for MAIN v1.13. It supports stereo native FLAC at 16 or 24 bits and 44.1 or 48 kHz, with a known sample count and blocks up to 4608 frames. It uses the stock transport and DSP:
+Opt-in native USB FLAC playback for CDJ-850 v1.13 and CDJ-350 v1.14. It supports stereo native FLAC at 16 or 24 bits and 44.1 or 48 kHz, with a known sample count and blocks up to 4608 frames. It uses the stock transport and DSP:
 
 - The virtual WAV it hands the firmware carries the stream's sample rate. A 48 kHz track goes through the stock resampler (`pcm_rate_copy` and `pcm_resample_cubic`, a 4-point cubic on MAIN), as a 48 kHz WAV does; the DSP plays 44.1 kHz only.
 - The virtual WAV is always 16-bit. 24-bit samples are cut to their top 16 bits, which is exactly what the stock reader does with a 24-bit WAV (`wav_decode_block`, `0x0C058FF2`): no dither, and nothing past 16 bits reaches the DSP either way.
@@ -24,6 +24,21 @@ python3 mods/patch_main.py --model cdj850 --flash extract/cdj850/flash_cdj850.bi
   mods/flac/build/flac.flash flac flac_header flac_pcm flac_size flac_size2 flac_file_close \
   flac_audio_open flac_audio_open2
 ```
+
+For the CDJ-350, use the original v1.14 update and the CDJ-350 model:
+
+```sh
+mkdir -p build/cdj350
+python3 mods/patch_update.py --model cdj350 C350MAIN.UPD build/cdj350/C350MAIN.UPD flac
+python3 mods/validate.py --model cdj350 --stock C350MAIN.UPD build/cdj350/C350MAIN.UPD
+python3 mods/patch_main.py --model cdj350 --flash extract/cdj350/flash_cdj350.bin \
+  build/cdj350/flac.flash flac flac_header flac_pcm flac_size flac_file_close flac_audio_open flac_audio_open2
+python3 mods/payloadbuild.py --model cdj350 build/cdj350/payload.bin flac
+```
+
+The CDJ-350 uses one file-size pool word for both calls. Its hooks and loader
+are documented in [the CDJ-350 firmware notes](../../docs/cdj350.md#usb-flac-playback).
+Physical decks have not been tested.
 
 ## Verification
 
@@ -66,11 +81,20 @@ The legacy export run checks WAV and FLAC loading, waveform and memory markers, 
 
 The plain folder browser lists the FLAC filename. The loaded title is blank with the current fixture. Legacy library entries supply title and artist. Cue persistence still needs testing.
 
-## Firmware hooks
+To repeat the CDJ-350 check, use `--model cdj350` on both `probe.py` and
+`verify_probe.py`, and use the CDJ-350 flash and payload map. Use `--timeout 300`
+on slower hosts. The probes check the full 18-second PCM, the playback
+time readout, the rekordbox title and artist, and a search seek. The
+24-bit/48 kHz run compares the FLAC output with the same track played
+through the stock WAV path. To run the SH7263 cache model alongside a
+probe, build the plugin with `scripts/cache/build_cache_plugin.sh` and
+pass its path to `probe.py --plugin`.
+
+## CDJ-850 firmware hooks
 
 Eight writes to MAIN, none in the boot-critical closure, each behind the service-mode gate (in a power-on update mode the stock code runs and FLAC files are not listed):
 
-- `flac`: the directory classifier `0x0C040C90` is reached only by `bsr`, so its 12 entry bytes become a jump to `__gate_flac_file_classify` (`sigpatch.EntryRedirect`); `payload/stock.S` holds the moved bytes and goes on at `0x0C040C9C`. `.flac` becomes type 11 (WAV).
+- `flac`: the directory classifier `0x0C040C90` is reached only by `bsr`, so its 12 entry bytes become a jump to `__gate_flac_file_classify` (`sigpatch.EntryRedirect`); `cdj850/payload/stock.S` holds the moved bytes and goes on at `0x0C040C9C`. `.flac` becomes type 11 (WAV).
 - `flac_header`, `flac_pcm`, `flac_size`, `flac_size2`, `flac_file_close`, `flac_audio_open`, `flac_audio_open2`: pool-word redirects of the USB audio calls (WAV header read, PCM read, file size twice, close, audio open twice). The open path detects native FLAC and reports the decoded WAV length; the WAV header and PCM readers serve a virtual PCM WAV while the decoder reads the original file through the stock file routines.
 
 The decoder (`payload/decoder.c`, dr_flac) runs on a 16 KB stack of its own (`payload/flac_stack.s`, which also keeps `MACH`/`MACL` for MAIN): dr_flac's open takes a 4.4 KB frame, and the audio task (mp3ActTask, 7.5 KB of on-chip RAM) reached the file read 5.8 KB deep with it in the original build, against 2.5 KB for stock WAV playback. RAM in the payload's `.bss`: a 256 KB decoder arena, the 16 KB stack, a 2352-byte PCM sector and the 8 file slots, about 280 KB in all, between the other mods' variables (the stack's low end borders FLAC's own file slots).
