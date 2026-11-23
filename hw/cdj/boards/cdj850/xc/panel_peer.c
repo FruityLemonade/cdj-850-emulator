@@ -205,10 +205,15 @@ static const PanelButtonDef panel_buttons_350[] = {
     { "loop_in",        1, 0x0800 },    /* K0.12 */
     { "loop_out",       1, 0x1000 },    /* K0.11 */
     { "reloop",         1, 0x2000 },    /* K0.10 */
-    { "k0_9",           1, 0x4000 },    /* K0.9: BEAT LOOP (LOOP DIVIDE), */
-    { "beat_loop",      1, 0x4000 },    /* one half of the -/+ rocker */
-    { "k0_8",           1, 0x8000 },    /* K0.8: the rocker's other half; */
-    { "beat_loop_2",    1, 0x8000 },    /* both start a 4-beat loop */
+    /* BEAT LOOP (LOOP DIVIDE) rocker: in play either half starts a
+     * 4-beat loop; in a loop K0.9 adds one halving to the count at
+     * 0x0C1AB7D8 (max 6) and K0.8 takes one off (docs/cdj350.md). */
+    { "k0_9",           1, 0x4000 },    /* K0.9 */
+    { "beat_loop",      1, 0x4000 },
+    { "loop_divide_minus", 1, 0x4000 },
+    { "k0_8",           1, 0x8000 },    /* K0.8 */
+    { "beat_loop_2",    1, 0x8000 },
+    { "loop_divide_plus", 1, 0x8000 },
     { "k2_2",           1, 0x0001 },    /* K2.2, no CDJ-850 source */
     { "bpm_lock",       1, 0x0001 },    /* BPM LOCK */
     { "k2_1",           1, 0x0002 },    /* K2.1: no key on the CDJ-350 */
