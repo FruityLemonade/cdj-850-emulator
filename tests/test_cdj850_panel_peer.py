@@ -235,6 +235,22 @@ int main(int argc, char **argv)
         }
         return 0;
     }
+    if (strcmp(argv[1], "cdj350") == 0) {
+        cdj850_panel_peer_set_model(CDJ_PANEL_CDJ350);
+        for (int i = 2; i < argc; i++) {
+            const char *arg = argv[i];
+            if (arg[0] == '+' || arg[0] == '-') {
+                printf("btn(%s)=%d\n", arg,
+                       cdj850_panel_peer_set_button(arg + 1, arg[0] == '+') ? 1 : 0);
+            } else if (strcmp(arg, "build") == 0) {
+                cdj850_panel_peer_build_rx(0, f1);
+                cdj850_panel_peer_build_rx(1, f2);
+                dump_frame("F1", f1);
+                dump_frame("F2", f2);
+            }
+        }
+        return 0;
+    }
     if (strcmp(argv[1], "rotate") == 0) {
         for (int i = 2; i < argc; i++) {
             cdj850_panel_peer_rotate(atoi(argv[i]));
@@ -683,3 +699,28 @@ def test_live_udp_key_feed(panel_peer_exe):
     assert frames["T120"]["F2"][7:9] == [0x01, 0xFF]
     assert frames["T180"]["F2"][1:3] == [0x00, 0x00]
     assert frames["T180"]["F2"][7:9] == [0x00, 0xFF]
+
+
+def test_cdj350_frames_buttons_and_adc_noise(panel_peer_exe):
+    """CDJ-350 mode: frame 2 carries button words 1..3 in bytes 1..6 with the
+    end-around-carry sum of bytes 0..6 in byte 7; the tempo ADC noise steps
+    the slider and centre words together (docs/cdj350.md)."""
+    out, _ = panel_peer_exe({"CDJ350_PANEL_NOISE": "1"}, "cdj350",
+                            "+usb", "+push", "+bpm_lock", "+eject", "+nonexistent",
+                            "build", "build")
+    lines = out.splitlines()
+    assert "btn(+usb)=1" in lines and "btn(+bpm_lock)=1" in lines
+    assert "btn(+nonexistent)=0" in lines
+    frames = [parse_frame_line(l) for l in lines if l.startswith(("F1:", "F2:"))]
+    f1a, f2a, f1b, f2b = frames
+    for f2 in (f2a, f2b):
+        assert f2[0] == 0x02
+        assert f2[1:7] == [0x00, 0x01, 0x00, 0x01, 0x00, 0x01]   # bpm_lock, eject, usb
+        assert f2[7] == sum8ec(bytes(f2[:7]))
+        assert f2[8:] == [0] * 8
+    for f1 in (f1a, f1b):
+        assert f1[13] == 0x01                                       # push (w6 0x0100)
+        assert f1[15] == sum8ec(bytes(f1[:15]))
+    word = lambda f, i: f[i] << 8 | f[i + 1]
+    assert word(f1a, 5) != word(f1b, 5)                             # noise moved the slider word
+    assert word(f1a, 5) - word(f1a, 7) == word(f1b, 5) - word(f1b, 7)

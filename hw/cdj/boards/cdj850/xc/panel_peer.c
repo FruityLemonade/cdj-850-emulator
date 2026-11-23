@@ -259,6 +259,53 @@ static bool cdj350_indicator_slot(uint8_t tx[][PANEL_FRAME_LEN])
     return (t & 0x0F) == 1 && t >= 0x11 && t <= 0x61 && tx[1][0] == t + 1;
 }
 
+/*
+ * CDJ-350 time readout: indicator page 3 (frames 0x31 / 0x32) carries the
+ * FL's six 7-segment digits in frame 2 bytes 6..11, MM SS FF (75 frames per
+ * second; REMAIN by default, so it counts down while playing). Segment codes
+ * read off a playing track [emu]; a blank or unknown code leaves the time
+ * unknown.
+ */
+static int cdj350_seg_digit(uint8_t c)
+{
+    static const uint8_t seg[10] = {
+        0x77, 0x12, 0x6B, 0x5B, 0x1E, 0x5D, 0x7D, 0x13, 0x7F, 0x5F,
+    };
+    int d;
+
+    for (d = 0; d < 10; d++) {
+        if (seg[d] == c) {
+            return d;
+        }
+    }
+    return -1;
+}
+
+static void cdj350_panel_time(uint8_t tx[][PANEL_FRAME_LEN], unsigned frames)
+{
+    Cdj850Time time = { 0 };
+    int d[6];
+    unsigned i;
+
+    if (frames < 2 || tx[0][0] != 0x31 || tx[1][0] != 0x32) {
+        return;
+    }
+    time.known = true;
+    for (i = 0; i < 6; i++) {
+        d[i] = cdj350_seg_digit(tx[1][6 + i]);
+        if (d[i] < 0) {
+            time.known = false;
+        }
+    }
+    if (time.known) {
+        time.minutes = (uint8_t)(d[0] * 10 + d[1]);
+        time.seconds = (uint8_t)(d[2] * 10 + d[3]);
+        time.frames = (uint8_t)(d[4] * 10 + d[5]);
+        time.known = cdj850_time_in_range(&time);
+    }
+    vfd_note_time(&time);
+}
+
 static void cdj350_panel_text(uint8_t tx[][PANEL_FRAME_LEN], unsigned frames)
 {
     char line[2][17];
@@ -266,6 +313,18 @@ static void cdj350_panel_text(uint8_t tx[][PANEL_FRAME_LEN], unsigned frames)
 
     if (frames < 2 || cdj350_indicator_slot(tx)) {
         return;
+    }
+    /* A slot read out of step (a transaction that began mid-rotation) can
+     * pair other pages; take only frames that are all text. */
+    for (i = 0; i < 2; i++) {
+        for (j = 0; j < 16; j++) {
+            uint8_t c = tx[i][j];
+
+            if (!(c == 0x00 || c == 0x0A || c == 0x81 || c == 0x82 ||
+                  (c >= 0x20 && c < 0x7F))) {
+                return;
+            }
+        }
     }
     for (i = 0; i < 2; i++) {
         for (j = 0; j < 16; j++) {
@@ -284,6 +343,39 @@ static void cdj350_panel_text(uint8_t tx[][PANEL_FRAME_LEN], unsigned frames)
     info_report("cdj350-panel: text [%s] [%s] (%" PRIu64 " ms)",
                 line[0], line[1], cdj850_vms());
     vfd_note_panel_text(0, line[0], line[1], "");
+}
+
+/*
+ * CDJ-350 tempo ADC noise. In USB mode the unpacker (0x0C0C6804) clears the
+ * panel event unless w1, w6 bit 0x20 or w7..w9 changed, except on every
+ * third event (counter 0x0CD484F0), so the encoder push (w6 0x0100) only
+ * reaches the key build if the panel keeps producing events while it is
+ * held. The TXI1 ISR's change test (0x0C0E5B86) compares bytes 6 and 8, the
+ * tempo slider and centre ADC low bytes, on bits 0x0C only: room for a real
+ * ADC's noise, which is what keeps events coming on the unit. Adding 4 to
+ * both words every other few transactions does that without moving the
+ * slider against its centre. CDJ350_PANEL_NOISE=0 turns it off; =<n> steps
+ * every n transactions (default 3).
+ */
+static void cdj350_panel_adc_noise(uint8_t f[PANEL_FRAME_LEN])
+{
+    static int every = -1;
+    static uint32_t count;
+
+    if (every < 0) {
+        const char *e = getenv("CDJ350_PANEL_NOISE");
+
+        every = e ? (int)strtol(e, NULL, 0) : 3;
+    }
+    if (every > 0 && (count++ / (unsigned)every) & 1) {
+        uint16_t tempo = (uint16_t)((f[5] << 8 | f[6]) + 4);
+        uint16_t centre = (uint16_t)((f[7] << 8 | f[8]) + 4);
+
+        f[5] = (uint8_t)(tempo >> 8);
+        f[6] = (uint8_t)tempo;
+        f[7] = (uint8_t)(centre >> 8);
+        f[8] = (uint8_t)centre;
+    }
 }
 
 static struct {
@@ -655,6 +747,9 @@ static void cdj850_panel_build_rx1(uint8_t f[PANEL_FRAME_LEN], uint64_t now_ms)
             p->off >= 3 && p->off <= 14) {
             f[p->off] |= p->mask;
         }
+    }
+    if (panel_model == CDJ_PANEL_CDJ350) {
+        cdj350_panel_adc_noise(f);
     }
     f[15] = cdj850_panel_sum8ec(f, 15);
 }
@@ -1188,6 +1283,7 @@ static void panel_end_transaction(void)
         }
         if (panel_model == CDJ_PANEL_CDJ350) {
             cdj350_panel_text(panel.cur_tx, panel.frame);
+            cdj350_panel_time(panel.cur_tx, panel.frame);
         } else {
             cdj850_panel_display_transaction(&panel.display, panel.start_ns,
                                              panel.frame, panel.cur_tx,
