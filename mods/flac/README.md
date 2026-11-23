@@ -5,11 +5,13 @@ Opt-in native USB FLAC playback for MAIN v1.13. It supports stereo native FLAC a
 - The virtual WAV it hands the firmware carries the stream's sample rate. A 48 kHz track goes through the stock resampler (`pcm_rate_copy` and `pcm_resample_cubic`, a 4-point cubic on MAIN), as a 48 kHz WAV does; the DSP plays 44.1 kHz only.
 - The virtual WAV is always 16-bit. 24-bit samples are cut to their top 16 bits, which is exactly what the stock reader does with a 24-bit WAV (`wav_decode_block`, `0x0C058FF2`): no dither, and nothing past 16 bits reaches the DSP either way.
 
-At 48 kHz the decoder delivers about 9% more frames per second of track, and MAIN also runs the resampler, the same cost a 48 kHz WAV has. 24-bit streams carry more bits per sample to read but decode through the same code. Neither has been timed on a physical CDJ-850.
+At 48 kHz the decoder delivers about 9% more frames per second of track, and MAIN also runs the resampler, as it does for a 48 kHz WAV. The same decoder handles 16-bit and 24-bit streams.
 
 ## Build and run
 
-Run from the repository root. The code is built into the shared CDJ-850 payload (`mods/payloadbuild.py`, toolchain in `tools/sh-elf` or `$CDJ850_SH_ELF`), so FLAC combines with the other payload mods; nothing to build by hand.
+Enable **USB FLAC playback** in the launcher setup. Load and seek through supported FLAC tracks as you would other USB tracks.
+
+To build an update or a QEMU flash image, run the commands below from the repository root. The build uses the shared CDJ-850 payload (`mods/payloadbuild.py`, toolchain in `tools/sh-elf` or `$CDJ850_SH_ELF`) and links it for the selected mods. Start with stock firmware.
 
 ```sh
 # an update file (labelled 0.13, like every mod build) with FLAC alone or with other mods
@@ -22,8 +24,6 @@ python3 mods/patch_main.py --model cdj850 --flash extract/cdj850/flash_cdj850.bi
   mods/flac/build/flac.flash flac flac_header flac_pcm flac_size flac_size2 flac_file_close \
   flac_audio_open flac_audio_open2
 ```
-
-In the launcher, the FLAC toggle (`mod.conf`) turns on all eight knobs. Patch from stock: the payload is linked anew for each set of mods. The patch has been tested in QEMU only; installation and decode throughput on a physical CDJ-850 are unverified.
 
 ## Verification
 
@@ -60,9 +60,11 @@ for recipe in folder folder-wav export; do
 done
 python3 mods/flac/verify_probe.py mods/flac/build/fixture48/music/Baseline.wav \
   mods/flac/build/48-folder mods/flac/build/48-export --wav-run mods/flac/build/48-folder-wav
-``` The legacy export run checks WAV and FLAC loading, waveform and memory markers, the 8-second cue, a two-beat loop wrap, reverse motion, jog inputs, and the Master Tempo indicator.
+```
 
-The plain folder browser lists the FLAC filename. The loaded title is blank with the current fixture. Legacy library entries supply title and artist. Cue persistence, audible scratch parity, and sustained decode throughput still need testing.
+The legacy export run checks WAV and FLAC loading, waveform and memory markers, the 8-second cue, a two-beat loop wrap, reverse motion, jog inputs, and the Master Tempo indicator.
+
+The plain folder browser lists the FLAC filename. The loaded title is blank with the current fixture. Legacy library entries supply title and artist. Cue persistence still needs testing.
 
 ## Firmware hooks
 

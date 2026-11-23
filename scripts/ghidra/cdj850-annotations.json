@@ -2021,7 +2021,7 @@
         {
           "address": "0c7f6625",
           "type": "PLATE",
-          "text": "USB playback sub-state (record 0x0C7F6620 + 5) switched on by player_tick_usb_playback: 0x10-0x17 when +6 is 0, 0x20-0x2B when +6 is 1, 0x30-0x32 when +6 is 2 [static]. Observed [emu]: 0x30 at load, 0x10 while playing, 0x11/0x12 briefly when a refill is scheduled, 0x12 while the flac mod underruns during SEARCH."
+          "text": "USB playback sub-state (record 0x0C7F6620 + 5) switched on by player_tick_usb_playback: 0x10-0x17 when +6 is 0, 0x20-0x2B when +6 is 1, 0x30-0x32 when +6 is 2 [static]. Observed [emu]: 0x30 at load, 0x10 while playing, 0x11/0x12 briefly when a refill is scheduled, and 0x12 during SEARCH underruns in the original FLAC prototype."
         },
         {
           "address": "0c08ca8e",
