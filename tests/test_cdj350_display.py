@@ -44,6 +44,11 @@ static void feed_page(Cdj350Display *s, unsigned page, const uint8_t data[6])
 
 int main(void)
 {
+    assert(!strcmp(cdj350_fl_range_label(0x5b), "\xb1" "10"));
+    assert(!strcmp(cdj350_fl_range_label(0x3b), "\xb1" "16"));
+    assert(!strcmp(cdj350_fl_range_label(0x0f), "WIDE"));
+    assert(!strcmp(cdj350_fl_range_label(0x9b), "\xb1" "6"));
+
     Cdj350Display state = {0};
     const uint8_t text[2][16] = {
         "ABCDEFGHIJKLMNOP",
@@ -84,6 +89,22 @@ int main(void)
     assert(pixel(45, 145) == CDJ350_FL_WHITE);    /* auto cue */
     assert(pixel(220, 222) == CDJ350_FL_WHITE);   /* row 1, A */
     assert(pixel(213, 287) == CDJ350_FL_WHITE);   /* row 2, > */
+
+    assert(pixel(45, 216) == CDJ350_FL_OFF);    /* INFO dark before page 5 changes */
+    assert(pixel(610, 74) == CDJ350_FL_OFF);    /* LOCK dark before page 4 changes */
+
+    feed_page(&state, 4, (const uint8_t[]){0x1b, 0x12, 0x77, 0xf2, 0x20, 0});
+    feed_page(&state, 5, (const uint8_t[]){0xc8, 0x6b, 0x77, 0x7f, 0x77, 0x12});
+    cdj350_fl_render(&canvas, &state);
+    assert(pixel(45, 216) == CDJ350_FL_WHITE);  /* INFO follows page 5 bit 7 */
+    assert(pixel(610, 74) == CDJ350_FL_RED);    /* LOCK follows page 4 bit 3 */
+
+    feed_page(&state, 4, (const uint8_t[]){0x17, 0x12, 0x77, 0xf2, 0x20, 0});
+    feed_page(&state, 5, (const uint8_t[]){0x48, 0x6b, 0x77, 0x7f, 0x77, 0x12});
+    cdj350_fl_render(&canvas, &state);
+    assert(pixel(45, 216) == CDJ350_FL_OFF);    /* INFO clears in BROWSE */
+    assert(pixel(45, 281) == CDJ350_FL_WHITE);
+    assert(pixel(610, 74) == CDJ350_FL_OFF);    /* LOCK can blink off */
 
     cdj350_fl_render(&canvas, &(Cdj350Display){0});
     assert(pixel(219, 70) == CDJ350_FL_OFF);

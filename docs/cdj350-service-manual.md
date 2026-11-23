@@ -341,12 +341,13 @@ resistors, are **open**.
 | S512 | PLAYLIST | S524 | USB STOP |
 | S525 | STANDBY | S527 | rotary selector (YSD5019) |
 
-### 9.3 LEDs (p.69, *order*)
+### 9.3 LEDs (p.69, schematic)
 
 PLAY green (D504), CUE amber (D505), LOOP IN / LOOP OUT / RELOOP amber
 (D506-D508), CD / USB / PC green (D509-D511), EJECT green (D514), BEAT LOOP
-amber (D515), VINYL blue (D516), MASTER TEMPO red (D517), STANDBY red /
-POWER ON green (D512/D513).
+amber (D515), VINYL blue (D516), MASTER TEMPO red (D517), and USB STOP red
+(D512, STOPL). D513 is the bicolor red STANDBY / green POWER ON LED. The
+panel CPU drives its two channels on STANDBYL and PWRONL.
 
 ### 9.4 FL tube V501 (DEL1072)
 

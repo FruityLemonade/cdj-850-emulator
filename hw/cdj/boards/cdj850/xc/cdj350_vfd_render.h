@@ -72,10 +72,23 @@ static inline void cdj350_fl_playing(FlCanvas *canvas, const uint8_t *status)
     }
 }
 
+static inline const char *cdj350_fl_range_label(uint8_t range)
+{
+    if (!(range & 0x10)) {
+        return range & 0x04 ? "WIDE" : "";
+    }
+    switch (range & 0xe0) {
+    case 0x80: return "\xb1" "6";
+    case 0x40: return "\xb1" "10";
+    case 0x20: return "\xb1" "16";
+    default: return "";
+    }
+}
+
 static inline void cdj350_fl_tempo(FlCanvas *canvas, const uint8_t *tempo,
                                    const uint8_t *bpm, uint8_t range)
 {
-    const char *range_label = "";
+    const char *range_label = cdj350_fl_range_label(range);
     uint8_t pitch_digits[] = {tempo[2], bpm[2], bpm[4]};
     uint8_t bpm_digits[] = {tempo[1], bpm[1], bpm[3], bpm[5]};
     bool show_bpm = bpm[0] & 0x08;
@@ -106,15 +119,6 @@ static inline void cdj350_fl_tempo(FlCanvas *canvas, const uint8_t *tempo,
     fl_rect(canvas, 787, 166, 4, 5, bpm_color);
     fl_label_fit(canvas, 848, 165, "BPM", 61, 15, bpm_color);
 
-    if (range & 0x10) {
-        switch (range & 0xe0) {
-        case 0x40: range_label = "\xb1" "6"; break;
-        case 0x20: range_label = "\xb1" "10"; break;
-        case 0x80: range_label = "\xb1" "16"; break;
-        }
-    } else if (range & 0x04) {
-        range_label = "WIDE";
-    }
     uint32_t range_color = *range_label ? CDJ350_FL_RED : CDJ350_FL_OFF;
     fl_box(canvas, 851, 42, 75, 107, "", range_color);
     fl_label_fit(canvas, 862, 117, range_label, 53, 19, range_color);
@@ -152,10 +156,12 @@ static inline void cdj350_fl_render(FlCanvas *canvas, const Cdj350Display *s)
 
     fl_box(canvas, 26, 145, 145, 33, "A.CUE",
            cdj350_fl_light(bpm[0] & 0x01));
-    fl_box(canvas, 26, 216, 145, 39, "INFO", CDJ350_FL_OFF);
+    fl_box(canvas, 26, 216, 145, 39, "INFO",
+           cdj350_fl_light(bpm[0] & 0x80));
     fl_box(canvas, 26, 281, 145, 39, "BROWSE",
            cdj350_fl_light(tempo[0] & 0x04));
-    fl_box(canvas, 595, 74, 66, 34, "LOCK", CDJ350_FL_OFF);
+    fl_box(canvas, 595, 74, 66, 34, "LOCK",
+           tempo[0] & 0x08 ? CDJ350_FL_RED : CDJ350_FL_OFF);
 
     cdj350_fl_playing(canvas, status);
     cdj350_fl_tempo(canvas, tempo, bpm, status[1]);

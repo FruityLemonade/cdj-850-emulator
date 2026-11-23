@@ -89,6 +89,34 @@ def test_cdj350_face_uses_its_own_report_bytes():
         app.close()
 
 
+def test_cdj350_face_lamps_follow_page_four():
+    app = make_app("cdj350")
+    try:
+        deck = app.decks[0]
+        # Each lamp has its own bit, including the shared beat loop lens.
+        for off, mask, name in (
+            (9, 0x02, "USB STOP"), (9, 0x04, "COMPUTER"),
+            (9, 0x08, "CUE"), (9, 0x10, "PLAY/PAUSE"),
+            (9, 0x20, "LOOP IN"), (9, 0x40, "LOOP OUT"), (9, 0x80, "USB"),
+            (10, 0x01, "RELOOP / EXIT"), (10, 0x02, "DISC"),
+            (10, 0x08, "BEAT LOOP"), (10, 0x10, "MASTER TEMPO"),
+            (10, 0x20, "VINYL MODE"), (10, 0x40, "DISC EJECT"),
+        ):
+            frame = bytearray(16)
+            frame[0] = 0x42
+            frame[off] = mask
+            deck.link.frame = bytes(frame)
+            deck.link.seen = time.monotonic()
+            deck._light()
+            assert deck.lit == {name, "POWER"}
+
+        deck.link.seen -= 4
+        deck._light()
+        assert not deck.lit
+    finally:
+        app.close()
+
+
 @pytest.fixture
 def cdj850_app():
     a = make_app("cdj850")

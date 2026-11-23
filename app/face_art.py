@@ -740,6 +740,9 @@ class CDJ350Art(FaceArt):
         else:
             self._symbol(p, symbol, x, y - 4, 6.4, color)
 
+    def _k_led(self, p, key, lit, down):
+        self._led(p, *key.circle, key.color, lit)
+
     def _k_chrome(self, p, key, lit, down):
         x, y, r = key.circle
         p.circle(x, y, r + 1.5, fill=(6, 6, 7), outline=(58, 58, 62), width=1)
