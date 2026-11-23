@@ -11,7 +11,7 @@ The Pioneer CDJ-850 running its real firmware on your computer.
 [![QEMU 11.1](https://img.shields.io/badge/QEMU-11.1-orange.svg)](https://www.qemu.org/)
 [![Firmware not included](https://img.shields.io/badge/firmware-not%20included-red.svg)](#not-included)
 
-[Features](#features) · [Quick start](#quick-start) · [What works](#what-works) · [Modding & testing](#modding--testing) · [Documentation](#documentation)
+[Features](#features) · [Quick start](#quick-start) · [CDJ-350](#cdj-350) · [What works](#what-works) · [Modding & testing](#modding--testing) · [Documentation](#documentation)
 
 <table>
   <tr>
@@ -88,6 +88,21 @@ PERSIST=1 ./start.sh --app
 
 **Updating:** `git pull`, then `./start.sh` as usual. When a pull changes the C sources or patches, `start.sh` notices and offers to rebuild (`./build.sh display` does the same by hand).
 
+## CDJ-350
+
+Use your own CDJ-350 firmware update (`C350MAIN.UPD` **version 1.14**) and a rekordbox USB export or a folder of music.
+
+```sh
+./setup.sh --model cdj350 --firmware path/to/C350MAIN.UPD
+./start.sh --model cdj350 --app
+```
+
+Hold **USB** until the library appears. Turn the **SELECT** knob to **TRACK**, press it to open the track list, then select and press a title to load it. Use **PLAY/PAUSE** to start or pause playback. A short press of **DISPLAY** switches between the track information and the browser. To set a master BPM, hold **BPM LOCK**, then turn and press **SELECT**. Press **BPM LOCK** again to engage it.
+
+The virtual deck shows the two-line VFD, segmented time and tempo readouts, INFO, BROWSE, BPM LOCK, and firmware-driven button lamps. USB playback was verified through the app with stereo audio output and a counting-down REMAIN display. The USB, USB STOP, and PLAY/PAUSE lamps lit during playback. A 128 BPM WAV also verified switching between INFO and BROWSE and engaging BPM LOCK after setting a master BPM.
+
+[CDJ-350 bring-up and panel protocol](docs/cdj350.md) · [CDJ-350 Ghidra annotations](scripts/ghidra/cdj350-annotations.json)
+
 <a id="what-works"></a>
 
 ## What works
@@ -147,7 +162,7 @@ The repository includes a full firmware patching, repacking, and static validati
 
 - **Speed depends on your CPU.** The SH7263 and DSP56371 run together inside `qemu-system-sh4eb`; audio can break up if the host CPU falls behind real time.
 - **MASTER TEMPO** adds pitch-scale synthesis work on the DSP and still needs playback-speed calibration.
-- **Only firmware v1.13** (`C850MAIN.UPD`) is targeted by the mod addresses and profile constants.
+- **Firmware versions.** The CDJ-850 mods target `C850MAIN.UPD` v1.13. The CDJ-350 emulator profile targets `C350MAIN.UPD` v1.14.
 - **CD drive playback** (ATAPI / CD-DA) is still under development; USB storage is the primary medium.
 
 <a id="not-included"></a>
@@ -157,7 +172,7 @@ The repository includes a full firmware patching, repacking, and static validati
 > **This repository distributes no firmware, no ROM or flash images, no fonts,
 > no artwork files and no manuals or schematics.** Everything here was written
 > for this project. To run it you supply your own copy of the public
-> firmware update file (`C850MAIN.UPD`), which the setup unpacks on your machine into a folder
+> firmware update file (`C850MAIN.UPD` or `C350MAIN.UPD`), which the setup unpacks on your machine into a folder
 > that is never committed.
 >
 > The screenshots in this README and in `docs/` show the emulated firmware's own interface, running in
@@ -173,7 +188,7 @@ The repository includes a full firmware patching, repacking, and static validati
 
 - [CDJ-850 reverse engineering & modding](docs/cdj850-modding.md): memory map, flash container (`C850MAIN.UPD`), bootloader checksums, SCIF1 panel protocol, DSP56371 SHI/ESAI pipeline, SDRAM layout, and mod hooks
 - [CDJ-850 service manual reference](docs/cdj850-service-manual.md): hardware IC/board mappings, SH7263 & Panel CPU pin maps, user settings in flash, error codes, service modes, and signal levels
-- [Ghidra annotations](scripts/ghidra/README.md): portable annotation bundle and headless import script for `C850MAIN.UPD` v1.13
+- [Ghidra annotations](scripts/ghidra/README.md): portable annotation bundles and headless import script for `C850MAIN.UPD` v1.13 and `C350MAIN.UPD` v1.14
 - [Loader mod](mods/loader/README.md): boot-time stub copying custom code/data into free SDRAM (`0x0DE00000–0x0DF70000`)
 - [Mods](docs/mods.md): patching and validating firmware updates, writing code hooks, data patches, DSP patches, and whole-image transforms
 - [Setup in detail](docs/setup.md): setup steps, options, and platform notes
