@@ -264,7 +264,7 @@ static void run_segment(const char *arg)
 
 int main(int argc, char **argv)
 {
-    vfd_init();
+    vfd_init(false);
     if (argc < 2) {
         char l0[64], l1[64];
         vfd_text(l0, sizeof l0, l1, sizeof l1);

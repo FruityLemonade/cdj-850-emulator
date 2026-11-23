@@ -188,6 +188,51 @@
       ],
       "comments": [
         {
+          "address": "0c067268",
+          "type": "PLATE",
+          "text": "CDJ-350 display sign packing. Positive tempo sets bits 1 and 0 of 0x0C9B818F, negative sets bit 1 only. That byte appears as frame 2 byte 6 on page 4."
+        },
+        {
+          "address": "0c06904c",
+          "type": "PLATE",
+          "text": "CDJ-350 MAIN TX indicator checksum. Each of the six 32-byte slots at 0x0C9B850C stores the low 8 bits of the sum of slot bytes 0..27 at slot byte 28 (frame 2 byte 12). Slot bytes 29..31 are zero. The text slot bypasses this loop. Confirmed against SCIF1 captures."
+        },
+        {
+          "address": "0c069064",
+          "type": "PLATE",
+          "text": "Starts packing six CDJ-350 indicator pages with paired headers 0x11/0x12 through 0x61/0x62. Frame 2 byte 11 of pages 1 and 2 carries track tens and units, from 0x0C9B8170 and 0x0C9B8171. The separate 0x0C9B85CC slot holds two text rows of 16 wire bytes."
+        },
+        {
+          "address": "0c069260",
+          "type": "PLATE",
+          "text": "Page 3 frame 2 bytes 6..11 copy the six raw seven-segment masks for MM SS FF (75 frames/sec), from 0x0C9B8170 offsets 7, 6, 15, 14, 13, 12. Segment A..G masks are 01, 02, 10, 40, 20, 04, 08."
+        },
+        {
+          "address": "0c06933e",
+          "type": "PLATE",
+          "text": "Page 4 frame 2 bytes 6..10 carry tempo flags, BPM hundreds, tempo units and panel state. Byte 6 bit 2 follows the BROWSE display in captures. Byte 10 bit 4 follows MASTER TEMPO and bit 5 VINYL. Byte 9 bit 4 lights or blinks with playback state."
+        },
+        {
+          "address": "0c069474",
+          "type": "PLATE",
+          "text": "Page 5 frame 2 byte 6 carries A.CUE (bit 0), BPM display (bit 3), and tempo decimal placement (bits 4 and 5). Bytes 7, 9 and 11 carry the remaining BPM digits, and bytes 8 and 10 carry the tempo fraction."
+        },
+        {
+          "address": "0c069558",
+          "type": "PLATE",
+          "text": "Page 6 frame 2 byte 6 bit 0 is REMAIN (toggle confirmed against count direction). Byte 7 contains the range flags (bits 6 = +/-6, 5 = +/-10, 7 = +/-16; wide uses bit 2 with bit 4 clear). Bytes 8..11 carry the playing-address bar; the lower 30 bits map from left to right."
+        },
+        {
+          "address": "0c069fbe",
+          "type": "PLATE",
+          "text": "Computes the CDJ-350 playing-address position on a 30-segment scale. The selected four-byte pattern is written to display staging offsets 0x18..0x1B, then serialized as page 6 frame 2 bytes 8..11."
+        },
+        {
+          "address": "0c06a46e",
+          "type": "PLATE",
+          "text": "Copies the A.CUE setting from 0x0C9B8DDC bit 0 into display byte 0x0C9B818C bit 0 (page 5 frame 2 byte 6). Verified by holding TIME MODE/AUTO CUE and diffing SCIF1 captures."
+        },
+        {
           "address": "0c0ae414",
           "type": "PLATE",
           "text": "CDJ-350 1 ms tick group: increments u32 tick_ms (0x0CD2DCC0), then calls keys_tick_1ms (0x0C0C6EBC) and the other 1 ms routines from pools 0x0C0AE44C..0x0C0AE468. Reached through 0x0C0BB1DA, whose pointer sits at 0x0C1778D0 right after the CMT0 (vector 142) entry at 0x0C1778BC; the board's CMT0 tick is 1 ms (CMCOR 0x1045, Pphi/8). In the emulator under host load it ran about 600 times per emulated second instead of 1000 (the CDJ-850's tick_1ms the same) [emu]."
@@ -215,7 +260,7 @@
         {
           "address": "0c0da740",
           "type": "PLATE",
-          "text": "CDJ-350 counterpart of 0x0C0ECCB4: builds K0..K2 from w7..w9. K0: w7.9 PLAY(13), w7.10 CUE(14), w7.11 LOOP IN(12), w7.12 LOOP OUT(11), w7.13 RELOOP(10), w7.14 K0.9, w7.15 K0.8, w8.9 TRACK-(2), w8.10 TRACK+(3), w8.11 SEARCH-(5), w8.12 SEARCH+(4), w9.0 USB(0), w9.1 DISC(1). K1: w8.1 VINYL(10), w8.3 TEMPO(9), w8.2 MASTER TEMPO(8), w9.9 BACK(3), w8.0 EJECT(2). K2: w9.8 TIME(13), w8.8 MENU(12), w9.10 K2.4, w7.8 STOP(3), w7.0 K2.2, w7.1 K2.1, w9.2 K2.0 (CDJ-850 LINK). Names are the CDJ-850 keys with the same K bit. w1 rotary, w2/w3 tempo fader and centre, w6 bit 0x20/0x40 as on the CDJ-850."
+          "text": "CDJ-350 counterpart of 0x0C0ECCB4: builds K0..K2 from w7..w9. K0: w7.9 PLAY(13), w7.10 CUE(14), w7.11 LOOP IN(12), w7.12 LOOP OUT(11), w7.13 RELOOP(10), w7.14 K0.9, w7.15 K0.8, w8.9 TRACK-(2), w8.10 TRACK+(3), w8.11 SEARCH-(5), w8.12 SEARCH+(4), w9.0 USB(0), w9.1 DISC(1). K1: w8.1 VINYL(10), w8.3 TEMPO(9), w8.2 MASTER TEMPO(8), w9.9 BACK(3), w8.0 EJECT(2). K2: w9.8 TIME(13), w8.8 MENU(12), w9.10 K2.4, w7.8 STOP(3), w7.0 K2.2, w7.1 K2.1, w9.2 K2.0 (CDJ-850 LINK). Names are the CDJ-850 keys with the same K bit. w1 rotary, w2/w3 tempo fader and centre, w6 bit 0x20/0x40 as on the CDJ-850. On a loaded USB track, K2.4 produced ADD TO / NEW PLAYLIST, confirming the PLAYLIST button."
         },
         {
           "address": "0c0dac80",
@@ -230,7 +275,7 @@
         {
           "address": "0c0e594a",
           "type": "PLATE",
-          "text": "CDJ-350 IRQ5 (vector 69, PNL_XBUSY) ISR: sets the RX page to 1 and sends the first 16 bytes of TX slot panel_tx_slot_index (32-byte slots at 0x0C9B850C). Unlike the CDJ-850 it computes no TX checksum. TX layout: seven 32-byte slots (two 16-byte frames each), one per PNL_XBUSY transaction. Slot 6 (0x0C9B85CC) is the FL text line: 0x0A 0x0A + 13 characters + 0x00 in both frames (frame 2 = blink phase). Slots 0..5 start 0x11/0x12 .. 0x61/0x62 and carry indicators (not decoded)."
+          "text": "CDJ-350 IRQ5 (vector 69, PNL_XBUSY) ISR: sets RX page 1 and sends the first 16 bytes of the indexed TX slot at 0x0C9B850C. The ISR sends prebuilt bytes; the six indicator slots get their checksums in the packer at 0x0C06904C. The seventh slot at 0x0C9B85CC is the FL text, one row of 16 wire bytes per frame."
         },
         {
           "address": "0c0e59b2",

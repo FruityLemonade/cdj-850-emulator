@@ -562,6 +562,204 @@ class CDJ850Art(FaceArt):
         p.text((x0 + x1) / 2, (y0 + y1) / 2 + int(down), key.label, key.font, color, bold=True)
 
 
+class CDJ350Art(FaceArt):
+    """Black CDJ-350 chassis with its silver jog rim and inset switch caps."""
+
+    JOG_PHASES = 18
+
+    def __init__(self, scale, face, deck_label):
+        super().__init__(scale, face, deck_label)
+        self.SLIDER_CAP = face.slider[3:]
+        self.jog = face.jog[:2] + (face.jog[2] - 4,)
+
+    def _plates(self, p):
+        w, h = self.face.size
+        p.rrect((0, 0, w, h), 17, fill=(10, 10, 11), outline=(64, 64, 66), width=1)
+        p.lit((2, 2, w - 2, h - 2), (11, 11, 13), 53,
+              (w * 1.10, h * 0.75, w * 0.38, h * 0.51), radius=16)
+
+    def _panel(self, p):
+        p.gradient(self.face.panel, (14, 14, 16), (6, 6, 7), radius=9)
+        p.rrect(self.face.panel, 9, outline=(69, 69, 72), width=1.4)
+        p.rrect(self.face.lcd, 3, fill=(8, 8, 9))
+
+    def _usb(self, p, box):
+        x0, y0, x1, y1 = box
+        x = (x0 + x1) / 2
+        p.rrect((x0 - 4, y0 - 4, x1 + 4, y1 + 2), 5, fill=(4, 4, 5))
+        p.gradient(box, (76, 77, 82), (38, 38, 41), radius=5)
+        p.d.arc(p.b((x - 20, y1 - 28, x + 20, y1 + 10)), 193, 347,
+                fill=(113, 114, 118), width=p.w(2))
+        p.rrect((x0 + 1, y1 - 12, x1 - 1, y1), 3, fill=(11, 11, 12))
+        self._source_symbol(p, "usb", x, y1 + 9, 0.83, ART.PRINT)
+        p.line([(x, y1 + 17), (x, y1 + 25)], ART.PRINT, 1.1)
+
+    def _names(self, p):
+        x, y, _ = self.face.name_at
+        p.text(x, y - 7, "MULTI PLAYER", 8, ART.PRINT, bold=True)
+        p.text(x, y + 8, self.face.title, 18, ART.PRINT, bold=True)
+
+    def _pill(self, p, x, y, text):
+        w = ART.text_width(text, p.n(7.5)) / p.k
+        p.rrect((x - w / 2 - 3, y - 5, x + w / 2 + 3, y + 5), 2, fill=(210, 210, 211))
+        p.text(x, y, text, 7.5, (30, 30, 31))
+
+    def _jog_surround(self, p, jog):
+        x, y, r = self.face.jog
+        p.circle(x, y, r + 2, fill=(6, 6, 7), outline=(99, 99, 103), width=1.2)
+        for a0, a1 in ((45, 64), (116, 135)):
+            p.d.arc(p.c(x, y, r + 9), a0, a1, fill=ART.PRINT, width=p.w(1.5))
+
+    def jog_box(self):
+        x, y, r = self.jog
+        return (x - r - 2, y - r - 2, x + r + 2, y + r + 2)
+
+    jog_sprite = ART.Art.jog_sprite
+
+    def _jog(self, phase):
+        x, y, r = self.jog
+        top = self.face.platter_radius
+        p = Painter(self.jog_box(), self.scale)
+        p.chrome(x, y, r, spin=-14)
+        p.circle(x, y, r - 3, fill=(34, 35, 38))
+        p.circle(x, y, r - 5, fill=(139, 139, 143))
+
+        def point(radius, angle):
+            return p.p(x + radius * math.cos(angle), y + radius * math.sin(angle))
+
+        for i in range(360 // self.JOG_PHASES):
+            a = math.radians(i * self.JOG_PHASES + phase)
+            b = a + math.radians(self.JOG_PHASES)
+            light = (1 + math.cos((a + b) / 2 + 1.9)) / 2
+            shade = round(88 + 146 * light)
+            p.d.polygon([point(r - 6, a), point(r - 6, b), point(top + 7, b),
+                         point(top + 3, (a + b) / 2), point(top + 7, a)],
+                        fill=(shade, shade, min(255, shade + 4)))
+            p.d.line([point(r - 6, a), point(top + 7, a)],
+                     fill=(shade * 3 // 4,) * 3, width=p.w(1))
+
+        p.circle(x, y, top + 3, fill=(12, 12, 14), outline=(128, 128, 132), width=1)
+        return p.finish(), p.px
+
+    def centre_sprite(self, live):
+        x, y = self.face.jog[:2]
+        r = self.face.platter_radius
+        p = Painter((x - r - 1, y - r - 1, x + r + 1, y + r + 1), self.scale)
+        p.gradient((x - r, y - r, x + r, y + r), (25, 25, 28), (44, 44, 47), ellipse=True)
+        p.glow((x - r, y - r, x + r, y + r),
+               lambda d, c: d.pieslice(p.c(x, y, r - 7), 105, 170, fill=c),
+               (130, 125, 132), 23, 0.24, over=True)
+        for rr in range(5, int(r), 3):
+            p.circle(x, y, rr, outline=(34, 34, 37), width=0.45)
+        p.circle(x, y, r, outline=(21, 21, 24), width=1.2)
+        return p.finish(), p.px
+
+    def select_sprite(self, phase, down):
+        phase = int(phase) % 12
+        key = ("select", phase, down)
+        if key not in self._sprites:
+            x, y = self.face.rotary
+            r = self.face.rotary_radius
+            p = Painter((x - r - 2, y - r - 2, x + r + 2, y + r + 2), self.scale)
+            p.circle(x, y, r, fill=(14, 14, 16), outline=(81, 81, 85), width=1.3)
+            p.chrome(x, y - (0 if down else 1), r * 0.76, tint=(-82, -82, -80),
+                     spin=phase * 6 + 15)
+            self._sprites[key] = p.finish(), p.px
+        return self._sprites[key]
+
+    def _slider_face(self, p):
+        x, top, bottom = self.face.slider[:3]
+        p.rrect((x - 3.5, top - 9, x + 3.5, bottom + 9), 1.4, fill=(4, 4, 5),
+                outline=(81, 81, 84), width=0.7)
+        for i in range(51):
+            y = top + i * (bottom - top) / 50
+            width = 26 if i % 5 == 0 else 20
+            for side in (-1, 1):
+                p.line([(x + side * 4, y), (x + side * width, y)], ART.PRINT, 0.85)
+        for label, y in (("−", top), ("0", (top + bottom) / 2), ("+", bottom)):
+            p.text(x - 39, y, label, 10, ART.PRINT)
+
+    def slider_cap(self):
+        if ("cap",) not in self._sprites:
+            w, h = self.SLIDER_CAP
+            p = Painter((0, 0, w + 8, h + 8), self.scale)
+            mid = 4 + h / 2
+            p.rrect((2, 6, w + 6, h + 8), 6, fill=(5, 5, 6))
+            p.gradient((4, 4, w + 4, h + 4), (108, 107, 113), (53, 53, 57), radius=5)
+            p.gradient((7, mid - 10, w + 1, mid + 10), (61, 61, 66), (101, 101, 107), radius=2)
+            p.line([(10, mid), (w - 2, mid)], (234, 234, 237), 2.1)
+            self._sprites["cap",] = p.finish(), None
+        return self._sprites["cap",][0]
+
+    def _key(self, p, key, look, lit=False, down=False):
+        # A mouse press shifts the cap. Lamps only follow the panel report.
+        getattr(self, "_k_" + key.kind)(p, key, lit, down)
+
+    def _k_src(self, p, key, lit, down):
+        self._square(p, key, lit, down, rim=(64, 64, 67))
+
+    def _k_action(self, p, key, lit, down):
+        self._square(p, key, lit, down, rim=(191, 191, 195))
+
+    def _square(self, p, key, lit, down, rim):
+        box = key.box
+        x0, y0, x1, y1 = box
+        x, y = (x0 + x1) / 2, (y0 + y1) / 2 + int(down)
+        p.rrect(box, 13, fill=(13, 13, 15), outline=rim, width=2.6)
+        p.gradient((x0 + 5, y0 + 4 + int(down), x1 - 5, y1 - 5),
+                   (37, 37, 40), (25, 25, 27), radius=8)
+        if key.symbol:
+            self._source_symbol(p, key.symbol, x, y, 1, ART.PRINT)
+        if key.label:
+            p.text(x, y + (14 if key.symbol == "eject" else 0), key.label,
+                   key.font, ART.PRINT, bold=True)
+        if key.dot:
+            self._led(p, x, y0 + 13, 3.2, key.dot, lit)
+        elif key.symbol or key.name == "USB STOP":
+            p.circle(x, y0 + 13, 2.7, fill=(64, 64, 67))
+
+    def _source_symbol(self, p, symbol, x, y, scale, color):
+        s = scale
+        if symbol == "computer":
+            p.rrect((x - 11, y - 8, x + 11, y + 6), 0, outline=color, width=1.3)
+            p.d.polygon([p.p(x - 11, y + 8), p.p(x + 11, y + 8),
+                         p.p(x + 15, y + 12), p.p(x - 15, y + 12)], fill=color)
+        elif symbol == "disc":
+            p.d.ellipse(p.b((x - 11, y - 8, x + 11, y + 8)), outline=color, width=p.w(1.5))
+            p.d.line([p.p(x - 7, y + 5), p.p(x + 6, y - 5)], fill=color, width=p.w(1.3))
+            p.circle(x, y, 2, fill=color)
+        elif symbol == "usb":
+            p.line([(x - 12 * s, y), (x + 10 * s, y)], color, 1.2)
+            p.line([(x - 4 * s, y), (x + 2 * s, y - 5 * s), (x + 6 * s, y - 5 * s)], color, 1.1)
+            p.line([(x - s, y), (x + 4 * s, y + 5 * s), (x + 8 * s, y + 5 * s)], color, 1.1)
+            p.circle(x - 11 * s, y, 2.1 * s, fill=color)
+            self._symbol(p, "right", x + 10 * s, y, 2.6 * s, color)
+        elif symbol == "power":
+            p.d.arc(p.c(x, y, 7), 304, 236, fill=color, width=p.w(1.7))
+            p.line([(x, y - 9), (x, y + 1)], color, 1.7)
+        else:
+            self._symbol(p, symbol, x, y - 4, 6.4, color)
+
+    def _k_chrome(self, p, key, lit, down):
+        x, y, r = key.circle
+        p.circle(x, y, r + 1.5, fill=(6, 6, 7), outline=(58, 58, 62), width=1)
+        p.chrome(x, y + int(down), r - 1, tint=(-50, -50, -47), spin=10)
+        if key.symbol:
+            self._symbol(p, key.symbol, x, y + int(down), r * 0.46, ART.PRINT)
+        if key.dot:
+            self._led(p, x, y, r * 0.26, key.dot, lit)
+
+    def _k_big(self, p, key, lit, down):
+        x, y, r = key.circle
+        p.circle(x, y, r, fill=(24, 24, 25), outline=(202, 202, 207), width=2.5)
+        p.chrome(x, y + int(down), r - 6, tint=(-103, -103, -99), spin=18)
+        self._led(p, x, y - r * 0.55, 3.3, key.color, lit)
+        if key.symbol:
+            self._symbol(p, key.symbol, x, y + int(down), r * 0.19, ART.PRINT)
+        else:
+            p.text(x, y + int(down), key.label, key.font, ART.PRINT, bold=True)
+
+
 def make_face_art(scale, face, deck_label):
-    art_class = CDJ850Art if face.title == "CDJ-850" else FaceArt
-    return art_class(scale, face, deck_label)
+    classes = {"CDJ-350": CDJ350Art, "CDJ-850": CDJ850Art}
+    return classes.get(face.title, FaceArt)(scale, face, deck_label)

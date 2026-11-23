@@ -163,6 +163,7 @@ static const char *fl_legend_path(unsigned char ch)
     case 'F': return "400006;0333";
     case 'G': return "41301001051636454323";
     case 'I': return "1030;2026;1636";
+    case 'K': return "0006;4003;1346";
     case 'L': return "000646";
     case 'M': return "0600224046";
     case 'N': return "06004640";
@@ -363,16 +364,13 @@ static void fl_polygon(FlCanvas *c, const int points[][2], int count,
 }
 
 /* Seven-segment silhouettes; inactive segments remain barely visible. */
-static void fl_digit(FlCanvas *c, int x, int y, int w, int h, int digit)
+static void fl_segments(FlCanvas *c, int x, int y, int w, int h,
+                        uint8_t bits, uint32_t lit, uint32_t off)
 {
-    static const uint8_t masks[] = {
-        0x3f, 0x06, 0x5b, 0x4f, 0x66, 0x6d, 0x7d, 0x07, 0x7f, 0x6f
-    };
-    uint8_t bits = digit >= 0 && digit <= 9 ? masks[digit] : 0;
     int t = w / 6;
     int half = h / 2;
     for (int segment = 0; segment < 7; segment++) {
-        uint32_t color = bits & (1 << segment) ? FL_BLUE : FL_OFF;
+        uint32_t color = bits & (1 << segment) ? lit : off;
         bool horizontal = segment == 0 || segment == 3 || segment == 6;
         int px = segment == 1 || segment == 2 ? x + w - t : x;
         int py = segment == 0 ? y : segment == 3 ? y + h - t :
@@ -390,6 +388,15 @@ static void fl_digit(FlCanvas *c, int x, int y, int w, int h, int digit)
         }
         fl_polygon(c, points, 6, color);
     }
+}
+
+static void fl_digit(FlCanvas *c, int x, int y, int w, int h, int digit)
+{
+    static const uint8_t masks[] = {
+        0x3f, 0x06, 0x5b, 0x4f, 0x66, 0x6d, 0x7d, 0x07, 0x7f, 0x6f
+    };
+    uint8_t bits = digit >= 0 && digit <= 9 ? masks[digit] : 0;
+    fl_segments(c, x, y, w, h, bits, FL_BLUE, FL_OFF);
 }
 
 /* Pitch glass traced in normalized coordinates from IMG_2295, with the

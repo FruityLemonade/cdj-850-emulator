@@ -134,6 +134,8 @@ STUBS = {
         "void vfd_note_track_number(bool known, uint8_t number);\n"
         "void vfd_note_panel_tags(const uint8_t tags[3]);\n"
         "void vfd_note_panel_text(uint8_t mode, const char *l0, const char *l1, const char *l2);\n"
+        "void vfd_note_cdj350(const uint8_t tx[][16]);\n"
+        "void vfd_reset_cdj350(void);\n"
         "#endif\n"
     ),
     "_pre.h": (
@@ -157,6 +159,9 @@ static uint8_t vfd_last_mode = 0xff;
 static char vfd_last[3][256];
 static unsigned vfd_calls = 0;
 static unsigned reset_requests = 0;
+
+void vfd_note_cdj350(const uint8_t tx[][16]) { (void)tx; }
+void vfd_reset_cdj350(void) {}
 
 void qemu_system_reset_request(int reason) { (void)reason; reset_requests++; }
 
