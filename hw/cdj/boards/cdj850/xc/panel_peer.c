@@ -186,7 +186,8 @@ static const PanelButtonDef panel_buttons[] = {
  * from its words 7..10 (0x0C0ECCB4). A name here is the CDJ-850 key that sets
  * the same K bit; the k*_ names set a K bit the CDJ-850 has no source for
  * (by the service manual's key list, LOOP DIVIDE -/+, PLAYLIST and BPM LOCK
- * remain; k2_2 shows "NO MASTERBPM", which fits BPM LOCK). Source keys act
+ * remain; k2_2 is BPM LOCK: it steps the RELOOP-held version screen through
+ * Main/Disp/DSP as the manual says). Source keys act
  * after a 1 s hold (keys_handler_common 0x0C0C826E), so script them as e.g.
  * 8000:usb:1500.
  * Word 0 is frame 1 bytes 13..14 (as on the CDJ-850); words 1..3 are frame 2
@@ -208,7 +209,7 @@ static const PanelButtonDef panel_buttons_350[] = {
     { "k0_9",           1, 0x4000 },    /* K0.9, no CDJ-850 source */
     { "k0_8",           1, 0x8000 },    /* K0.8, no CDJ-850 source */
     { "k2_2",           1, 0x0001 },    /* K2.2, no CDJ-850 source */
-    { "bpm_lock",       1, 0x0001 },    /* probably: shows "NO MASTERBPM" */
+    { "bpm_lock",       1, 0x0001 },    /* BPM LOCK */
     { "k2_1",           1, 0x0002 },    /* K2.1, no CDJ-850 source */
     /* Word 2 -> frame 2 bytes 3..4 */
     { "menu",           2, 0x0100 },    /* K2.12 (CDJ-850 MENU) */
@@ -230,7 +231,7 @@ static const PanelButtonDef panel_buttons_350[] = {
     { "usb",            3, 0x0001 },    /* K0.0 */
     { "disc",           3, 0x0002 },    /* K0.1 */
     { "cd",             3, 0x0002 },
-    { "link",           3, 0x0004 },    /* K2.0 (CDJ-850 LINK; PC?) */
+    { "link",           3, 0x0004 },    /* K2.0: PC (CDJ-850 LINK) */
     { "pc",             3, 0x0004 },
 };
 
