@@ -162,6 +162,48 @@ static void cdj_usb_raise_bemp(CdjUsbState *s)
 
 /* Run one transaction and return the byte count, or < 0 on a device error.
  * buf may be NULL for a zero-length status-stage packet. */
+
+/*
+ * CDJ_USB_STATS=1: log the bytes moved IN and OUT per emulated second, for
+ * measuring stick throughput (e.g. against what playback needs).
+ */
+static void cdj_usb_stats(int pid, size_t len)
+{
+    static int on = -1;
+    static uint64_t in_bytes, out_bytes, packets;
+    static int64_t window_ns;
+    int64_t now;
+
+    if (on < 0) {
+        const char *e = getenv("CDJ_USB_STATS");
+
+        on = e && *e && *e != '0';
+    }
+    if (!on) {
+        return;
+    }
+    now = qemu_clock_get_ns(QEMU_CLOCK_VIRTUAL);
+    if (!window_ns) {
+        window_ns = now;
+    }
+    if (pid == USB_TOKEN_IN) {
+        in_bytes += len;
+    } else {
+        out_bytes += len;
+    }
+    packets++;
+    if (now - window_ns >= 1000000000LL) {
+        info_report("usb-stats: %" PRIu64 " ms: in %" PRIu64 " B/s, out %"
+                    PRIu64 " B/s, %" PRIu64 " packets/s",
+                    (uint64_t)now / 1000000,
+                    in_bytes * 1000000000ULL / (uint64_t)(now - window_ns),
+                    out_bytes * 1000000000ULL / (uint64_t)(now - window_ns),
+                    packets * 1000000000ULL / (uint64_t)(now - window_ns));
+        in_bytes = out_bytes = packets = 0;
+        window_ns = now;
+    }
+}
+
 static int cdj_usb_xfer(CdjUsbState *s, int pid, unsigned epnum, uint8_t addr,
                         uint8_t *buf, unsigned len)
 {
@@ -209,6 +251,7 @@ static int cdj_usb_xfer(CdjUsbState *s, int pid, unsigned epnum, uint8_t addr,
         }
         return s->packet.status == USB_RET_NAK ? 0 : -1;
     }
+    cdj_usb_stats(pid, s->packet.actual_length);
     return (int)s->packet.actual_length;
 }
 
