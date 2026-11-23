@@ -105,10 +105,10 @@ PERSIST=1 ./start.sh --app
 
 The [browser firmware patcher](https://fruitylemonade.github.io/cdj-850-mods/) builds installable updates from an original CDJ-850 `C850MAIN.UPD` (v1.13). Its current options include USB WIDE tempo with the ±16% step, hot cues, quantized loops, loop resizing, an extended BPM range, two-decimal BPM, reordered INFO screens, and a shorter auto standby timeout.
 
-- **USB FLAC playback** supports stereo files at 16 or 24 bits and 44.1 or 48 kHz. It uses the deck's WAV playback path for resampling and 16-bit output. Fast seeking can still cause brief dropouts.
+- **USB FLAC playback** supports stereo files at 16 or 24 bits and 44.1 or 48 kHz. It uses the deck's WAV playback path for resampling and 16-bit output.
 - **INFO screen order** shows playing BPM, Camelot key and rekordbox rating beneath the track title on USB. The key follows pitch with MASTER TEMPO off. With BPM decimals enabled, the display uses the current beat's tempo when a grid is available.
 
-The expanded FLAC formats and INFO rating display have been tested in the emulator and still need verification on a physical deck.
+The INFO rating display has been tested in the emulator and still needs verification on a physical deck.
 
 The repository includes a full firmware patching, repacking, and static validation pipeline for `C850MAIN.UPD` (v1.13):
 
