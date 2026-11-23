@@ -144,6 +144,7 @@ def _payload_mem(p):
     mem = Memory()
     mem.add(0x0DE00020, p.blob)
     mem.add(0x0DDFF000, bytes(0x1000))           # stack
+    mem.add(0x0CE649A0, bytes(0x20))
     return mem
 
 
@@ -269,6 +270,12 @@ def test_info_row_rewrite_on_the_interpreter():
     mem.write(PITCH, struct.pack(">h", 0))             # fader back: 127.96
     _call(p, mem, "bpm_decimals_rows")
     assert _row_texts(mem)[1] == (0x0D, "127.96") and mem.u32(writes) == 2
+    # BPM Lock active (+60.00%) overrides fader pitch (0.00%): 127.96 * 1.6 = 204.74
+    mem.write(0x0CE649AC, b"\x01")
+    mem.write(0x0CE649BC, struct.pack(">h", 6000))
+    _call(p, mem, "bpm_decimals_rows")
+    assert _row_texts(mem)[1] == (0x0D, "204.74") and mem.u32(writes) == 3
+    mem.write(0x0CE649AC, b"\x00")
     # the gate closes (base from the BPM counter): the row goes back to the stock text
     mem.write(BASE_TENTHS, struct.pack(">H", 1279))
     _call(p, mem, "bpm_decimals_rows")

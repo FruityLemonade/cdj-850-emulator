@@ -276,6 +276,7 @@ def _screen_mem(p, items, mode=10, key="Am", bpm100=12823, bpm_ok=1, pitch=0,
     mem.add(MODE, struct.pack(">I", mode))
     mem.add(TRACK, struct.pack(">h", 7))
     mem.add(PITCH, struct.pack(">h", pitch))
+    mem.add(0x0CE649A0, bytes(0x20))
     mem.add(MASTER_TEMPO, bytes([mt]))
     mem.add(USB_MODE, bytes([usb]))
     return mem
@@ -322,6 +323,15 @@ def test_pass_reorders_and_writes_the_title_row():
     mem = _screen_mem(p, STOCK, bpm_ok=0, key="F#m")
     _call(p, mem, "info_order_pass")
     assert _row(mem, 1) == (0x0D, "11A")
+    # BPM Lock active (+60.00%) overrides fader pitch (0.00%) for both BPM and Camelot key shift
+    mem = _screen_mem(p, STOCK, bpm100=8000, key="Am", pitch=0, mt=0)
+    mem.write(0x0CE649AC, b"\x01")
+    mem.write(0x0CE649BC, struct.pack(">h", 6000))
+    _call(p, mem, "info_order_pass")
+    assert _row(mem, 1) == (0x0D, "128.00 4A") and _src(mem, 1) == "128.00 4A"
+    mem.write(MASTER_TEMPO, b"\x01")
+    _call(p, mem, "info_order_pass")
+    assert _row(mem, 1) == (0x0D, "128.00 8A")
 
 
 @needs_toolchain
