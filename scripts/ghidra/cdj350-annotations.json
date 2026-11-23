@@ -543,7 +543,7 @@
         {
           "address": "0c0da740",
           "type": "PLATE",
-          "text": "CDJ-350 counterpart of 0x0C0ECCB4: builds K0..K2 from w7..w9. K0: w7.9 PLAY(13), w7.10 CUE(14), w7.11 LOOP IN(12), w7.12 LOOP OUT(11), w7.13 RELOOP(10), w7.14 K0.9, w7.15 K0.8, w8.9 TRACK-(2), w8.10 TRACK+(3), w8.11 SEARCH-(5), w8.12 SEARCH+(4), w9.0 USB(0), w9.1 DISC(1). K1: w8.1 VINYL(10), w8.3 TEMPO(9), w8.2 MASTER TEMPO(8), w9.9 BACK(3), w8.0 EJECT(2). K2: w9.8 TIME(13), w8.8 MENU(12), w9.10 K2.4, w7.8 STOP(3), w7.0 K2.2, w7.1 K2.1, w9.2 K2.0 (CDJ-850 LINK). Names are the CDJ-850 keys with the same K bit. w1 rotary, w2/w3 tempo fader and centre, w6 bit 0x20/0x40 as on the CDJ-850. On a loaded USB track, K2.4 produced ADD TO / NEW PLAYLIST, confirming the PLAYLIST button."
+          "text": "CDJ-350 counterpart of 0x0C0ECCB4: builds K0..K2 from w7..w9. K0: w7.9 PLAY(13), w7.10 CUE(14), w7.11 LOOP IN(12), w7.12 LOOP OUT(11), w7.13 RELOOP(10), w7.14 K0.9 and w7.15 K0.8 (the two halves of the BEAT LOOP / LOOP DIVIDE rocker: either starts a 4-beat loop [emu]), w8.9 TRACK-(2), w8.10 TRACK+(3), w8.11 SEARCH-(5), w8.12 SEARCH+(4), w9.0 USB(0), w9.1 DISC(1). K1: w8.1 VINYL(10), w8.3 TEMPO(9), w8.2 MASTER TEMPO(8), w9.9 BACK(3), w8.0 EJECT(2). K2: w9.8 TIME(13), w8.8 MENU(12), w9.10 K2.4 (PLAYLIST), w7.8 STOP(3), w7.0 K2.2 (BPM LOCK), w7.1 K2.1 (no CDJ-350 key), w9.2 K2.0 (PC; CDJ-850 LINK). Names are the CDJ-850 keys with the same K bit. w1 rotary, w2/w3 tempo fader and centre, w6 bit 0x20/0x40 as on the CDJ-850. On a loaded USB track, K2.4 produced ADD TO / NEW PLAYLIST, confirming the PLAYLIST button."
         },
         {
           "address": "0c0da9f2",

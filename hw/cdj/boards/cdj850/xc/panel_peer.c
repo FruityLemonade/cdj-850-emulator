@@ -185,9 +185,8 @@ static const PanelButtonDef panel_buttons[] = {
  * internal key words K0..K2 from words 7..9 (0x0C0DA740), as the CDJ-850 does
  * from its words 7..10 (0x0C0ECCB4). A name here is the CDJ-850 key that sets
  * the same K bit; the k*_ names set a K bit the CDJ-850 has no source for
- * (by the service manual's key list, LOOP DIVIDE -/+, PLAYLIST and BPM LOCK
- * remain; k2_2 is BPM LOCK: it steps the RELOOP-held version screen through
- * Main/Disp/DSP as the manual says). Source keys act
+ * (the BEAT LOOP / LOOP DIVIDE rocker, PLAYLIST and BPM LOCK, by their
+ * effect and the operating instructions; k2_1 is left over). Source keys act
  * after a 1 s hold (keys_handler_common 0x0C0C826E), so script them as e.g.
  * 8000:usb:1500.
  * Word 0 is frame 1 bytes 13..14 (as on the CDJ-850); words 1..3 are frame 2
@@ -206,11 +205,13 @@ static const PanelButtonDef panel_buttons_350[] = {
     { "loop_in",        1, 0x0800 },    /* K0.12 */
     { "loop_out",       1, 0x1000 },    /* K0.11 */
     { "reloop",         1, 0x2000 },    /* K0.10 */
-    { "k0_9",           1, 0x4000 },    /* K0.9, no CDJ-850 source */
-    { "k0_8",           1, 0x8000 },    /* K0.8, no CDJ-850 source */
+    { "k0_9",           1, 0x4000 },    /* K0.9: BEAT LOOP (LOOP DIVIDE), */
+    { "beat_loop",      1, 0x4000 },    /* one half of the -/+ rocker */
+    { "k0_8",           1, 0x8000 },    /* K0.8: the rocker's other half; */
+    { "beat_loop_2",    1, 0x8000 },    /* both start a 4-beat loop */
     { "k2_2",           1, 0x0001 },    /* K2.2, no CDJ-850 source */
     { "bpm_lock",       1, 0x0001 },    /* BPM LOCK */
-    { "k2_1",           1, 0x0002 },    /* K2.1, no CDJ-850 source */
+    { "k2_1",           1, 0x0002 },    /* K2.1: no key on the CDJ-350 */
     /* Word 2 -> frame 2 bytes 3..4 */
     { "menu",           2, 0x0100 },    /* K2.12 (CDJ-850 MENU) */
     { "utility",        2, 0x0100 },    /* probably DISPLAY/UTILITY */
@@ -227,7 +228,8 @@ static const PanelButtonDef panel_buttons_350[] = {
     /* Word 3 -> frame 2 bytes 5..6 */
     { "time",           3, 0x0100 },    /* K2.13 */
     { "back",           3, 0x0200 },    /* K1.3 */
-    { "k2_4",           3, 0x0400 },    /* K2.4, no CDJ-850 source */
+    { "k2_4",           3, 0x0400 },    /* K2.4: PLAYLIST (ADD TO / NEW */
+    { "playlist",       3, 0x0400 },    /* PLAYLIST) */
     { "usb",            3, 0x0001 },    /* K0.0 */
     { "disc",           3, 0x0002 },    /* K0.1 */
     { "cd",             3, 0x0002 },
