@@ -235,8 +235,10 @@ def test_patch_update_and_validate_flac(tmp_path):
                     reason="the flac encoder and a host C compiler are needed")
 def test_host_decoder_is_bit_exact(tmp_path):
     exe = tmp_path / "host-test"
-    d = ROOT / "mods" / "flac" / "cdj850"
-    subprocess.run(["cc", "-std=c99", "-O2", "-Wall", "-Wextra", "-Werror", "-I", str(d / "payload"),
-                    str(d / "test.c"), str(d / "payload" / "decoder.c"), "-o", str(exe)], check=True)
+    flac = ROOT / "mods" / "flac"
+    d = flac / "cdj850"
+    sources = flac / "payload"
+    subprocess.run(["cc", "-std=c99", "-O2", "-Wall", "-Wextra", "-Werror", "-I", str(sources),
+                    str(d / "test.c"), str(sources / "decoder.c"), "-o", str(exe)], check=True)
     r = subprocess.run([sys.executable, str(d / "test_decoder.py"), str(exe)], capture_output=True, text=True)
     assert r.returncode == 0 and "PASS" in r.stdout, r.stdout + r.stderr

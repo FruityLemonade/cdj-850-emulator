@@ -8,8 +8,60 @@
       "load_address": "0c000000",
       "functions": [
         {
+          "address": "0c000bc4",
+          "name": "wav_header_read"
+        },
+        {
+          "address": "0c019396",
+          "name": "usb_dma_start"
+        },
+        {
+          "address": "0c03eb94",
+          "name": "usb_classify_dir_entry"
+        },
+        {
+          "address": "0c0551f4",
+          "name": "audio_open_dispatch"
+        },
+        {
+          "address": "0c055242",
+          "name": "usb_audio_seek"
+        },
+        {
+          "address": "0c05528a",
+          "name": "usb_audio_open"
+        },
+        {
+          "address": "0c055460",
+          "name": "usb_audio_close"
+        },
+        {
+          "address": "0c05548e",
+          "name": "disc_audio_open"
+        },
+        {
+          "address": "0c0563ea",
+          "name": "wav_decode_block"
+        },
+        {
+          "address": "0c084d60",
+          "name": "flash_task"
+        },
+        {
+          "address": "0c0ae3f4",
+          "name": "clear_statics"
+        },
+        {
           "address": "0c0ae414",
           "name": "tick_1ms"
+        },
+        {
+          "address": "0c0b29e0",
+          "name": "mp3_act_task"
+        },
+        {
+          "address": "0c0b2e46",
+          "name": "wav_pcm_read"
         },
         {
           "address": "0c0bb1da",
@@ -48,6 +100,10 @@
           "name": "keys_handler_gate"
         },
         {
+          "address": "0c0dca1a",
+          "name": "pcm_ring_write"
+        },
+        {
           "address": "0c0e5800",
           "name": "scif1_panel_setup"
         },
@@ -64,11 +120,67 @@
           "name": "panel_rx_changed"
         },
         {
+          "address": "0c0e7196",
+          "name": "ocache_purge_range"
+        },
+        {
+          "address": "0c0f8a1c",
+          "name": "file_close"
+        },
+        {
+          "address": "0c0f8a98",
+          "name": "file_read"
+        },
+        {
+          "address": "0c0f8bd4",
+          "name": "file_seek"
+        },
+        {
+          "address": "0c0f8c08",
+          "name": "file_tell"
+        },
+        {
+          "address": "0c0f8f68",
+          "name": "file_size"
+        },
+        {
           "address": "0c12ae44",
           "name": "audio_synth_filterbank"
         }
       ],
       "labels": [
+        {
+          "address": "0c055634",
+          "name": "flac_file_size_pool"
+        },
+        {
+          "address": "0c055644",
+          "name": "flac_file_close_pool"
+        },
+        {
+          "address": "0c055ba4",
+          "name": "flac_wav_pcm_read_pool"
+        },
+        {
+          "address": "0c0832e4",
+          "name": "flac_wav_header_read_pool"
+        },
+        {
+          "address": "0c0b32d0",
+          "name": "flac_audio_open_pool"
+        },
+        {
+          "address": "0c0b37b4",
+          "name": "flac_audio_open_pool2"
+        },
+        {
+          "address": "0c139864",
+          "name": "clear_statics_bounds"
+        },
+        {
+          "address": "0c13e570",
+          "name": "upd_filename"
+        },
         {
           "address": "0c13e7f4",
           "name": "fl_msg_no_usb_mem"
@@ -86,6 +198,14 @@
           "name": "dsp_shi_segment1"
         },
         {
+          "address": "0c144ef8",
+          "name": "flash_task_descriptor"
+        },
+        {
+          "address": "0c176c88",
+          "name": "mp3_act_task_descriptor"
+        },
+        {
           "address": "0c1778bc",
           "name": "inh_table_cmi0"
         },
@@ -98,8 +218,36 @@
           "name": "inh_table_txi1"
         },
         {
+          "address": "0c1abc18",
+          "name": "usb_audio_file"
+        },
+        {
+          "address": "0c1abc1c",
+          "name": "audio_source_type"
+        },
+        {
+          "address": "0c1caf3c",
+          "name": "update_request"
+        },
+        {
+          "address": "0c1caf3d",
+          "name": "power_on_update_mode"
+        },
+        {
+          "address": "0c1caf4a",
+          "name": "power_on_keys_pending"
+        },
+        {
           "address": "0c1caf4c",
           "name": "keys_gate_mode"
+        },
+        {
+          "address": "0c1cc700",
+          "name": "loader_stub_source"
+        },
+        {
+          "address": "0c1d7710",
+          "name": "pcm_ring"
         },
         {
           "address": "0c9b850c",
@@ -204,6 +352,31 @@
       ],
       "comments": [
         {
+          "address": "0c000010",
+          "type": "PLATE",
+          "text": "Startup literal normally calls clear_statics, which leaves the next callee in r3. The payload loader changes it to a one-time stub in the cleared zero tail."
+        },
+        {
+          "address": "0c03eb94",
+          "type": "PLATE",
+          "text": "Directory classifier takes a FAT entry pointer at +0 and the UTF-16 name at +0x12. WAV is type 11, unsupported is -1. The FLAC hook moves the entry and resumes stock at 0x0C03EBA0."
+        },
+        {
+          "address": "0c055634",
+          "type": "PLATE",
+          "text": "The two USB open size calls at 0x0C055324 and 0x0C05542C share this pool word. The callee takes a file handle and a length output pointer."
+        },
+        {
+          "address": "0c055644",
+          "type": "PLATE",
+          "text": "USB audio close reads this pool at 0x0C055472. The mod releases the virtual FLAC file slot and closes the stock file."
+        },
+        {
+          "address": "0c055ba4",
+          "type": "PLATE",
+          "text": "WAV PCM read pool, reader 0x0C05591A. FLAC supplies little-endian virtual WAV samples for its active USB handle."
+        },
+        {
           "address": "0c05fcc0",
           "type": "PLATE",
           "text": "INFO side of the display mode switch. Sets staging 0x0C9B818C bit 7 and clears 0x0C9B818F bit 2. The BROWSE path at 0x0C05FC8A clears INFO and sets BROWSE. These become page 5 frame 2 byte 6 bit 7 and page 4 frame 2 byte 6 bit 2 respectively."
@@ -304,9 +477,44 @@
           "text": "Copies the A.CUE setting from 0x0C9B8DDC bit 0 into display byte 0x0C9B818C bit 0 (page 5 frame 2 byte 6). Verified by holding TIME MODE/AUTO CUE and diffing SCIF1 captures."
         },
         {
+          "address": "0c0832e4",
+          "type": "PLATE",
+          "text": "WAV header reader pool, read at 0x0C08311C and 0x0C083184. FLAC synthesizes a 16-bit PCM WAV header at the source sample rate."
+        },
+        {
+          "address": "0c084c28",
+          "type": "PLATE",
+          "text": "NOR word-programming path. During an emulated USB update with a changed version, the flash task advanced through 64 KiB sectors while polling and programming through the uncached flash mirror."
+        },
+        {
+          "address": "0c08575c",
+          "type": "PLATE",
+          "text": "USB update reads the version at file offset 0x60010. In the version-checked mode it skips programming if the first character is at least ASCII 1 and it and the two digits after the dot match the running label. The checked mode starts at flash 0x60000 and writes 57 sectors. A stock v1.14 to modified v1.15 update reached COMPLETE and the emulator NOR readback matched the playback image. The NOR readback matched through 0x3EFFFF. Differences outside the update window were at flash 0x3F8000\u20130x3F8017 and 0x3FFFFC\u20130x3FFFFF."
+        },
+        {
+          "address": "0c0ae3f4",
+          "type": "PLATE",
+          "text": "MAIN startup clears SDRAM from 0x0C1CC678 through 0x0DCC2D33 using the bounds at 0x0C139864. The FLAC loader runs before this clear and copies to the uncached SDRAM mirror."
+        },
+        {
           "address": "0c0ae414",
           "type": "PLATE",
           "text": "CDJ-350 1 ms tick group: increments u32 tick_ms (0x0CD2DCC0), then calls keys_tick_1ms (0x0C0C6EBC) and the other 1 ms routines from pools 0x0C0AE44C..0x0C0AE468. Reached through 0x0C0BB1DA, whose pointer sits at 0x0C1778D0 right after the CMT0 (vector 142) entry at 0x0C1778BC; the board's CMT0 tick is 1 ms (CMCOR 0x1045, Pphi/8). In the emulator under host load it ran about 600 times per emulated second instead of 1000 (the CDJ-850's tick_1ms the same) [emu]."
+        },
+        {
+          "address": "0c0b29e0",
+          "type": "PLATE",
+          "text": "mp3ActTask entry. Its descriptor at 0x0C176C88 reserves a 0x1800-byte stack. FLAC uses a private stack for the decoder."
+        },
+        {
+          "address": "0c0b32d0",
+          "type": "PLATE",
+          "text": "Audio open redirect pool, read at 0x0C0B30CE. On USB the FLAC hook exposes WAV as the extension after the stock open."
+        },
+        {
+          "address": "0c0b37b4",
+          "type": "PLATE",
+          "text": "Second audio open redirect pool, read at 0x0C0B360C and 0x0C0B372C."
         },
         {
           "address": "0c0c6804",
@@ -334,6 +542,11 @@
           "text": "CDJ-350 counterpart of 0x0C0ECCB4: builds K0..K2 from w7..w9. K0: w7.9 PLAY(13), w7.10 CUE(14), w7.11 LOOP IN(12), w7.12 LOOP OUT(11), w7.13 RELOOP(10), w7.14 K0.9, w7.15 K0.8, w8.9 TRACK-(2), w8.10 TRACK+(3), w8.11 SEARCH-(5), w8.12 SEARCH+(4), w9.0 USB(0), w9.1 DISC(1). K1: w8.1 VINYL(10), w8.3 TEMPO(9), w8.2 MASTER TEMPO(8), w9.9 BACK(3), w8.0 EJECT(2). K2: w9.8 TIME(13), w8.8 MENU(12), w9.10 K2.4, w7.8 STOP(3), w7.0 K2.2, w7.1 K2.1, w9.2 K2.0 (CDJ-850 LINK). Names are the CDJ-850 keys with the same K bit. w1 rotary, w2/w3 tempo fader and centre, w6 bit 0x20/0x40 as on the CDJ-850. On a loaded USB track, K2.4 produced ADD TO / NEW PLAYLIST, confirming the PLAYLIST button."
         },
         {
+          "address": "0c0da9f2",
+          "type": "PLATE",
+          "text": "Latches 1 (USB) or 2 (DISC) into 0x0C1CAF3D after the power-on keys are read. The service gate keeps stock audio calls while this or the pending byte 0x0C1CAF4A is nonzero."
+        },
+        {
           "address": "0c0dac80",
           "type": "PLATE",
           "text": "CDJ-350 player loop (inside a larger function): waits on event flag 6, copies new_keys_flag (0x0CD48C15) to 0x0CD48BE0 and clears it, and when player_panel_event (0x0CD48C14) is set builds the key words with panel_keys_to_internal_words (0x0C0DA740) only if keys_build_busy (0x0CD48BED) is 0; otherwise the event is dropped (in mode 0x0CD48D0E == 1 it is kept in 0x0CD48C21). Then calls player_dispatch_by_state. A key change that arrives while keys_build_busy blips to 1 is lost until the next panel change [static + emu]. The loop calls the unpacker itself (pool 0x0C0DAD14 -> 0x0C0C6804) and waits on event flag 6, pattern 0x37 (wai_flg from 0x0C0DAC66) [emu]."
@@ -342,6 +555,11 @@
           "address": "0c0dc2f6",
           "type": "PLATE",
           "text": "CDJ-350 player request with a blocking wait: sets keys_build_busy (0x0CD48BED) = 1, posts request 0xF through 0x0C0C7850, waits on event flag 6 bit 0 with no timeout (0x0C0BE4A4), clears it (0x0C0BE43C), then receives mailbox 7 (0x0C0BFC00). Reached on the USB source change [static]."
+        },
+        {
+          "address": "0c0dcd44",
+          "type": "PLATE",
+          "text": "Base pointer for the 44.1 kHz big-endian PCM ring at 0x0C1D7710. The emulator probe reads the 2352-byte sector slots here."
         },
         {
           "address": "0c0e5800",
@@ -362,6 +580,11 @@
           "address": "0c0e5b86",
           "type": "PLATE",
           "text": "CDJ-350: compares RX bytes 3..22 of the 32-byte frame pair with the previous copy (bytes 6 and 8 only bits 0x0C, checksums ignored); returns 1 on a change. Bytes 6 and 8 are the tempo slider and centre ADC low bytes; their bits 0x0C count as a change, so on the unit ADC noise keeps panel events coming, which the encoder push relies on (see 0x0C0C6804). A noise-free panel loses pushes [emu]."
+        },
+        {
+          "address": "0c0e71ae",
+          "type": "PLATE",
+          "text": "Writes associative operand cache address-array entries to purge buffers for USB DMA. The CDJ-350 FLAC folder/playback run reported zero coherency findings and no model warnings."
         },
         {
           "address": "0c12ae44",
