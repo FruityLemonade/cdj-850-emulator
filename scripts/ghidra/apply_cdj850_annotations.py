@@ -1,5 +1,9 @@
 #!/usr/bin/env python3
-"""Apply the bundled CDJ-850 annotations to one locally imported Ghidra program."""
+"""Apply the bundled CDJ-850 or CDJ-350 annotations to one locally imported Ghidra program.
+
+Every *-annotations.json next to this script is searched for the program whose
+SHA-256, language, compiler spec and load address match the import.
+"""
 
 import argparse
 import json
@@ -26,7 +30,7 @@ def apply_annotations(program, annotations):
     listing = program.getListing()
     manager = program.getFunctionManager()
     symbols = program.getSymbolTable()
-    with pyghidra.transaction(program, "Apply CDJ-850 annotations"):
+    with pyghidra.transaction(program, "Apply CDJ annotations"):
         for entry in annotations["functions"]:
             address = annotation_address(entry["address"])
             function = manager.getFunctionAt(address)
@@ -69,10 +73,13 @@ def main():
     if args.project.suffix != ".gpr" or not args.project.is_file():
         parser.error("project must be an existing .gpr file")
 
-    bundle = Path(__file__).with_name("cdj850-annotations.json")
-    annotations = json.loads(bundle.read_text(encoding="utf-8"))
-    if annotations["version"] != 1:
-        parser.error("unsupported annotation format")
+    bundles = sorted(Path(__file__).parent.glob("*-annotations.json"))
+    programs = {}
+    for bundle in bundles:
+        annotations = json.loads(bundle.read_text(encoding="utf-8"))
+        if annotations["version"] != 1:
+            parser.error(f"unsupported annotation format in {bundle.name}")
+        programs.update(annotations["programs"])
 
     pyghidra.start()
     project_file = args.project.resolve()
@@ -85,7 +92,7 @@ def main():
                     "compiler": str(program.getCompilerSpec().getCompilerSpecID()),
                     "load_address": str(program.getMemory().getMinAddress()),
                 }
-                for name, entry in annotations["programs"].items():
+                for name, entry in programs.items():
                     if all(entry[key] == value for key, value in identity.items()):
                         break
                 else:

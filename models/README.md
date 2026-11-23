@@ -1,12 +1,13 @@
 # Model profiles
 
 The firmware and launch scripts read the profile named by `CDJ_MODEL` (or
-`--model`), so they carry no model specifics of their own. The default, and
-the only profile, is `cdj850`.
+`--model`), so they carry no model specifics of their own. The default is
+`cdj850`.
 
 | profile | player | update | state |
 |---|---|---|---|
 | `cdj850.conf` | CDJ-850 | v1.13, `C850MAIN.UPD` | experimental |
+| `cdj350.conf` | CDJ-350 | v1.14, `C350MAIN.UPD` | bring-up (see `docs/cdj350.md`) |
 
 The CDJ-850 has an SH7263 (SH-2A) MAIN, a DSP56371 audio DSP, and text VFDs
 driven by the panel CPU instead of a separate GUI processor. It boots the
