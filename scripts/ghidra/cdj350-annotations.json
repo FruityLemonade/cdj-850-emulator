@@ -204,6 +204,61 @@
       ],
       "comments": [
         {
+          "address": "0c05fcc0",
+          "type": "PLATE",
+          "text": "INFO side of the display mode switch. Sets staging 0x0C9B818C bit 7 and clears 0x0C9B818F bit 2. The BROWSE path at 0x0C05FC8A clears INFO and sets BROWSE. These become page 5 frame 2 byte 6 bit 7 and page 4 frame 2 byte 6 bit 2 respectively."
+        },
+        {
+          "address": "0c06022c",
+          "type": "PLATE",
+          "text": "Writes the PLAY/PAUSE lamp to bit 4 of staging 0x0C9B8190 (page 4 frame 2 byte 9). Paused and playing captures confirm the flashed and steady phases."
+        },
+        {
+          "address": "0c06032e",
+          "type": "PLATE",
+          "text": "Sets CUE (bit 3 of page 4 frame 2 byte 9). The CUE indicator is steady after setting a cue while PLAY/PAUSE flashes."
+        },
+        {
+          "address": "0c060376",
+          "type": "PLATE",
+          "text": "Sets the shared BEAT LOOP LED (D515) in bit 3 of staging 0x0C9B8191, serialized to page 4 frame 2 byte 10. The beat-loop capture isolated it from the RELOOP/EXIT lamp in bit 0."
+        },
+        {
+          "address": "0c060482",
+          "type": "PLATE",
+          "text": "Updates LOOP IN and LOOP OUT (bits 5 and 6 of staging 0x0C9B8190, page 4 frame 2 byte 9). The loop-out-adjust capture holds bit 5 clear and flashes bit 6, matching the operating instructions. The update initializes both bits high at 0x0C060180 before applying the timed states."
+        },
+        {
+          "address": "0c060564",
+          "type": "PLATE",
+          "text": "Sets the RELOOP/EXIT lamp in bit 0 of staging 0x0C9B8191 (page 4 frame 2 byte 10). The bit comes on when setting a loop out point and stays set after LOOP EXIT while the loop is available."
+        },
+        {
+          "address": "0c06059c",
+          "type": "PLATE",
+          "text": "Panel source LED packing. DISC source is page 4 frame 2 byte 10 bit 1. USB sets byte 9 bit 7 and clears the DISC lamp at 0x0C0605B8..5BC. COMPUTER/PC sets byte 9 bit 2 at 0x0C0605CE. Verified by switching the sources and entering CONTROL MODE."
+        },
+        {
+          "address": "0c06084a",
+          "type": "PLATE",
+          "text": "Sets the DISC EJECT lamp (page 4 frame 2 byte 10 bit 6) during the eject operation. The drive/eject capture alternates this bit while EJECT is displayed."
+        },
+        {
+          "address": "0c060864",
+          "type": "PLATE",
+          "text": "USB STOP lamp helper writes staging 0x0C9B8190 bit 1 (page 4 frame 2 byte 9). An attached, recognized stick lights the bit, USB STOP clears it, and the no-media control run leaves it off. The USB source lamp at bit 7 remains independent."
+        },
+        {
+          "address": "0c06704e",
+          "type": "PLATE",
+          "text": "Writes the BPM LOCK legend flag in staging 0x0C9B818F bit 3 (page 4 frame 2 byte 6 bit 3). The BPM display helper can clear the same bit later for a dark flash phase. Confirmed by storing a master BPM on a 128 BPM WAV and toggling BPM LOCK."
+        },
+        {
+          "address": "0c067172",
+          "type": "PLATE",
+          "text": "CDJ-350 tempo range selectors in staging 0x0C9B818E / page 6 frame 2 byte 7: load limit 200 -> bit 6 (+/-10), 300 -> bit 7 (+/-6), 320 -> bit 5 (+/-16). At full positive fader travel the readout gives +10, +6 and +16 respectively. WIDE uses bit 2 with bit 4 clear."
+        },
+        {
           "address": "0c067268",
           "type": "PLATE",
           "text": "CDJ-350 display sign packing. Positive tempo sets bits 1 and 0 of 0x0C9B818F, negative sets bit 1 only. That byte appears as frame 2 byte 6 on page 4."
@@ -226,17 +281,17 @@
         {
           "address": "0c06933e",
           "type": "PLATE",
-          "text": "Page 4 frame 2 bytes 6..10 carry tempo flags, BPM hundreds, tempo units and panel state. Byte 6 bit 2 follows the BROWSE display in captures. Byte 10 bit 4 follows MASTER TEMPO and bit 5 VINYL. Byte 9 bit 4 lights or blinks with playback state."
+          "text": "Packs page 4 frame 2 bytes 6..10 from the CDJ-350 display staging buffer. Byte 6 bit 2 is BROWSE and bit 3 is LOCK (BPM LOCK ON/OFF capture; preserves the firmware flash phase). Byte 9 LED masks: 02 USB STOP, 04 COMPUTER, 08 CUE, 10 PLAY/PAUSE, 20 LOOP IN, 40 LOOP OUT, 80 USB source. Byte 10: 01 RELOOP/EXIT, 02 DISC source, 08 BEAT LOOP, 10 MASTER TEMPO, 20 VINYL, 40 DISC EJECT. Confirmed with SCIF1 input sequences."
         },
         {
           "address": "0c069474",
           "type": "PLATE",
-          "text": "Page 5 frame 2 byte 6 carries A.CUE (bit 0), BPM display (bit 3), and tempo decimal placement (bits 4 and 5). Bytes 7, 9 and 11 carry the remaining BPM digits, and bytes 8 and 10 carry the tempo fraction."
+          "text": "Page 5 frame 2 byte 6 carries A.CUE (bit 0), BPM display (bit 3), tempo decimal placement (bits 4 and 5), and INFO (bit 7). Bytes 7, 9 and 11 carry the remaining BPM digits, and bytes 8 and 10 carry the tempo fraction. Toggling DISPLAY between track list and track information confirmed the INFO flag."
         },
         {
           "address": "0c069558",
           "type": "PLATE",
-          "text": "Page 6 frame 2 byte 6 bit 0 is REMAIN (toggle confirmed against count direction). Byte 7 contains the range flags (bits 6 = +/-6, 5 = +/-10, 7 = +/-16; wide uses bit 2 with bit 4 clear). Bytes 8..11 carry the playing-address bar; the lower 30 bits map from left to right."
+          "text": "Page 6 frame 2 byte 6 bit 0 is REMAIN. Byte 7 encodes the tempo range: while bit 4 is set, bits 7, 6, and 5 select +/-6, +/-10 and +/-16 respectively. WIDE uses bit 2 with bit 4 clear. Verified at the positive fader limit (9B, 5B, 3B, 0F respectively) and by engaging BPM LOCK, which set 3B. Bytes 8..11 carry the playing-address bar; the low 30 bits map left to right."
         },
         {
           "address": "0c069fbe",

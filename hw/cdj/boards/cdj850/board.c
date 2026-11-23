@@ -161,8 +161,11 @@ static const CdjGuiKey cdj350_gui_keys[] = {
     { Q_KEY_CODE_Q,             0x11, 0x08, "LOOP IN",      true  },
     { Q_KEY_CODE_W,             0x11, 0x10, "LOOP OUT",     true  },
     { Q_KEY_CODE_E,             0x11, 0x20, "RELOOP/EXIT",  true  },
-    { Q_KEY_CODE_S,             0x11, 0x01, "STOP",         true  },
-    { Q_KEY_CODE_M,             0x13, 0x01, "MENU",         true  },
+    { Q_KEY_CODE_1,             0x11, 0x40, "LOOP DIVIDE -", true },
+    { Q_KEY_CODE_2,             0x11, 0x80, "LOOP DIVIDE +", true },
+    { Q_KEY_CODE_B,             0x12, 0x01, "BPM LOCK",     true  },
+    { Q_KEY_CODE_S,             0x11, 0x01, "USB STOP",         true  },
+    { Q_KEY_CODE_M,             0x13, 0x01, "DISPLAY",         true  },
     { Q_KEY_CODE_COMMA,         0x13, 0x02, "TRACK -",      true  },
     { Q_KEY_CODE_DOT,           0x13, 0x04, "TRACK +",      true  },
     { Q_KEY_CODE_BRACKET_LEFT,  0x13, 0x08, "SEARCH -",     true  },
@@ -175,6 +178,8 @@ static const CdjGuiKey cdj350_gui_keys[] = {
     { Q_KEY_CODE_ESC,           0x15, 0x02, "BACK",         true  },
     { Q_KEY_CODE_LEFT,          0x15, 0x02, "BACK",         true  },
     { Q_KEY_CODE_BACKSPACE,     0x15, 0x02, "BACK",         true  },
+    { Q_KEY_CODE_A,             0x15, 0x04, "PLAYLIST",     true  },
+    { Q_KEY_CODE_L,             0x16, 0x04, "COMPUTER",     true  },
     { Q_KEY_CODE_U,             0x16, 0x01, "USB",          true  },
     { Q_KEY_CODE_D,             0x16, 0x02, "DISC",         true  },
     { Q_KEY_CODE_RET,           0x0D, 0x01, "ROTARY PUSH",  true  },
@@ -547,7 +552,7 @@ static void cdj_sh7263_init(MachineState *machine, const CdjBoardDesc *desc,
     /* Panel link + VFD text window (MAIN-side model; panel CPU not
      * emulated). The window stays empty under -nographic. */
     panel_link_init();
-    vfd_init();
+    vfd_init(panel_model == CDJ_PANEL_CDJ350);
     cdj_gui_keys_set_layout(&cdj850_gui_layout);
     cdj_gui_keys_init(keys, n_keys, desc->name);
     cdj_gui_pointer_init();

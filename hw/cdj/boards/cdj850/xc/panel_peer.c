@@ -1,5 +1,6 @@
 /* SPDX-License-Identifier: GPL-2.0-or-later */
 #include "cdj_common.h"
+#include "cdj350_display.h"
 #include "cdj_panelkeys.h"
 #include "cdj_pnl_stateout.h"
 #include "intc.h"
@@ -238,111 +239,6 @@ static CdjPanelModel panel_model = CDJ_PANEL_CDJ850;
 void cdj850_panel_peer_set_model(CdjPanelModel model)
 {
     panel_model = model;
-}
-
-/*
- * CDJ-350 MAIN -> panel: each transaction carries one of seven 32-byte slots
- * at 0x0C9B850C, rotated by 0x0CD70673. Six of them are indicator pages
- * whose frames begin n1 / n2 (n = 1..6, not decoded yet). The seventh,
- * 0x0C9B85CC, is the FL text: two rows of 16 characters, one per frame. 0x0A
- * pads like a space (the message table at 0x0C13E7xx starts each entry with
- * 0x0A 0x0A) and 0x81 / 0x82 mark the browse cursor. With no disc the rows
- * are "  NO DISC" over a blank row; on USB they are e.g. "  USB" over
- * "  >ARTIST<".
- */
-static char cdj350_text[2][17];
-
-static bool cdj350_indicator_slot(uint8_t tx[][PANEL_FRAME_LEN])
-{
-    uint8_t t = tx[0][0];
-
-    return (t & 0x0F) == 1 && t >= 0x11 && t <= 0x61 && tx[1][0] == t + 1;
-}
-
-/*
- * CDJ-350 time readout: indicator page 3 (frames 0x31 / 0x32) carries the
- * FL's six 7-segment digits in frame 2 bytes 6..11, MM SS FF (75 frames per
- * second; REMAIN by default, so it counts down while playing). Segment codes
- * read off a playing track [emu]; a blank or unknown code leaves the time
- * unknown.
- */
-static int cdj350_seg_digit(uint8_t c)
-{
-    static const uint8_t seg[10] = {
-        0x77, 0x12, 0x6B, 0x5B, 0x1E, 0x5D, 0x7D, 0x13, 0x7F, 0x5F,
-    };
-    int d;
-
-    for (d = 0; d < 10; d++) {
-        if (seg[d] == c) {
-            return d;
-        }
-    }
-    return -1;
-}
-
-static void cdj350_panel_time(uint8_t tx[][PANEL_FRAME_LEN], unsigned frames)
-{
-    Cdj850Time time = { 0 };
-    int d[6];
-    unsigned i;
-
-    if (frames < 2 || tx[0][0] != 0x31 || tx[1][0] != 0x32) {
-        return;
-    }
-    time.known = true;
-    for (i = 0; i < 6; i++) {
-        d[i] = cdj350_seg_digit(tx[1][6 + i]);
-        if (d[i] < 0) {
-            time.known = false;
-        }
-    }
-    if (time.known) {
-        time.minutes = (uint8_t)(d[0] * 10 + d[1]);
-        time.seconds = (uint8_t)(d[2] * 10 + d[3]);
-        time.frames = (uint8_t)(d[4] * 10 + d[5]);
-        time.known = cdj850_time_in_range(&time);
-    }
-    vfd_note_time(&time);
-}
-
-static void cdj350_panel_text(uint8_t tx[][PANEL_FRAME_LEN], unsigned frames)
-{
-    char line[2][17];
-    unsigned i, j;
-
-    if (frames < 2 || cdj350_indicator_slot(tx)) {
-        return;
-    }
-    /* A slot read out of step (a transaction that began mid-rotation) can
-     * pair other pages; take only frames that are all text. */
-    for (i = 0; i < 2; i++) {
-        for (j = 0; j < 16; j++) {
-            uint8_t c = tx[i][j];
-
-            if (!(c == 0x00 || c == 0x0A || c == 0x81 || c == 0x82 ||
-                  (c >= 0x20 && c < 0x7F))) {
-                return;
-            }
-        }
-    }
-    for (i = 0; i < 2; i++) {
-        for (j = 0; j < 16; j++) {
-            uint8_t c = tx[i][j];
-
-            line[i][j] = c == 0x0A ? ' ' : c == 0x81 ? '>' : c == 0x82 ? '<'
-                       : c == 0x00 ? ' '
-                       : (c >= 0x20 && c < 0x7F) ? (char)c : '.';
-        }
-        line[i][16] = '\0';
-    }
-    if (memcmp(line, cdj350_text, sizeof(line)) == 0) {
-        return;
-    }
-    memcpy(cdj350_text, line, sizeof(line));
-    info_report("cdj350-panel: text [%s] [%s] (%" PRIu64 " ms)",
-                line[0], line[1], cdj850_vms());
-    vfd_note_panel_text(0, line[0], line[1], "");
 }
 
 /*
@@ -1195,8 +1091,12 @@ void cdj850_panel_peer_reset_readouts(void)
     if (panel.timer) {
         timer_mod(panel.timer, ns + panel.period_ns);
     }
-    cdj850_panel_display_reset_readouts(&panel.display, ns, panel_publish_display,
-                                     &ms);
+    if (panel_model == CDJ_PANEL_CDJ350) {
+        vfd_reset_cdj350();
+    } else {
+        cdj850_panel_display_reset_readouts(&panel.display, ns,
+                                            panel_publish_display, &ms);
+    }
 }
 
 static void panel_note_status(const uint8_t tx[PANEL_FRAME_LEN])
@@ -1274,17 +1174,20 @@ static void panel_end_transaction(void)
             memcpy(panel.logged_status, panel.cur_tx[0], 4);
         }
         memcpy(panel.last_tx, panel.cur_tx, sizeof(panel.last_tx));
-        panel_note_status(status);
-        for (i = 0; i < panel.frame; i++) {
-            if (panel.cur_tx[i][0] == 0x01) {
-                cdj_pnl_stateout(panel.cur_tx[i], PANEL_FRAME_LEN);
-                break;
-            }
-        }
         if (panel_model == CDJ_PANEL_CDJ350) {
-            cdj350_panel_text(panel.cur_tx, panel.frame);
-            cdj350_panel_time(panel.cur_tx, panel.frame);
+            if (cdj350_display_page(panel.cur_tx) == 4 &&
+                cdj350_indicator_valid(panel.cur_tx)) {
+                cdj_pnl_stateout(panel.cur_tx[1], PANEL_FRAME_LEN);
+            }
+            vfd_note_cdj350(panel.cur_tx);
         } else {
+            panel_note_status(status);
+            for (i = 0; i < panel.frame; i++) {
+                if (panel.cur_tx[i][0] == 0x01) {
+                    cdj_pnl_stateout(panel.cur_tx[i], PANEL_FRAME_LEN);
+                    break;
+                }
+            }
             cdj850_panel_display_transaction(&panel.display, panel.start_ns,
                                              panel.frame, panel.cur_tx,
                                              panel_publish_display, &ms);

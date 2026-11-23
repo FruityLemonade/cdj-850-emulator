@@ -7,7 +7,7 @@
 /* DATA FL layout reconstruction; SCIF1 text comes from panel_peer.c.
  * SSU0 traffic is audio-DSP traffic, retained only in vfd_text diagnostics.
  * See docs/cdj850-modding.md for SCIF1 display framing and limitations. */
-#include "vfd_render.h"
+#include "cdj350_vfd_render.h"
 
 #define VFD_COLS        40
 #define VFD_W           FL_WIDTH
@@ -16,6 +16,8 @@
 static struct {
     QemuConsole *con;
     FlState display;
+    Cdj350Display display350;
+    bool cdj350;
     char line[2][VFD_COLS + 1];
     bool dirty;
     bool has_panel_text;
@@ -31,18 +33,26 @@ static void vfd_draw(DisplaySurface *ds)
         .pixels = surface_data(ds), .width = surface_width(ds),
         .height = surface_height(ds), .stride = surface_stride(ds),
     };
-    fl_render(&canvas, &vfd.display);
+    if (vfd.cdj350) {
+        cdj350_fl_render(&canvas, &vfd.display350);
+    } else {
+        fl_render(&canvas, &vfd.display);
+    }
 }
 
 static bool vfd_gfx_update(void *opaque)
 {
+    DisplaySurface *surface;
+
     (void)opaque;
     if (!vfd.dirty || !vfd.con) {
         return true;
     }
     vfd.dirty = false;
-    vfd_draw(qemu_console_surface(vfd.con));
-    qemu_console_update(vfd.con, 0, 0, VFD_W, VFD_H);
+    surface = qemu_console_surface(vfd.con);
+    vfd_draw(surface);
+    qemu_console_update(vfd.con, 0, 0, surface_width(surface),
+                        surface_height(surface));
     return true;
 }
 
@@ -82,20 +92,61 @@ static const VMStateDescription vmstate_cdj850_vfd = {
     }
 };
 
-void vfd_init(void)
+static const VMStateDescription vmstate_cdj350_vfd = {
+    .name = "cdj350-vfd",
+    .version_id = 1,
+    .minimum_version_id = 1,
+    .post_load = vfd_post_load,
+    .fields = (const VMStateField[]) {
+        VMSTATE_BUFFER_UNSAFE(display350, typeof(vfd), 0, sizeof(vfd.display350)),
+        VMSTATE_END_OF_LIST()
+    }
+};
+
+void vfd_init(bool cdj350)
 {
+    int width = cdj350 ? CDJ350_FL_WIDTH : VFD_W;
+    int height = cdj350 ? CDJ350_FL_HEIGHT : VFD_H;
+
     if (vfd.con) {
         return;
     }
+    vfd.cdj350 = cdj350;
     vfd.has_panel_text = false;
-    snprintf(vfd.line[0], sizeof(vfd.line[0]), "CDJ-850 PANEL LINK -- BOOT");
+    snprintf(vfd.line[0], sizeof(vfd.line[0]), "%s PANEL LINK -- BOOT",
+             cdj350 ? "CDJ-350" : "CDJ-850");
     snprintf(vfd.line[1], sizeof(vfd.line[1]), "FL: waiting for frames");
-    vfd.dirty = true;
     vfd.con = qemu_graphic_console_create(NULL, 0, &vfd_ops, NULL);
-    qemu_console_set_surface(vfd.con,
-                             qemu_create_displaysurface(VFD_W, VFD_H));
-    qemu_console_resize(vfd.con, VFD_W, VFD_H);
+    qemu_console_set_surface(vfd.con, qemu_create_displaysurface(width, height));
+    qemu_console_resize(vfd.con, width, height);
     vmstate_register_any(NULL, &vmstate_cdj850_vfd, &vfd);
+    if (cdj350) {
+        vmstate_register_any(NULL, &vmstate_cdj350_vfd, &vfd);
+    }
+    vfd.dirty = true;
+}
+
+void vfd_note_cdj350(const uint8_t tx[][PANEL_FRAME_LEN])
+{
+    if (!cdj350_display_feed(&vfd.display350, tx)) {
+        return;
+    }
+    if (!cdj350_display_page(tx)) {
+        const char *row1 = vfd.display350.rows[0];
+        const char *row2 = vfd.display350.rows[1];
+
+        vfd_note_panel_text(0, row1, row2, "");
+        info_report("cdj350-panel: text [%s] [%s] (%" PRIu64 " ms)",
+                    row1, row2, cdj850_vms());
+    }
+    vfd.dirty = true;
+}
+
+void vfd_reset_cdj350(void)
+{
+    memset(&vfd.display350, 0, sizeof(vfd.display350));
+    memset(vfd.line, 0, sizeof(vfd.line));
+    vfd.has_panel_text = false;
     vfd.dirty = true;
 }
 
