@@ -128,6 +128,65 @@ static const CdjGuiKey cdj850_gui_keys[] = {
     { Q_KEY_CODE_RIGHT,         0x0D, 0x01, "ROTARY PUSH",  true  },
 };
 
+/*
+ * CDJ-350: the same MAIN board (IC103 SH7263, IC301 DSP56371, IC102 32 MB
+ * SDRAM, CDJ-350 service manual pp. 15/16/94) behind its own panel CPU. The
+ * flash is IC101 DYW1792; its ID and sector map are unverified and taken from
+ * the CDJ-850's.
+ */
+static const CdjBoardDesc cdj350_board = {
+    .name = "cdj350",
+    .dram_phys = 0x0C000000,
+    .dram_size = 32 * MiB,
+    .flash_phys = 0x00000000,
+    .flash_size = 4 * MiB,
+    .flash = { { 63, 64 * KiB }, { 8, 8 * KiB } },
+    .flash_id = { 0x0001, 0x227e, 0x2220, 0x2200 },
+    .flash_be = true,
+    .fw_entry = 0x00000100,
+    .init_sp = 0xFFF90000,
+    .init_sr = 0,
+    .sr_seed_slot = 0,
+    .sr_seed = 0,
+    .periph_hz = 66000000,
+    .ccn_trace_lo = 1,
+    .ccn_trace_hi = 0,
+    .exit_report = NULL,
+};
+
+/* CDJ-350 panel report bits (panel_buttons_350 in xc/panel_peer.c). */
+static const CdjGuiKey cdj350_gui_keys[] = {
+    { Q_KEY_CODE_SPC,           0x11, 0x02, "PLAY/PAUSE",   true  },
+    { Q_KEY_CODE_C,             0x11, 0x04, "CUE",          true  },
+    { Q_KEY_CODE_Q,             0x11, 0x08, "LOOP IN",      true  },
+    { Q_KEY_CODE_W,             0x11, 0x10, "LOOP OUT",     true  },
+    { Q_KEY_CODE_E,             0x11, 0x20, "RELOOP/EXIT",  true  },
+    { Q_KEY_CODE_1,             0x11, 0x40, "LOOP DIVIDE -", true },
+    { Q_KEY_CODE_2,             0x11, 0x80, "LOOP DIVIDE +", true },
+    { Q_KEY_CODE_B,             0x12, 0x01, "BPM LOCK",     true  },
+    { Q_KEY_CODE_S,             0x11, 0x01, "USB STOP",         true  },
+    { Q_KEY_CODE_M,             0x13, 0x01, "DISPLAY",         true  },
+    { Q_KEY_CODE_COMMA,         0x13, 0x02, "TRACK -",      true  },
+    { Q_KEY_CODE_DOT,           0x13, 0x04, "TRACK +",      true  },
+    { Q_KEY_CODE_BRACKET_LEFT,  0x13, 0x08, "SEARCH -",     true  },
+    { Q_KEY_CODE_BRACKET_RIGHT, 0x13, 0x10, "SEARCH +",     true  },
+    { Q_KEY_CODE_X,             0x14, 0x01, "EJECT",        true  },
+    { Q_KEY_CODE_J,             0x14, 0x02, "VINYL",        true  },
+    { Q_KEY_CODE_K,             0x14, 0x04, "MASTER TEMPO", true  },
+    { Q_KEY_CODE_P,             0x14, 0x08, "TEMPO",        true  },
+    { Q_KEY_CODE_T,             0x15, 0x01, "TIME",         true  },
+    { Q_KEY_CODE_ESC,           0x15, 0x02, "BACK",         true  },
+    { Q_KEY_CODE_LEFT,          0x15, 0x02, "BACK",         true  },
+    { Q_KEY_CODE_BACKSPACE,     0x15, 0x02, "BACK",         true  },
+    { Q_KEY_CODE_A,             0x15, 0x04, "PLAYLIST",     true  },
+    { Q_KEY_CODE_L,             0x16, 0x04, "COMPUTER",     true  },
+    { Q_KEY_CODE_U,             0x16, 0x01, "USB",          true  },
+    { Q_KEY_CODE_D,             0x16, 0x02, "DISC",         true  },
+    { Q_KEY_CODE_RET,           0x0D, 0x01, "ROTARY PUSH",  true  },
+    { Q_KEY_CODE_KP_ENTER,      0x0D, 0x01, "ROTARY PUSH",  true  },
+    { Q_KEY_CODE_RIGHT,         0x0D, 0x01, "ROTARY PUSH",  true  },
+};
+
 /* SH-2A vector reset, after the SH7269 GUI board's sh7269_reset: reset the CPU
  * (which leaves SH-4-style pc=0xA0000000) and apply the board's vectors. */
 static void cdj850_reset(void *opaque)
@@ -404,27 +463,29 @@ static void cdj850_ccnaudit_init(MemoryRegion *sysmem, SuperHCPU *cpu)
                                         &s->iomem, 1);
 }
 
-static void cdj850_init(MachineState *machine)
+static void cdj_sh7263_init(MachineState *machine, const CdjBoardDesc *desc,
+                            CdjPanelModel panel_model,
+                            const CdjGuiKey *keys, unsigned n_keys)
 {
     MemoryRegion *sysmem = get_system_memory();
     MemoryRegion *ocram = g_new(MemoryRegion, 1);
-    SuperHCPU *cpu = cdj_board_init(machine, &cdj850_board);
+    SuperHCPU *cpu = cdj_board_init(machine, desc);
     uint8_t reset_word[2];
 
     if (machine->kernel_filename) {
         error_report("%s: no -kernel path; boot through the bootloader in "
                      "the NOR flash (MAIN_BOOT=flash, image from "
-                     "scripts/firmware/make_flash_cdj850.py)", cdj850_board.name);
+                     "scripts/firmware/make_flash_cdj850.py)", desc->name);
         exit(1);
     }
     /* The reset vectors are the first words of the flash; erased there means
      * an image built without the bootloader, and the CPU would run 0xFFFF. */
-    physical_memory_read(cdj850_board.flash_phys, reset_word,
+    physical_memory_read(desc->flash_phys, reset_word,
                          sizeof(reset_word));
     if (reset_word[0] == 0xFF && reset_word[1] == 0xFF) {
         error_report("%s: the NOR flash holds no bootloader; build it with "
                      "scripts/firmware/make_flash_cdj850.py from the prepared "
-                     "firmware", cdj850_board.name);
+                     "firmware", desc->name);
         exit(1);
     }
 
@@ -478,6 +539,7 @@ static void cdj850_init(MachineState *machine)
     cdj850_ser_init(sysmem, cpu);
     cdj850_scif_init(sysmem, cpu);
     /* Panel CPU on the SCIF1 link (needs the SCIF, INTC and port models). */
+    cdj850_panel_peer_set_model(panel_model);
     cdj850_panel_peer_init();
     cdj850_ssi_init(sysmem, cpu);
     cdj850_cmt_init(sysmem, cpu);
@@ -490,9 +552,9 @@ static void cdj850_init(MachineState *machine)
     /* Panel link + VFD text window (MAIN-side model; panel CPU not
      * emulated). The window stays empty under -nographic. */
     panel_link_init();
-    vfd_init();
+    vfd_init(panel_model == CDJ_PANEL_CDJ350);
     cdj_gui_keys_set_layout(&cdj850_gui_layout);
-    cdj_gui_keys_init(cdj850_gui_keys, ARRAY_SIZE(cdj850_gui_keys), "cdj850");
+    cdj_gui_keys_init(keys, n_keys, desc->name);
     cdj_gui_pointer_init();
 
     /* On-chip peripheral block (BSC/CPG, less CCR/INTC/CMT/ports modelled
@@ -512,9 +574,21 @@ static void cdj850_init(MachineState *machine)
 
     info_report("%s: boot through the bootloader in the NOR flash, "
                 "entry 0x%08x, sp 0x%08x",
-                cdj850_board.name, cdj850_board.fw_entry,
-                cdj850_board.init_sp);
+                desc->name, desc->fw_entry,
+                desc->init_sp);
     qemu_register_reset(cdj850_reset, cpu);
+}
+
+static void cdj850_init(MachineState *machine)
+{
+    cdj_sh7263_init(machine, &cdj850_board, CDJ_PANEL_CDJ850,
+                    cdj850_gui_keys, ARRAY_SIZE(cdj850_gui_keys));
+}
+
+static void cdj350_init(MachineState *machine)
+{
+    cdj_sh7263_init(machine, &cdj350_board, CDJ_PANEL_CDJ350,
+                    cdj350_gui_keys, ARRAY_SIZE(cdj350_gui_keys));
 }
 
 static void cdj850_machine_init(MachineClass *mc)
@@ -526,3 +600,13 @@ static void cdj850_machine_init(MachineClass *mc)
 }
 
 DEFINE_MACHINE("cdj850", cdj850_machine_init)
+
+static void cdj350_machine_init(MachineClass *mc)
+{
+    mc->desc = "Pioneer CDJ-350 (Renesas SH7263 / SH-2A), bring-up";
+    mc->init = cdj350_init;
+    mc->default_cpu_type = TYPE_SH2A_CPU;
+    mc->default_ram_size = 32 * MiB;
+}
+
+DEFINE_MACHINE("cdj350", cdj350_machine_init)

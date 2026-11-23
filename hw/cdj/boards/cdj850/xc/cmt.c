@@ -342,6 +342,7 @@ typedef struct {
     uint16_t cmcsr1, cmcnt1, cmcor1;   /* channel 1: storage only */
     uint64_t period_ns;
     uint64_t next_ns;
+    uint32_t missed;         /* compare matches while CMF was still set */
 } Cdj850Cmt;
 
 static Cdj850Cmt *cdj850_cmt;
@@ -413,13 +414,58 @@ static void cmt_rearm(Cdj850Cmt *s)
     timer_mod(s->timer, s->next_ns);
 }
 
+/*
+ * The next compare match is due one period after the last one was due, not
+ * after this callback ran: QEMU runs timer callbacks late while TCG executes
+ * a slice, and rearming from "now" added that lateness to every period (the
+ * RTOS tick measured 500-750 per emulated second instead of 1000, slowing
+ * key-hold timers and playback). A callback more than CMT_MAX_LAG periods
+ * late (a stopped VM, a debugger) resynchronises instead of bursting.
+ */
+#define CMT_MAX_LAG 8
+
+/*
+ * A compare match that finds CMF still set (the CPU has not taken the last
+ * tick yet, because the emulated CPU fell behind wall-clock time for a
+ * moment) would merge into it and the RTOS would lose a tick for good. Count
+ * it instead and raise it again as soon as the handler clears CMF, so the
+ * tick count catches up after a stall. At most CMT_MAX_MISSED are kept.
+ * CDJ850_CMT_CATCHUP=0 restores the plain one-flag behaviour.
+ */
+#define CMT_MAX_MISSED 50
+
+static bool cmt_catchup(void)
+{
+    static int on = -1;
+
+    if (on < 0) {
+        const char *e = getenv("CDJ850_CMT_CATCHUP");
+
+        on = !(e && *e == '0');
+    }
+    return on;
+}
+
 static void cmt_fire(void *opaque)
 {
     Cdj850Cmt *s = opaque;
+    int64_t now = qemu_clock_get_ns(QEMU_CLOCK_VIRTUAL);
 
+    if ((s->cmcsr0 & CDJ850_CMT_CMF) && cmt_catchup() &&
+        s->missed < CMT_MAX_MISSED) {
+        s->missed++;
+    }
     s->cmcsr0 |= CDJ850_CMT_CMF;
     cmt_update_irq(s);
-    cmt_rearm(s);
+    if (!(s->cmstr & 1) || s->cmcor0 == 0 || s->period_ns == 0) {
+        cmt_rearm(s);
+        return;
+    }
+    s->next_ns += s->period_ns;
+    if ((int64_t)s->next_ns < now - (int64_t)(CMT_MAX_LAG * s->period_ns)) {
+        s->next_ns = now + s->period_ns;
+    }
+    timer_mod(s->timer, s->next_ns);
 }
 
 static uint64_t cmt_read(void *opaque, hwaddr off, unsigned size)
@@ -480,12 +526,24 @@ static void cmt_write(void *opaque, hwaddr off, uint64_t val, unsigned size)
         s->cmstr = val;
         cmt_rearm(s);
         break;
-    case 0x02:
-        /* CMF is write-0-to-clear; the handler's ack drops the request. */
+    case 0x02: {
+        /* CMF is write-0-to-clear; the handler's ack drops the request.
+         * Clearing CMF does not restart the counter: only a new clock
+         * select (CKS) changes the period. Rearming on every ack made each
+         * tick last one period plus the interrupt latency. */
+        unsigned old_cks = s->cmcsr0 & 3;
+
         s->cmcsr0 = (s->cmcsr0 & val & CDJ850_CMT_CMF) | (val & 0x7f);
+        if (!(s->cmcsr0 & CDJ850_CMT_CMF) && s->missed) {
+            s->missed--;
+            s->cmcsr0 |= CDJ850_CMT_CMF;
+        }
         cmt_update_irq(s);
-        cmt_rearm(s);
+        if ((s->cmcsr0 & 3) != old_cks || !timer_pending(s->timer)) {
+            cmt_rearm(s);
+        }
         break;
+    }
     case 0x04: s->cmcnt0 = val; break;
     case 0x06: s->cmcor0 = val; cmt_rearm(s); break;
     case 0x08: s->cmcsr1 = val; break;
@@ -517,6 +575,7 @@ static const VMStateDescription vmstate_cdj850_cmt = {
         VMSTATE_UINT16(cmcor1, Cdj850Cmt),
         VMSTATE_UINT64(period_ns, Cdj850Cmt),
         VMSTATE_UINT64(next_ns, Cdj850Cmt),
+        VMSTATE_UINT32(missed, Cdj850Cmt),
         VMSTATE_END_OF_LIST()
     }
 };
@@ -538,6 +597,7 @@ static void cdj850_cmt_reset(void *opaque)
     s->cmstr = s->cmcsr0 = s->cmcnt0 = s->cmcor0 = 0;
     s->cmcsr1 = s->cmcnt1 = s->cmcor1 = 0;
     s->period_ns = s->next_ns = 0;
+    s->missed = 0;
     timer_del(s->timer);
 }
 

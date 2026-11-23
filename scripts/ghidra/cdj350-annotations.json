@@ -1,0 +1,379 @@
+{
+  "version": 1,
+  "programs": {
+    "c350_main_unpacked.bin": {
+      "sha256": "3ae6774e0412bc9bb2bbb111628ebf239e66f3540ef381b423ebc4f59aff0238",
+      "language": "SuperH:BE:32:SH-2A",
+      "compiler": "default",
+      "load_address": "0c000000",
+      "functions": [
+        {
+          "address": "0c0ae414",
+          "name": "tick_1ms"
+        },
+        {
+          "address": "0c0bb1da",
+          "name": "cyc_1ms_handler"
+        },
+        {
+          "address": "0c0c5e10",
+          "name": "usb_vbus_read_debounced"
+        },
+        {
+          "address": "0c0c6804",
+          "name": "panel_unpack_buttons"
+        },
+        {
+          "address": "0c0c6ebc",
+          "name": "keys_tick_1ms"
+        },
+        {
+          "address": "0c0c826e",
+          "name": "keys_handler_common"
+        },
+        {
+          "address": "0c0da18e",
+          "name": "player_dispatch_by_state"
+        },
+        {
+          "address": "0c0da740",
+          "name": "panel_keys_to_internal_words"
+        },
+        {
+          "address": "0c0dc2f6",
+          "name": "player_source_request_wait"
+        },
+        {
+          "address": "0c0dc9b4",
+          "name": "keys_handler_gate"
+        },
+        {
+          "address": "0c0e5800",
+          "name": "scif1_panel_setup"
+        },
+        {
+          "address": "0c0e594a",
+          "name": "irq5_pnl_xbusy_isr"
+        },
+        {
+          "address": "0c0e59b2",
+          "name": "txi1_panel_isr"
+        },
+        {
+          "address": "0c0e5b86",
+          "name": "panel_rx_changed"
+        },
+        {
+          "address": "0c12ae44",
+          "name": "audio_synth_filterbank"
+        }
+      ],
+      "labels": [
+        {
+          "address": "0c13e7f4",
+          "name": "fl_msg_no_usb_mem"
+        },
+        {
+          "address": "0c13e824",
+          "name": "fl_msg_no_usb"
+        },
+        {
+          "address": "0c13e854",
+          "name": "fl_msg_disc"
+        },
+        {
+          "address": "0c1406b8",
+          "name": "dsp_shi_segment1"
+        },
+        {
+          "address": "0c1778bc",
+          "name": "inh_table_cmi0"
+        },
+        {
+          "address": "0c177c84",
+          "name": "inh_table_irq5"
+        },
+        {
+          "address": "0c177c98",
+          "name": "inh_table_txi1"
+        },
+        {
+          "address": "0c1caf4c",
+          "name": "keys_gate_mode"
+        },
+        {
+          "address": "0c9b850c",
+          "name": "panel_tx_slots"
+        },
+        {
+          "address": "0c9b85cc",
+          "name": "panel_tx_text_slot"
+        },
+        {
+          "address": "0cd2dcc0",
+          "name": "tick_ms"
+        },
+        {
+          "address": "0cd48474",
+          "name": "panel_rx_frame1"
+        },
+        {
+          "address": "0cd48484",
+          "name": "panel_rx_frame2"
+        },
+        {
+          "address": "0cd48494",
+          "name": "panel_words"
+        },
+        {
+          "address": "0cd484f0",
+          "name": "panel_event_count"
+        },
+        {
+          "address": "0cd48508",
+          "name": "keys_k0"
+        },
+        {
+          "address": "0cd4850a",
+          "name": "keys_k1"
+        },
+        {
+          "address": "0cd4850c",
+          "name": "keys_k2"
+        },
+        {
+          "address": "0cd48510",
+          "name": "keys_k0_prev"
+        },
+        {
+          "address": "0cd48518",
+          "name": "key_hold_pending"
+        },
+        {
+          "address": "0cd48520",
+          "name": "panel_w6"
+        },
+        {
+          "address": "0cd48522",
+          "name": "panel_w6_prev"
+        },
+        {
+          "address": "0cd48556",
+          "name": "key_hold_timers"
+        },
+        {
+          "address": "0cd48bed",
+          "name": "keys_build_busy"
+        },
+        {
+          "address": "0cd48c14",
+          "name": "player_panel_event"
+        },
+        {
+          "address": "0cd48c15",
+          "name": "new_keys_flag"
+        },
+        {
+          "address": "0cd48d06",
+          "name": "active_source_index"
+        },
+        {
+          "address": "0cd48d0e",
+          "name": "player_source_mode"
+        },
+        {
+          "address": "0cd48d11",
+          "name": "player_state_by_source"
+        },
+        {
+          "address": "0cd70672",
+          "name": "panel_rx_page"
+        },
+        {
+          "address": "0cd70673",
+          "name": "panel_tx_slot_index"
+        },
+        {
+          "address": "0cd70695",
+          "name": "panel_rx_buf"
+        },
+        {
+          "address": "0cd706ac",
+          "name": "panel_rx_sum_errors"
+        }
+      ],
+      "comments": [
+        {
+          "address": "0c05fcc0",
+          "type": "PLATE",
+          "text": "INFO side of the display mode switch. Sets staging 0x0C9B818C bit 7 and clears 0x0C9B818F bit 2. The BROWSE path at 0x0C05FC8A clears INFO and sets BROWSE. These become page 5 frame 2 byte 6 bit 7 and page 4 frame 2 byte 6 bit 2 respectively."
+        },
+        {
+          "address": "0c06022c",
+          "type": "PLATE",
+          "text": "Writes the PLAY/PAUSE lamp to bit 4 of staging 0x0C9B8190 (page 4 frame 2 byte 9). Paused and playing captures confirm the flashed and steady phases."
+        },
+        {
+          "address": "0c06032e",
+          "type": "PLATE",
+          "text": "Sets CUE (bit 3 of page 4 frame 2 byte 9). The CUE indicator is steady after setting a cue while PLAY/PAUSE flashes."
+        },
+        {
+          "address": "0c060376",
+          "type": "PLATE",
+          "text": "Sets the shared BEAT LOOP LED (D515) in bit 3 of staging 0x0C9B8191, serialized to page 4 frame 2 byte 10. The beat-loop capture isolated it from the RELOOP/EXIT lamp in bit 0."
+        },
+        {
+          "address": "0c060482",
+          "type": "PLATE",
+          "text": "Updates LOOP IN and LOOP OUT (bits 5 and 6 of staging 0x0C9B8190, page 4 frame 2 byte 9). The loop-out-adjust capture holds bit 5 clear and flashes bit 6, matching the operating instructions. The update initializes both bits high at 0x0C060180 before applying the timed states."
+        },
+        {
+          "address": "0c060564",
+          "type": "PLATE",
+          "text": "Sets the RELOOP/EXIT lamp in bit 0 of staging 0x0C9B8191 (page 4 frame 2 byte 10). The bit comes on when setting a loop out point and stays set after LOOP EXIT while the loop is available."
+        },
+        {
+          "address": "0c06059c",
+          "type": "PLATE",
+          "text": "Panel source LED packing. DISC source is page 4 frame 2 byte 10 bit 1. USB sets byte 9 bit 7 and clears the DISC lamp at 0x0C0605B8..5BC. COMPUTER/PC sets byte 9 bit 2 at 0x0C0605CE. Verified by switching the sources and entering CONTROL MODE."
+        },
+        {
+          "address": "0c06084a",
+          "type": "PLATE",
+          "text": "Sets the DISC EJECT lamp (page 4 frame 2 byte 10 bit 6) during the eject operation. The drive/eject capture alternates this bit while EJECT is displayed."
+        },
+        {
+          "address": "0c060864",
+          "type": "PLATE",
+          "text": "USB STOP lamp helper writes staging 0x0C9B8190 bit 1 (page 4 frame 2 byte 9). An attached, recognized stick lights the bit, USB STOP clears it, and the no-media control run leaves it off. The USB source lamp at bit 7 remains independent."
+        },
+        {
+          "address": "0c06704e",
+          "type": "PLATE",
+          "text": "Writes the BPM LOCK legend flag in staging 0x0C9B818F bit 3 (page 4 frame 2 byte 6 bit 3). The BPM display helper can clear the same bit later for a dark flash phase. Confirmed by storing a master BPM on a 128 BPM WAV and toggling BPM LOCK."
+        },
+        {
+          "address": "0c067172",
+          "type": "PLATE",
+          "text": "CDJ-350 tempo range selectors in staging 0x0C9B818E / page 6 frame 2 byte 7: load limit 200 -> bit 6 (+/-10), 300 -> bit 7 (+/-6), 320 -> bit 5 (+/-16). At full positive fader travel the readout gives +10, +6 and +16 respectively. WIDE uses bit 2 with bit 4 clear."
+        },
+        {
+          "address": "0c067268",
+          "type": "PLATE",
+          "text": "CDJ-350 display sign packing. Positive tempo sets bits 1 and 0 of 0x0C9B818F, negative sets bit 1 only. That byte appears as frame 2 byte 6 on page 4."
+        },
+        {
+          "address": "0c06904c",
+          "type": "PLATE",
+          "text": "CDJ-350 MAIN TX indicator checksum. Each of the six 32-byte slots at 0x0C9B850C stores the low 8 bits of the sum of slot bytes 0..27 at slot byte 28 (frame 2 byte 12). Slot bytes 29..31 are zero. The text slot bypasses this loop. Confirmed against SCIF1 captures."
+        },
+        {
+          "address": "0c069064",
+          "type": "PLATE",
+          "text": "Starts packing six CDJ-350 indicator pages with paired headers 0x11/0x12 through 0x61/0x62. Frame 2 byte 11 of pages 1 and 2 carries track tens and units, from 0x0C9B8170 and 0x0C9B8171. The separate 0x0C9B85CC slot holds two text rows of 16 wire bytes."
+        },
+        {
+          "address": "0c069260",
+          "type": "PLATE",
+          "text": "Page 3 frame 2 bytes 6..11 copy the six raw seven-segment masks for MM SS FF (75 frames/sec), from 0x0C9B8170 offsets 7, 6, 15, 14, 13, 12. Segment A..G masks are 01, 02, 10, 40, 20, 04, 08."
+        },
+        {
+          "address": "0c06933e",
+          "type": "PLATE",
+          "text": "Packs page 4 frame 2 bytes 6..10 from the CDJ-350 display staging buffer. Byte 6 bit 2 is BROWSE and bit 3 is LOCK (BPM LOCK ON/OFF capture; preserves the firmware flash phase). Byte 9 LED masks: 02 USB STOP, 04 COMPUTER, 08 CUE, 10 PLAY/PAUSE, 20 LOOP IN, 40 LOOP OUT, 80 USB source. Byte 10: 01 RELOOP/EXIT, 02 DISC source, 08 BEAT LOOP, 10 MASTER TEMPO, 20 VINYL, 40 DISC EJECT. Confirmed with SCIF1 input sequences."
+        },
+        {
+          "address": "0c069474",
+          "type": "PLATE",
+          "text": "Page 5 frame 2 byte 6 carries A.CUE (bit 0), BPM display (bit 3), tempo decimal placement (bits 4 and 5), and INFO (bit 7). Bytes 7, 9 and 11 carry the remaining BPM digits, and bytes 8 and 10 carry the tempo fraction. Toggling DISPLAY between track list and track information confirmed the INFO flag."
+        },
+        {
+          "address": "0c069558",
+          "type": "PLATE",
+          "text": "Page 6 frame 2 byte 6 bit 0 is REMAIN. Byte 7 encodes the tempo range: while bit 4 is set, bits 7, 6, and 5 select +/-6, +/-10 and +/-16 respectively. WIDE uses bit 2 with bit 4 clear. Verified at the positive fader limit (9B, 5B, 3B, 0F respectively) and by engaging BPM LOCK, which set 3B. Bytes 8..11 carry the playing-address bar; the low 30 bits map left to right."
+        },
+        {
+          "address": "0c069fbe",
+          "type": "PLATE",
+          "text": "Computes the CDJ-350 playing-address position on a 30-segment scale. The selected four-byte pattern is written to display staging offsets 0x18..0x1B, then serialized as page 6 frame 2 bytes 8..11."
+        },
+        {
+          "address": "0c06a46e",
+          "type": "PLATE",
+          "text": "Copies the A.CUE setting from 0x0C9B8DDC bit 0 into display byte 0x0C9B818C bit 0 (page 5 frame 2 byte 6). Verified by holding TIME MODE/AUTO CUE and diffing SCIF1 captures."
+        },
+        {
+          "address": "0c0ae414",
+          "type": "PLATE",
+          "text": "CDJ-350 1 ms tick group: increments u32 tick_ms (0x0CD2DCC0), then calls keys_tick_1ms (0x0C0C6EBC) and the other 1 ms routines from pools 0x0C0AE44C..0x0C0AE468. Reached through 0x0C0BB1DA, whose pointer sits at 0x0C1778D0 right after the CMT0 (vector 142) entry at 0x0C1778BC; the board's CMT0 tick is 1 ms (CMCOR 0x1045, Pphi/8). In the emulator under host load it ran about 600 times per emulated second instead of 1000 (the CDJ-850's tick_1ms the same) [emu]."
+        },
+        {
+          "address": "0c0c6804",
+          "type": "PLATE",
+          "text": "CDJ-350 counterpart of the CDJ-850's panel_unpack_buttons (0x0C0D610C): frame 1 bytes 1..14 and frame 2 bytes 1..6 become ten big-endian words w0..w9 at 0x0CD48494 (the CDJ-850 takes frame 2 bytes 1..12, w0..w12). In player_source_mode (0x0CD48D0E) != 0, e.g. on USB, the event counter 0x0CD484F0 counts the calls: below 3 the call clears player_panel_event (0x0CD48C14) unless w1, w6 bit 0x20 or w7..w9 changed against a saved copy, so a change in any other bit (the encoder push, w6 0x0100) reaches the key build only on every third panel event [static + emu, gdb breakpoints]."
+        },
+        {
+          "address": "0c0c6ebc",
+          "type": "PLATE",
+          "text": "CDJ-350 key tick, once per tick_1ms: counts its calls and every 100th call subtracts 100 from each u16 in key_hold_timers (0x0CD48556) that is above 0 (0x0C0C73C0..0x0C0C74A2) [static + emu]."
+        },
+        {
+          "address": "0c0c826e",
+          "type": "PLATE",
+          "text": "CDJ-350 key handler shared by the player states (gate keys_handler_gate 0x0C0DC9B4, else 0x0C0C981C). Compares K0..K2 (0x0CD48508) with keys_k0_prev (0x0CD48510). Source keys act on a hold: the press edge sets a key_hold_timers entry to 1000 (DISC +0xA, USB +0xC, K2.0 +0xE) and a key_hold_pending bit (DISC byte+1 bit1, USB byte+1 bit0, K2.0 byte+5 bit0); while the key stays down and the timer reaches 0 the bit is cleared and the source change runs, after the guards 0x0CD48C01..03 != 1, 0x0CD48D1B..1D != 0xFF, 0x0CD48582 != -1, 0x0C7E4EF0 == 0, 0x0CD48BD4 == 0. USB from disc (active_source_index 0) calls 0x0C0DBDF4 then 0x0C0DBFF0. A release first clears both. So USB/DISC need about 1 s held (1000 timer units). Encoder push (panel_w6 0x0100 vs panel_w6_prev): the press sets timer +2 to 1000 and key_hold_pending byte+6 bit0 (or sets 0x0C1D5138 when 0x0CD48BE1 == 0, 0x0CD48BE2 == 2, 0x0CD4843D != 1, 0x0C1CAF1A <= 1); the action runs on release while timer +2 is still above 0 (0x0C0C94A8) [static + emu]. active_source_index (0x0CD48D06): 0 = disc, 2 = USB (after a 1 s USB hold) [emu]."
+        },
+        {
+          "address": "0c0da18e",
+          "type": "PLATE",
+          "text": "CDJ-350 player step after the key build: calls 0x0C0D9006, masks K0 &= 3, K1 &= 4, K2 &= 0xB while 0x0CD48C33 == 1, then (0x0CD48D0E == 0) dispatches on player_state_by_source[active_source_index] through the table at 0x0C0DA354 (states 0..14) [static]."
+        },
+        {
+          "address": "0c0da740",
+          "type": "PLATE",
+          "text": "CDJ-350 counterpart of 0x0C0ECCB4: builds K0..K2 from w7..w9. K0: w7.9 PLAY(13), w7.10 CUE(14), w7.11 LOOP IN(12), w7.12 LOOP OUT(11), w7.13 RELOOP(10), w7.14 K0.9, w7.15 K0.8, w8.9 TRACK-(2), w8.10 TRACK+(3), w8.11 SEARCH-(5), w8.12 SEARCH+(4), w9.0 USB(0), w9.1 DISC(1). K1: w8.1 VINYL(10), w8.3 TEMPO(9), w8.2 MASTER TEMPO(8), w9.9 BACK(3), w8.0 EJECT(2). K2: w9.8 TIME(13), w8.8 MENU(12), w9.10 K2.4, w7.8 STOP(3), w7.0 K2.2, w7.1 K2.1, w9.2 K2.0 (CDJ-850 LINK). Names are the CDJ-850 keys with the same K bit. w1 rotary, w2/w3 tempo fader and centre, w6 bit 0x20/0x40 as on the CDJ-850. On a loaded USB track, K2.4 produced ADD TO / NEW PLAYLIST, confirming the PLAYLIST button."
+        },
+        {
+          "address": "0c0dac80",
+          "type": "PLATE",
+          "text": "CDJ-350 player loop (inside a larger function): waits on event flag 6, copies new_keys_flag (0x0CD48C15) to 0x0CD48BE0 and clears it, and when player_panel_event (0x0CD48C14) is set builds the key words with panel_keys_to_internal_words (0x0C0DA740) only if keys_build_busy (0x0CD48BED) is 0; otherwise the event is dropped (in mode 0x0CD48D0E == 1 it is kept in 0x0CD48C21). Then calls player_dispatch_by_state. A key change that arrives while keys_build_busy blips to 1 is lost until the next panel change [static + emu]. The loop calls the unpacker itself (pool 0x0C0DAD14 -> 0x0C0C6804) and waits on event flag 6, pattern 0x37 (wai_flg from 0x0C0DAC66) [emu]."
+        },
+        {
+          "address": "0c0dc2f6",
+          "type": "PLATE",
+          "text": "CDJ-350 player request with a blocking wait: sets keys_build_busy (0x0CD48BED) = 1, posts request 0xF through 0x0C0C7850, waits on event flag 6 bit 0 with no timeout (0x0C0BE4A4), clears it (0x0C0BE43C), then receives mailbox 7 (0x0C0BFC00). Reached on the USB source change [static]."
+        },
+        {
+          "address": "0c0e5800",
+          "type": "PLATE",
+          "text": "CDJ-350: SCIF1 at 0xFFFE8800 as clock-synchronous slave for the panel CPU (IC501), as the CDJ-850's 0x0C0F9F14. Registered from the init table at 0x0C0D6CF0."
+        },
+        {
+          "address": "0c0e594a",
+          "type": "PLATE",
+          "text": "CDJ-350 IRQ5 (vector 69, PNL_XBUSY) ISR: sets RX page 1 and sends the first 16 bytes of the indexed TX slot at 0x0C9B850C. The ISR sends prebuilt bytes; the six indicator slots get their checksums in the packer at 0x0C06904C. The seventh slot at 0x0C9B85CC is the FL text, one row of 16 wire bytes per frame."
+        },
+        {
+          "address": "0c0e59b2",
+          "type": "PLATE",
+          "text": "CDJ-350 TXI1 (vector 199) ISR. Page 1: accepts RX when the 8-bit end-around-carry sum of bytes 0..14 equals byte 15 and copies it to 0x0CD48474. Page 2: sum of bytes 0..6 in byte 7, copied to 0x0CD48484. No type byte is checked. Page 2 sends the slot's second 16 bytes; after it the slot index advances 0..6 and panel_rx_changed may set flag (6,4)."
+        },
+        {
+          "address": "0c0e5b86",
+          "type": "PLATE",
+          "text": "CDJ-350: compares RX bytes 3..22 of the 32-byte frame pair with the previous copy (bytes 6 and 8 only bits 0x0C, checksums ignored); returns 1 on a change. Bytes 6 and 8 are the tempo slider and centre ADC low bytes; their bits 0x0C count as a change, so on the unit ADC noise keeps panel events coming, which the encoder push relies on (see 0x0C0C6804). A noise-free panel loses pushes [emu]."
+        },
+        {
+          "address": "0c12ae44",
+          "type": "PLATE",
+          "text": "CDJ-350 floating-point polyphase synthesis (32-band windowing into 0x800-byte history buffers): by its shape the MP3 decoder's synthesis filterbank. The hottest code while an MP3 track loads or plays in the emulator, where the SH-2A FPU is emulated in software: the test stick's MP3 took about 40 s to load [emu profile]."
+        },
+        {
+          "address": "0c13e7f4",
+          "type": "PLATE",
+          "text": "CDJ-350 FL messages: 16-byte entries already in wire format (0x0A 0x0A + 13 characters + 0x00), the same layout as the text slot frames at 0x0C9B85CC. NO USB MEM is used from 0x0C062ED0, DISC and EMPTY from about 0x0C06124C."
+        }
+      ]
+    }
+  }
+}

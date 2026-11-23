@@ -12,6 +12,18 @@
  * input, and CDJ850_SCIF1_CAPTURE=<new path> records MAIN TX in closed windows. */
 void cdj850_panel_peer_init(void);
 
+/* Which panel CPU the peer plays. The CDJ-350 shares the CDJ-850's MAIN board
+ * and SCIF1 link but has its own panel (IC501, M3030RFCPFP) and frame layout:
+ * frame 2 carries three button words with its checksum in byte 7, and MAIN
+ * sends two 16-character text rows. Set before cdj850_panel_peer_init. In this
+ * mode CDJ350_PANEL_NOISE=<n> steps the tempo ADC words every n transactions
+ * (default 3, 0 = off), as a real slider's noise does. */
+typedef enum {
+    CDJ_PANEL_CDJ850,
+    CDJ_PANEL_CDJ350,
+} CdjPanelModel;
+void cdj850_panel_peer_set_model(CdjPanelModel model);
+
 /* Invalidate the status readouts and discard pre-reset status windows for them. */
 void cdj850_panel_peer_reset_readouts(void);
 

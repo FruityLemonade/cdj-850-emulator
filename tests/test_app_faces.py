@@ -63,9 +63,58 @@ def drag_jog(deck, radius_share):
 
 
 def test_the_jog_and_slider_are_wired_where_they_were_measured():
-    measured = {"cdj850"}
+    measured = {"cdj350", "cdj850"}
     assert {m for m in FACE.available() if FACE.load(m).jog_counter} == measured
     assert {m for m in FACE.available() if FACE.load(m).slider_off is not None} == measured
+
+
+def test_cdj350_face_uses_its_own_report_bytes():
+    app = make_app("cdj350")
+    try:
+        deck = app.decks[0]
+        for name, off, mask in (
+            ("USB", "0x16", 1), ("TRACK +", "0x13", 4),
+            ("PLAYLIST", "0x15", 4), ("BPM LOCK", "0x12", 1),
+        ):
+            key = deck.face.key_named(name)
+            x0, y0, x1, y1 = key.rect or (
+                key.circle[0] - key.circle[2], key.circle[1] - key.circle[2],
+                key.circle[0] + key.circle[2], key.circle[1] + key.circle[2],
+            )
+            pos = ((x0 + x1) * deck.scale / 2, (y0 + y1) * deck.scale / 2)
+            deck.down(pos)
+            deck.up(pos)
+            assert deck.sent[-2:] == [f"{off}:{mask}:0:hold", f"{off}:{mask}:0:rel"]
+    finally:
+        app.close()
+
+
+def test_cdj350_face_lamps_follow_page_four():
+    app = make_app("cdj350")
+    try:
+        deck = app.decks[0]
+        # Each lamp has its own bit, including the shared beat loop lens.
+        for off, mask, name in (
+            (9, 0x02, "USB STOP"), (9, 0x04, "COMPUTER"),
+            (9, 0x08, "CUE"), (9, 0x10, "PLAY/PAUSE"),
+            (9, 0x20, "LOOP IN"), (9, 0x40, "LOOP OUT"), (9, 0x80, "USB"),
+            (10, 0x01, "RELOOP / EXIT"), (10, 0x02, "DISC"),
+            (10, 0x08, "BEAT LOOP"), (10, 0x10, "MASTER TEMPO"),
+            (10, 0x20, "VINYL MODE"), (10, 0x40, "DISC EJECT"),
+        ):
+            frame = bytearray(16)
+            frame[0] = 0x42
+            frame[off] = mask
+            deck.link.frame = bytes(frame)
+            deck.link.seen = time.monotonic()
+            deck._light()
+            assert deck.lit == {name, "POWER"}
+
+        deck.link.seen -= 4
+        deck._light()
+        assert not deck.lit
+    finally:
+        app.close()
 
 
 @pytest.fixture

@@ -50,9 +50,11 @@ def decode_main(flat_path):
     """(packed_len, unpacked_bytes) from a main_flat.bin path."""
     data = open(flat_path, "rb").read()
     (declared,) = struct.unpack_from(">I", data, FLAT_LEN_OFF)
-    if declared != STREAM_LEN:
-        raise ValueError("packed length %s, expected 0x%x"
-                         % (hex(declared), STREAM_LEN))
+    # The CDJ-350's C350MAIN.UPD has the same layout with its own length
+    # (0x190BC5 for v1.14); anything that does not fit the flat is not one.
+    if not 0 < declared <= len(data) - FLAT_STREAM_OFF:
+        raise ValueError("packed length %s does not fit the %d-byte image"
+                         % (hex(declared), len(data)))
     image = unpack(data, FLAT_STREAM_OFF, RING_INIT, RING_POS)
     return declared, image
 
@@ -68,6 +70,11 @@ def main(argv):
              len(image), digest))
     if len(argv) == 3:
         open(argv[2], "wb").write(image)
+    if declared != STREAM_LEN:
+        # Not the CDJ-850 v1.13 stream: the model profile's MODEL_EXPECTED
+        # pins this image instead (prepare_firmware.sh checks it).
+        print("not the CDJ-850 v1.13 stream; left to the model's MODEL_EXPECTED")
+        return 0
     if len(image) != UNPACK_LEN or digest != UNPACK_SHA256:
         print("MISMATCH: expected %d bytes sha256 %s"
               % (UNPACK_LEN, UNPACK_SHA256), file=sys.stderr)

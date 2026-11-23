@@ -1,12 +1,17 @@
-# CDJ-850 Ghidra annotations
+# CDJ Ghidra annotations
 
-`cdj850-annotations.json` records the hand-authored function names, labels, and
-listing comments from the CDJ-850 v1.13 analysis project. It includes the boot
-loader, MAIN, and all four DSP stages. The SHA-256 hashes identify the local
-inputs. The bundle contains annotation metadata only.
+Two bundles record the hand-authored function names, labels, and listing
+comments from the analysis projects. The SHA-256 hashes identify the local
+inputs. The bundles contain annotation metadata only.
 
-1. Prepare your own CDJ-850 v1.13 firmware extracts. See the
-   [firmware layout and DSP bootstrap notes](../../docs/cdj850-modding.md).
+| Bundle | Player and update | Programs |
+| --- | --- | --- |
+| `cdj850-annotations.json` | CDJ-850 v1.13 (`C850MAIN.UPD`) | boot loader, MAIN, all four DSP stages |
+| `cdj350-annotations.json` | CDJ-350 v1.14 (`C350MAIN.UPD`) | MAIN (see [the CDJ-350 notes](../../docs/cdj350.md)) |
+
+1. Prepare your own firmware extracts. See the
+   [firmware layout and DSP bootstrap notes](../../docs/cdj850-modding.md);
+   the CDJ-350 update has the same layout.
 2. Import the files you want to annotate into a local Ghidra project as raw
    binaries. Use the default compiler spec and set **Base Address** in the
    import options.
@@ -16,6 +21,7 @@ inputs. The bundle contains annotation metadata only.
    | `boot.bin` | `SuperH:BE:32:SH-2A` | `00000000` |
    | `main_unpacked.bin` | `SuperH:BE:32:SH-2A` | `0c000000` |
    | `dsp_seg*.bin` | `DSP56300:LE:24:default` | `P:000000` |
+   | CDJ-350 `c350_main_unpacked.bin` | `SuperH:BE:32:SH-2A` | `0c000000` |
 
    DSP imports require the DSP56300 processor extension. Use the payload of
    each SHI stage, omitting the six-byte stage header and storing each
@@ -32,8 +38,9 @@ inputs. The bundle contains annotation metadata only.
    ```
 
 Run the script once for each program you want to annotate. The second argument
-is the program's path inside the Ghidra project. The script checks the imported
-file's SHA-256, language, compiler spec and load address before making changes.
+is the program's path inside the Ghidra project. The script searches every
+`*-annotations.json` here for the program whose SHA-256, language, compiler
+spec and load address match the import, and changes nothing if none does.
 It creates missing functions where needed and applies the bundled names,
 labels, and comments. Labels can name documented RAM addresses in a raw import
 even if it has no corresponding RAM block. Reruns apply the same annotations.

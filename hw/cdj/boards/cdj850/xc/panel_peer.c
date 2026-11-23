@@ -1,5 +1,6 @@
 /* SPDX-License-Identifier: GPL-2.0-or-later */
 #include "cdj_common.h"
+#include "cdj350_display.h"
 #include "cdj_panelkeys.h"
 #include "cdj_pnl_stateout.h"
 #include "intc.h"
@@ -178,6 +179,101 @@ static const PanelButtonDef panel_buttons[] = {
     { "tag_track",      4, 0x2000 },
 };
 
+/*
+ * CDJ-350 v1.14 (C350MAIN.UPD). Its MAIN unpacks frame 1 bytes 1..14 and
+ * frame 2 bytes 1..6 into ten big-endian words (0x0C0C6804) and builds the
+ * internal key words K0..K2 from words 7..9 (0x0C0DA740), as the CDJ-850 does
+ * from its words 7..10 (0x0C0ECCB4). A name here is the CDJ-850 key that sets
+ * the same K bit; the k*_ names set a K bit the CDJ-850 has no source for
+ * (by the service manual's key list, LOOP DIVIDE -/+, PLAYLIST and BPM LOCK
+ * remain; k2_2 shows "NO MASTERBPM", which fits BPM LOCK). Source keys act
+ * after a 1 s hold (keys_handler_common 0x0C0C826E), so script them as e.g.
+ * 8000:usb:1500.
+ * Word 0 is frame 1 bytes 13..14 (as on the CDJ-850); words 1..3 are frame 2
+ * bytes 1..2, 3..4, 5..6.
+ */
+static const PanelButtonDef panel_buttons_350[] = {
+    { "enter",          0, 0x0100 },
+    { "push",           0, 0x0100 },
+    { "jog_touch",      0, 0x2000 },
+    { "jog_fwd",        0, 0x4000 },
+    { "jog_move",       0, 0x8000 },
+    /* Word 1 -> frame 2 bytes 1..2 */
+    { "usb_stop",       1, 0x0100 },    /* K2.3 */
+    { "play",           1, 0x0200 },    /* K0.13 */
+    { "cue",            1, 0x0400 },    /* K0.14 */
+    { "loop_in",        1, 0x0800 },    /* K0.12 */
+    { "loop_out",       1, 0x1000 },    /* K0.11 */
+    { "reloop",         1, 0x2000 },    /* K0.10 */
+    { "k0_9",           1, 0x4000 },    /* K0.9, no CDJ-850 source */
+    { "k0_8",           1, 0x8000 },    /* K0.8, no CDJ-850 source */
+    { "k2_2",           1, 0x0001 },    /* K2.2, no CDJ-850 source */
+    { "bpm_lock",       1, 0x0001 },    /* probably: shows "NO MASTERBPM" */
+    { "k2_1",           1, 0x0002 },    /* K2.1, no CDJ-850 source */
+    /* Word 2 -> frame 2 bytes 3..4 */
+    { "menu",           2, 0x0100 },    /* K2.12 (CDJ-850 MENU) */
+    { "utility",        2, 0x0100 },    /* probably DISPLAY/UTILITY */
+    { "tr_search_prev", 2, 0x0200 },    /* K0.2 */
+    { "prev",           2, 0x0200 },
+    { "tr_search_next", 2, 0x0400 },    /* K0.3 */
+    { "next",           2, 0x0400 },
+    { "search_prev",    2, 0x0800 },    /* K0.5 */
+    { "search_next",    2, 0x1000 },    /* K0.4 */
+    { "eject",          2, 0x0001 },    /* K1.2 */
+    { "vinyl",          2, 0x0002 },    /* K1.10 */
+    { "master_tempo",   2, 0x0004 },    /* K1.8 */
+    { "tempo",          2, 0x0008 },    /* K1.9 */
+    /* Word 3 -> frame 2 bytes 5..6 */
+    { "time",           3, 0x0100 },    /* K2.13 */
+    { "back",           3, 0x0200 },    /* K1.3 */
+    { "k2_4",           3, 0x0400 },    /* K2.4, no CDJ-850 source */
+    { "usb",            3, 0x0001 },    /* K0.0 */
+    { "disc",           3, 0x0002 },    /* K0.1 */
+    { "cd",             3, 0x0002 },
+    { "link",           3, 0x0004 },    /* K2.0 (CDJ-850 LINK; PC?) */
+    { "pc",             3, 0x0004 },
+};
+
+static CdjPanelModel panel_model = CDJ_PANEL_CDJ850;
+
+void cdj850_panel_peer_set_model(CdjPanelModel model)
+{
+    panel_model = model;
+}
+
+/*
+ * CDJ-350 tempo ADC noise. In USB mode the unpacker (0x0C0C6804) clears the
+ * panel event unless w1, w6 bit 0x20 or w7..w9 changed, except on every
+ * third event (counter 0x0CD484F0), so the encoder push (w6 0x0100) only
+ * reaches the key build if the panel keeps producing events while it is
+ * held. The TXI1 ISR's change test (0x0C0E5B86) compares bytes 6 and 8, the
+ * tempo slider and centre ADC low bytes, on bits 0x0C only: room for a real
+ * ADC's noise, which is what keeps events coming on the unit. Adding 4 to
+ * both words every other few transactions does that without moving the
+ * slider against its centre. CDJ350_PANEL_NOISE=0 turns it off; =<n> steps
+ * every n transactions (default 3).
+ */
+static void cdj350_panel_adc_noise(uint8_t f[PANEL_FRAME_LEN])
+{
+    static int every = -1;
+    static uint32_t count;
+
+    if (every < 0) {
+        const char *e = getenv("CDJ350_PANEL_NOISE");
+
+        every = e ? (int)strtol(e, NULL, 0) : 3;
+    }
+    if (every > 0 && (count++ / (unsigned)every) & 1) {
+        uint16_t tempo = (uint16_t)((f[5] << 8 | f[6]) + 4);
+        uint16_t centre = (uint16_t)((f[7] << 8 | f[8]) + 4);
+
+        f[5] = (uint8_t)(tempo >> 8);
+        f[6] = (uint8_t)tempo;
+        f[7] = (uint8_t)(centre >> 8);
+        f[8] = (uint8_t)centre;
+    }
+}
+
 static struct {
     QEMUTimer *timer;
     bool enabled;
@@ -320,14 +416,19 @@ static bool panel_strieq(const char *a, const char *b)
 
 static const PanelButtonDef *panel_find_button(const char *name)
 {
-    unsigned i;
+    const PanelButtonDef *table = panel_buttons;
+    unsigned i, n = sizeof(panel_buttons) / sizeof(panel_buttons[0]);
 
     if (!name || !*name) {
         return NULL;
     }
-    for (i = 0; i < sizeof(panel_buttons) / sizeof(panel_buttons[0]); i++) {
-        if (panel_strieq(name, panel_buttons[i].name)) {
-            return &panel_buttons[i];
+    if (panel_model == CDJ_PANEL_CDJ350) {
+        table = panel_buttons_350;
+        n = sizeof(panel_buttons_350) / sizeof(panel_buttons_350[0]);
+    }
+    for (i = 0; i < n; i++) {
+        if (panel_strieq(name, table[i].name)) {
+            return &table[i];
         }
     }
     return NULL;
@@ -543,13 +644,46 @@ static void cdj850_panel_build_rx1(uint8_t f[PANEL_FRAME_LEN], uint64_t now_ms)
             f[p->off] |= p->mask;
         }
     }
+    if (panel_model == CDJ_PANEL_CDJ350) {
+        cdj350_panel_adc_noise(f);
+    }
     f[15] = cdj850_panel_sum8ec(f, 15);
+}
+
+/* CDJ-350: MAIN's TXI1 ISR (0x0C0E59B2) checks frame 2 as the 8-bit
+ * end-around-carry sum of bytes 0..6 in byte 7 and keeps bytes 1..6 (button
+ * words 1..3); it checks no type byte in either frame. */
+static void cdj350_panel_build_rx2(uint8_t f[PANEL_FRAME_LEN], uint64_t now_ms)
+{
+    uint32_t i;
+
+    memset(f, 0, PANEL_FRAME_LEN);
+    f[0] = CDJ850_PANEL_TYPE2;
+    memcpy(&f[1], panel.btn_rx2, 6);
+    for (i = 1; i <= 6; i++) {
+        if (panel.live_lvl_on[0x10 + i]) {
+            f[i] = panel.live_lvl[0x10 + i];
+        }
+    }
+    for (i = 0; i < panel.live_press_n; i++) {
+        const PanelLivePress *p = &panel.live_press[i];
+
+        if ((p->held || now_ms < p->at_ms + p->dur_ms) &&
+            p->off >= 0x11 && p->off <= 0x16) {
+            f[p->off - 0x10] |= p->mask;
+        }
+    }
+    f[7] = cdj850_panel_sum8ec(f, 7);
 }
 
 static void cdj850_panel_build_rx2(uint8_t f[PANEL_FRAME_LEN], uint64_t now_ms)
 {
     uint32_t i;
 
+    if (panel_model == CDJ_PANEL_CDJ350) {
+        cdj350_panel_build_rx2(f, now_ms);
+        return;
+    }
     memset(f, 0, PANEL_FRAME_LEN);
     f[0] = CDJ850_PANEL_TYPE2;
     memcpy(&f[1], panel.btn_rx2, 8);
@@ -957,8 +1091,12 @@ void cdj850_panel_peer_reset_readouts(void)
     if (panel.timer) {
         timer_mod(panel.timer, ns + panel.period_ns);
     }
-    cdj850_panel_display_reset_readouts(&panel.display, ns, panel_publish_display,
-                                     &ms);
+    if (panel_model == CDJ_PANEL_CDJ350) {
+        vfd_reset_cdj350();
+    } else {
+        cdj850_panel_display_reset_readouts(&panel.display, ns,
+                                            panel_publish_display, &ms);
+    }
 }
 
 static void panel_note_status(const uint8_t tx[PANEL_FRAME_LEN])
@@ -1036,16 +1174,24 @@ static void panel_end_transaction(void)
             memcpy(panel.logged_status, panel.cur_tx[0], 4);
         }
         memcpy(panel.last_tx, panel.cur_tx, sizeof(panel.last_tx));
-        panel_note_status(status);
-        for (i = 0; i < panel.frame; i++) {
-            if (panel.cur_tx[i][0] == 0x01) {
-                cdj_pnl_stateout(panel.cur_tx[i], PANEL_FRAME_LEN);
-                break;
+        if (panel_model == CDJ_PANEL_CDJ350) {
+            if (cdj350_display_page(panel.cur_tx) == 4 &&
+                cdj350_indicator_valid(panel.cur_tx)) {
+                cdj_pnl_stateout(panel.cur_tx[1], PANEL_FRAME_LEN);
             }
+            vfd_note_cdj350(panel.cur_tx);
+        } else {
+            panel_note_status(status);
+            for (i = 0; i < panel.frame; i++) {
+                if (panel.cur_tx[i][0] == 0x01) {
+                    cdj_pnl_stateout(panel.cur_tx[i], PANEL_FRAME_LEN);
+                    break;
+                }
+            }
+            cdj850_panel_display_transaction(&panel.display, panel.start_ns,
+                                             panel.frame, panel.cur_tx,
+                                             panel_publish_display, &ms);
         }
-        cdj850_panel_display_transaction(&panel.display, panel.start_ns,
-                                         panel.frame,
-                                         panel.cur_tx, panel_publish_display, &ms);
         if (!panel.reported) {
             panel.reported = true;
             info_report("cdj850: panel peer: first full transaction "

@@ -3,12 +3,15 @@
 #ifndef CDJ850_VFD_H
 #define CDJ850_VFD_H
 #include "cdj_common.h"
+#include "panel_wire.h"
 #include "vfd_pitch.h"
 #include "vfd_playing.h"
 #include "vfd_time.h"
 
 /* Create the deck window. Safe headless (no window without a display). */
-void vfd_init(void);
+void vfd_init(bool cdj350);
+void vfd_note_cdj350(const uint8_t tx[][PANEL_FRAME_LEN]);
+void vfd_reset_cdj350(void);
 
 /* Legacy diagnostic accessor: two summary strings (not rendered content).
  * Always NUL-terminated; callers provide the buffers. */

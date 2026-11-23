@@ -177,7 +177,7 @@ def _do_sections(py, tools, out, upd_files, log):
 
 def _do_c850_raw(tools, out, upd_files, log):
     """extract/main_flat.bin (the `main` region) and extract/boot.bin (the
-    `boot` region) from the CDJ-850's raw-binary container, using the same
+    `boot` region) from the CDJ-850's (or CDJ-350's) raw-binary container, using the same
     outdir layout the `sections` step uses."""
     try:
         try:
@@ -188,7 +188,10 @@ def _do_c850_raw(tools, out, upd_files, log):
                 "c850_decode", os.path.join(tools, "c850_decode.py"))
             c850_decode = importlib.util.module_from_spec(spec)
             spec.loader.exec_module(c850_decode)
-        data = c850_decode.read_upd(upd_files[0])
+        # prepare() has checked the file against the model's MODEL_UPD_SHA256;
+        # the CDJ-350's C350MAIN.UPD has the same container.
+        with open(upd_files[0], "rb") as f:
+            data = f.read()
         regions = c850_decode.carve_regions(data)
         with open(os.path.join(out, "extract", "main_flat.bin"), "wb") as f:
             f.write(regions["main"])
