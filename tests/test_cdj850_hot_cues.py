@@ -45,7 +45,7 @@ MODS = ["hot_cues", "hot_cues_tick", "hot_cues_select", "hot_cues_select2", "hot
 SHOW = ["hot_cues_flash"]
 # (pool word, stock value, the instruction that reads it, payload symbol)
 POOLS = [(0x0C0ED038, 0x0C0DD492, 0x0C0ECEFC, "c850_ui_keys"),
-         (0x0C0EC838, 0x0C0EB388, 0x0C0EC73E, "hot_cues_tick"),
+         (0x0C0EC838, 0x0C0EB388, 0x0C0EC73E, "c850_ui_tick"),
          (0x0C0D41BC, 0x0C0D275A, 0x0C0D3F5C, "hot_cues_select"),
          (0x0C0D3CC8, 0x0C0D275A, 0x0C0D3B94, "hot_cues_select"),
          (0x0C0ED244, 0x0C0C9E7C, 0x0C0ED1B0, "hot_cues_wait"),

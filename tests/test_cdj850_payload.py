@@ -104,17 +104,16 @@ def test_cave_reservation_and_room_left():
     ps = patch_main.PATCH_SETS["cdj850"]
     offsets, total = sigpatch.layout(lambda n: patch_main.blob_path(n, "cdj850"), ps.mods, ps.profile.gate)
     assert "payload_demo" not in offsets and "bpm_decimals" not in offsets
-    # 416 without the service gate; the gate adds 24 bytes to each of the two trampolines
-    # (display_stage_bpm with its 7 hooks, tempo_wide's TEMPO site): 48 bytes with the 16-byte padding.
-    # hot_cues_flash and quant_loops_flash (one routine, c850_ui_flash_hook) took 32 of the 416,
-    # info_order 16, tempo_wide's 6-byte routine 16 (it was 18 bytes, 32 padded, before it
-    # stopped rewriting r6).
-    assert total == 464
-    assert sigpatch.layout(lambda n: patch_main.blob_path(n, "cdj850"), ps.mods)[1] == 416
+    # 448 without the service gate; the gate adds 24 bytes to each of the two trampolines
+    # (display_stage_bpm with its hooks, tempo_wide's TEMPO site), giving 512 with padding.
+    # hot_cues_flash and quant_loops_flash (c850_ui_flash_hook) took 32, info_order 16,
+    # tempo_wide's 6-byte routine 16, and bpm_lock_display/bpm_lock_flash/phase_meter add 3 x 16 = 48.
+    assert total == 512
+    assert sigpatch.layout(lambda n: patch_main.blob_path(n, "cdj850"), ps.mods)[1] == 448
     if MAIN.is_file():
         img = sigpatch.Image(ps.profile, MAIN.read_bytes())
         start, end = sigpatch.find_cave(img)
-        assert end - ((start + 3) & ~3) - total == 652
+        assert end - ((start + 3) & ~3) - total == 604
 
 
 @needs_toolchain

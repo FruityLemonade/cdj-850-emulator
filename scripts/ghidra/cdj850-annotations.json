@@ -566,6 +566,10 @@
           "name": "display_set_row_flag"
         },
         {
+          "address": "0c06e58a",
+          "name": "display_bpm_lock_notify"
+        },
+        {
           "address": "0c073788",
           "name": "beat_grid_set_tempo"
         },
@@ -774,8 +778,52 @@
           "name": "usb_vbus_read_debounced"
         },
         {
+          "address": "0c0d1b58",
+          "name": "bpm_lock_toggle"
+        },
+        {
+          "address": "0c0d1bde",
+          "name": "bpm_lock_edit_recalc"
+        },
+        {
+          "address": "0c0d1c16",
+          "name": "bpm_lock_disengage"
+        },
+        {
           "address": "0c0d1c42",
           "name": "sync_tempo_range_check"
+        },
+        {
+          "address": "0c0d1cc6",
+          "name": "bpm_lock_edit_exit"
+        },
+        {
+          "address": "0c0d1ce6",
+          "name": "bpm_lock_recalc_pitch"
+        },
+        {
+          "address": "0c0d1d56",
+          "name": "bpm_lock_check_pitch_in_range"
+        },
+        {
+          "address": "0c0d1dd8",
+          "name": "bpm_lock_adjust_master"
+        },
+        {
+          "address": "0c0d1e40",
+          "name": "bpm_lock_edit_refresh_from_track"
+        },
+        {
+          "address": "0c0d1e84",
+          "name": "bpm_lock_fader_catchup"
+        },
+        {
+          "address": "0c0d1f00",
+          "name": "bpm_lock_effective_pitch"
+        },
+        {
+          "address": "0c0d1f14",
+          "name": "bpm_lock_dispatch"
         },
         {
           "address": "0c0d275a",
@@ -1364,6 +1412,11 @@
           "text": "Per-row flag in TX 0x80 byte 11 bits 5..7 (row 0..2 in arg 2): arg 1 == 1 sets it unless the previous view mode 0x0C9D1168 is 0; otherwise clears it. Emulator: the selected row's bit appears about 1 s after the cursor rests and clears on the next move (likely the start of the panel's long-name scroll)."
         },
         {
+          "address": "0c06e58a",
+          "type": "PLATE",
+          "text": "Dormant CDJ-350 BPM-lock popup dispatcher called by bpm_lock_* via pools 0x0C0D1DA4 and 0x0C0D1F34; codes 1/2/3/4/0xD/0xE/0xF/0x13 fall through in stock CDJ-850, hooked by mods/bpm_lock."
+        },
+        {
           "address": "0c073788",
           "type": "PLATE",
           "text": "Beat-grid tempo setter: only caller of grid_find_beat (pool 0x0C073830, loaded at 0x0C0737B8). Writes the base tempo 0x0C9D23EC, clamped by movi20 #0x708 (180.0) at 0x0C0737D6 (bpm999 raises it to 999.0)."
@@ -1391,7 +1444,7 @@
         {
           "address": "0c074824",
           "type": "PLATE",
-          "text": "info_item_text(track, code, dest): strcpy of the record text of an INFO item through a jump table on code-2 (0x0C07486C): 2 +0x138, 4 +0x38, 6 +0x428, 7 +0xB8, 0A +0x5A8, 0B +0x83C, 0E +0x630, 0F +0x730, 10 +0x7B0, 11 +0x848, 13..22 +0x7BC, 23 +0x4A8, 28 +0x6B0, 29 +0x5B0. Code 0D (BPM) is formatted by info_screen_fill with FUN_0C06734E [static]."
+          "text": "info_item_text(track, code, dest): strcpy of the record text of an INFO item through a jump table on code-2 (0x0C07486C): 2 +0x138, 4 +0x38, 6 +0x428, 7 +0xB8, 0A +0x5A8, 0B +0x83C, 0E +0x630, 0F +0x730, 10 +0x7B0, 11 +0x848, 13..22 +0x7BC (NUL-terminated, zeroed by FUN_0C037DF8), 23 +0x4A8, 28 +0x6B0, 29 +0x5B0. Code 0D (BPM) is formatted by info_screen_fill with FUN_0C06734E [static]."
         },
         {
           "address": "0c076288",
@@ -1602,6 +1655,16 @@
           "address": "0c0d1c42",
           "type": "PLATE",
           "text": "Base tempo outside 60.0..199.9 (999.0 with bpm999, constant at 0x0C0D1C80) stores 130.0 in the sync field."
+        },
+        {
+          "address": "0c0d1ce6",
+          "type": "PLATE",
+          "text": "Computes locked pitch (master_tenths*10000/base_tenths - 10000) into 0x0CE649BC and sets catch-up direction 0x0CE649BE. Stock clamps to +-0x640 (+-16%); mods/bpm_lock widens to +-0x2710 (+-100%)."
+        },
+        {
+          "address": "0c0d1f14",
+          "type": "PLATE",
+          "text": "CDJ-350 BPM Lock command dispatcher (cmds 0..9): 0=toggle lock, 1=enter/refresh Master BPM edit, 2=fader catch-up (from tempo_fader_to_pitch), 3/5/8=exit edit, 4=rotary adjust Master BPM, 6=recalc, 7=unlock, 9=get effective pitch (used by player_keys_latch_prev)."
         },
         {
           "address": "0c0d275a",
@@ -2144,6 +2207,10 @@
           "name": "dsp_boot_expected_dreq_levels"
         },
         {
+          "address": "0c1e0c68",
+          "name": "bpm_lock_edit_timer"
+        },
+        {
           "address": "0c1e1088",
           "name": "auto_loop_beats"
         },
@@ -2300,6 +2367,10 @@
           "name": "display_whole_bpm"
         },
         {
+          "address": "0c9d0ae2",
+          "name": "display_pitch_staging"
+        },
+        {
           "address": "0c9d0ae4",
           "name": "display_status_unused_0c"
         },
@@ -2353,7 +2424,7 @@
         },
         {
           "address": "0c9d0af8",
-          "name": "display_view_mode"
+          "name": "display_mode_word"
         },
         {
           "address": "0c9d0afc",
@@ -2470,6 +2541,46 @@
         {
           "address": "0ce5a9ec",
           "name": "usb_audio_read_abort"
+        },
+        {
+          "address": "0ce649ac",
+          "name": "bpm_lock_active"
+        },
+        {
+          "address": "0ce649ad",
+          "name": "bpm_lock_edit_mode"
+        },
+        {
+          "address": "0ce649ae",
+          "name": "bpm_lock_master_set"
+        },
+        {
+          "address": "0ce649b0",
+          "name": "bpm_lock_master_bpm_tenths"
+        },
+        {
+          "address": "0ce649b8",
+          "name": "bpm_lock_saved_wide"
+        },
+        {
+          "address": "0ce649ba",
+          "name": "bpm_lock_saved_scale"
+        },
+        {
+          "address": "0ce649bc",
+          "name": "bpm_lock_locked_pitch"
+        },
+        {
+          "address": "0ce649be",
+          "name": "bpm_lock_catchup_dir"
+        },
+        {
+          "address": "0ce649bf",
+          "name": "bpm_lock_catchup_pending"
+        },
+        {
+          "address": "0ce649c4",
+          "name": "bpm_lock_track_bpm_tenths"
         },
         {
           "address": "0ce649d0",

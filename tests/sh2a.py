@@ -167,6 +167,8 @@ class Sh2a:
             return self.branch(pc, r[n])
         elif op & 0xF0FF == 0x402B:                             # jmp @Rn
             return self.branch(pc, r[n])
+        elif op & 0xF0FF == 0x0023:                             # braf Rn
+            return self.branch(pc, (pc + 4 + r[n]) & MASK)
         elif op == 0x006B:                                      # rts/n (no delay slot)
             return self.pr
         elif op & 0xF0FF == 0x404B:                             # jsr/n @Rn (no delay slot)
