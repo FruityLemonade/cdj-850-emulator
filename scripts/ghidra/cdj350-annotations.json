@@ -154,6 +154,10 @@
         {
           "address": "0c01635c",
           "name": "beat_lamp_divided_phase"
+        },
+        {
+          "address": "0c01662e",
+          "name": "loop_divide_position"
         }
       ],
       "labels": [
@@ -380,6 +384,14 @@
         {
           "address": "0cd48d7c",
           "name": "loop_in_frames"
+        },
+        {
+          "address": "0c7e5034",
+          "name": "loop_divide_feed_pos"
+        },
+        {
+          "address": "0c7e4f24",
+          "name": "loop_divide_feed_enable"
         }
       ],
       "comments": [
@@ -641,17 +653,32 @@
         {
           "address": "0c0d2b08",
           "type": "PRE",
-          "text": "K0.9 (wire w7 0x4000, '-') in the loop state saves the count and increments loop_divide_count up to 6, or one halving per press. In play (state 3, 0x0C0D1A50/0x0C0D1BEA) either rocker half starts a 4-beat loop instead. Neither path writes the loop points (loop_in_frames 0x0CD48D7C, loop_out_frames 0x0CD48CCC). In the emulator the 128 BPM 4-beat loop (in 0x49E, out 0x52A frames) stayed 1.80 s after '-' presses [emu]."
+          "text": "K0.9 (wire w7 0x4000, '-') in the loop state saves the count and increments loop_divide_count up to 6, one halving per press. In play (state 3, 0x0C0D1A50/0x0C0D1BEA) either rocker half starts a 4-beat loop instead. Neither path writes the loop points (loop_in_frames 0x0CD48D7C, loop_out_frames 0x0CD48CCC). The count instead acts in the audio feeder through loop_divide_position (0x0C01662E). With the 128 BPM stick, count 1 made the kick repeat every half beat while the loop and time display stayed 4 beats [emu]."
         },
         {
           "address": "0c01635c",
           "type": "PLATE",
-          "text": "Divides a beat period by 2^loop_divide_count (1..64), or by 8 or 4 while one of two flags in the same module (0x0C1AB7E0, 0x0C1AB7E4) is 1. Returns the position modulo the result and sets 0x0C1AB7EC when that is 0. Code at 0x0C06036A-0x0C06037E reads that flag and 0x0C1AB7E8 to time the BEAT LOOP lamp. This module is the only reader of loop_divide_count found."
+          "text": "Returns pos modulo (beat segment length / 2^loop_divide_count), with count 0..6 giving divisors 1..64. While one of two module flags (0x0C1AB7E0, 0x0C1AB7E4) is 1 the divisor is 8 or 4 instead. Sets 0x0C1AB7EC when the result is 0; 0x0C06036A-0x0C06037E reads that flag and 0x0C1AB7E8 to time the BEAT LOOP lamp. Called from loop_divide_position for the beat segment the play position is in."
         },
         {
           "address": "0c016474",
           "type": "PLATE",
-          "text": "Beat lamp module. While beat_lamp_loop_in is -1, it recomputes it from the beat grid, splits the 4-beat loop into beat segments and zeroes loop_divide_count. Otherwise it locates the playing position in those segments through beat_lamp_divided_phase. It returns a ring-buffer offset that its three callers (0x0C008032, 0x0C06EBEE, 0x0C06ECF4) discard."
+          "text": "Beat module setup. While beat_lamp_loop_in is -1 it takes the loop's ring start and end (0x0C7E5038/0x0C7E503C), splits the loop into four beat segments (lengths at 0x0C7E5054.., 247 units each for the 4-beat 128 BPM loop) and zeroes loop_divide_count. Otherwise it returns at once. Its three callers (0x0C008032, 0x0C06EBEE, 0x0C06ECF4) discard the result."
+        },
+        {
+          "address": "0c01662e",
+          "type": "PLATE",
+          "text": "LOOP DIVIDE position map. r4 is the feeder's ring read position. The function finds the beat segment it lies in, folds the offset into the first 1/2^loop_divide_count of that beat (beat_lamp_divided_phase) and returns the ring address of that point, wrapped at the ring size 0x562200. With count 0 the position is unchanged. So the divide replays the start of every beat; it does not move the loop points."
+        },
+        {
+          "address": "0c06e5e2",
+          "type": "PRE",
+          "text": "In player states 4/5/7/8 (and 9 with 0x0CD48544 == 3), when r5 is set and 0x0C00B4A4 returns nonzero: if beat_lamp_loop_in is not -1, loop_divide_feed_pos = loop_divide_position(current ring read position). If r5 is clear or 0x0C00B4A4 returns 0, the beat module is reset (0x0C0163D4). Same code at 0x0C06EB24."
+        },
+        {
+          "address": "0c06e890",
+          "type": "PRE",
+          "text": "Audio feeder: when beat_lamp_loop_in is not -1 and loop_divide_feed_enable (0x0C7E4F24) is set, the frame fetch (0x0C06DF68) reads from loop_divide_feed_pos instead of the normal position, seeding it with that position when it is -1. Same check at 0x0C06E224 behind 0x0C7E4F1C. This is where LOOP DIVIDE becomes audible [emu]."
         }
       ]
     }
