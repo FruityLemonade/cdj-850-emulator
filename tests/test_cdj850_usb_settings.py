@@ -30,7 +30,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 import patch_main  # noqa: E402
 import payloadbuild  # noqa: E402
 from sh2a import Memory, Sh2a  # noqa: E402
-from test_cdj850_hot_cues import _logger, _stub  # noqa: E402
+from test_cdj850_hot_cues import _asm, _logger, _stub  # noqa: E402
 from test_cdj850_utility_items import QUANT, WAVE  # noqa: E402
 
 MAIN = ROOT / "extract" / "cdj850" / "main_unpacked.bin"
@@ -218,6 +218,23 @@ def test_failed_write_falls_back_to_flash(payload):
     _call(p, mem, "c850_ui_usb_mount", CTX, 0)
     assert _call(p, mem, "c850_ui_set_flag", DRIFT_OFF, 1) == 1
     assert _counter(p, mem, "errors") == 1 and mem.read(SETTINGS + 0x21, 1) == b"\x52"
+
+
+@pytest.mark.parametrize("flag", [QUANT_OFF, DRIFT_OFF, WAVE_CENTER, 0x04])
+def test_change_after_a_failed_stick_write_still_reads_back(payload, flag):
+    """A file was loaded at mount, then the stick stops taking writes: every
+    flag (quantize, drift, playhead too, not only bits 6+) must still switch.
+    Before the fix the low six bits stayed at the file's value."""
+    p = payload
+    mem = _mem(p, file=_file(flag))
+    _call(p, mem, "c850_ui_usb_mount", CTX, 0)
+    assert _flag(p, mem, flag) == 1
+    mem.write(0x0C08910C, _asm(0x0C08910C, _logger(4, 0)))   # writes fail from now on
+    _call(p, mem, "c850_ui_set_flag", flag, 0)
+    assert _counter(p, mem, "errors") == 1
+    assert _flag(p, mem, flag) == 0
+    _call(p, mem, "c850_ui_set_flag", flag, 1)
+    assert _flag(p, mem, flag) == 1
 
 
 def test_high_flag_bits_and_standby_index_roundtrip_on_usb(payload):
