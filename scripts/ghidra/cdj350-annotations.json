@@ -270,6 +270,66 @@
         {
           "address": "0c0d65e6",
           "name": "utility_value_commit"
+        },
+        {
+          "address": "0c067f1c",
+          "name": "track_view_rows"
+        },
+        {
+          "address": "0c0d664a",
+          "name": "info_page_scroll"
+        },
+        {
+          "address": "0c06bd38",
+          "name": "record_of_track"
+        },
+        {
+          "address": "0c06c3c4",
+          "name": "track_title"
+        },
+        {
+          "address": "0c06c3dc",
+          "name": "track_artist"
+        },
+        {
+          "address": "0c06c3f8",
+          "name": "track_album"
+        },
+        {
+          "address": "0c06c414",
+          "name": "track_genre_ptr"
+        },
+        {
+          "address": "0c06c3b0",
+          "name": "track_record_id"
+        },
+        {
+          "address": "0c051fd6",
+          "name": "db_server_track_info"
+        },
+        {
+          "address": "0c0519d0",
+          "name": "db_track_info_build"
+        },
+        {
+          "address": "0c0719a4",
+          "name": "db_track_row"
+        },
+        {
+          "address": "0c07d14c",
+          "name": "db_key_name"
+        },
+        {
+          "address": "0c0aee7c",
+          "name": "db_item_release"
+        },
+        {
+          "address": "0c04a926",
+          "name": "db_request_track_info"
+        },
+        {
+          "address": "0c0f9b2c",
+          "name": "text_copy_r0_r1"
         }
       ],
       "labels": [
@@ -648,6 +708,38 @@
         {
           "address": "0cd48cf6",
           "name": "version_text"
+        },
+        {
+          "address": "0cd48be2",
+          "name": "info_page"
+        },
+        {
+          "address": "0cd4853e",
+          "name": "pitch"
+        },
+        {
+          "address": "0cd48bc4",
+          "name": "master_tempo"
+        },
+        {
+          "address": "0c068428",
+          "name": "info_page0_getter_pool"
+        },
+        {
+          "address": "0c06842c",
+          "name": "info_page1_getter_pool"
+        },
+        {
+          "address": "0c0c9048",
+          "name": "info_page_scroll_pool"
+        },
+        {
+          "address": "0c051aec",
+          "name": "db_track_row_pool"
+        },
+        {
+          "address": "0c9b8abf",
+          "name": "info_meter_page_flag"
         }
       ],
       "comments": [
@@ -1000,6 +1092,26 @@
           "address": "0c177a88",
           "type": "PLATE",
           "text": "AUTO STANDBY limits in seconds per UTILITY value: OFF, 1200, 2400, 3600 (u16 BE)."
+        },
+        {
+          "address": "0c0519d0",
+          "type": "PLATE",
+          "text": "Request 0x2002 builder: reads the track row (0x0C0719A4: +0x1C rating, +0x2C key id, +0x18 BPM, title/comment pointers, ids), then sends the first four fields of the USB INFO list only (index < 4). info_order notes rating and key name at the row fetch."
+        },
+        {
+          "address": "0c067f1c",
+          "type": "PLATE",
+          "text": "Track view rows: row 1 title (0x0C06C3C4), row 2 by INFO page 0x0CD48BE2: 0 artist (pool 0x0C068428), 1 album (pool 0x0C06842C), 2 phase meter flag 0x0C9B8ABF. info_order redirects both getter pools."
+        },
+        {
+          "address": "0c0d664a",
+          "type": "PLATE",
+          "text": "INFO rotary: r4 1 = clockwise, r5 steps; page 0..2 (2 = phase meter, sets 0x0C1D0728). Pool 0x0C0C9048, read at 0x0C0C8F8A."
+        },
+        {
+          "address": "0c06bd38",
+          "type": "PLATE",
+          "text": "record_of_track(handle): the 0x35C-byte DB record (+0x10 id, +0x18 BPM valid, +0x1C BPM x100, +0x38 title, +0x98 artist, +0xC8 album); same code as the CDJ-850 0x0C073F7C."
         }
       ]
     }

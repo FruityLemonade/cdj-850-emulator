@@ -66,3 +66,23 @@ with MASTER TEMPO on.
 
 ## Open questions for a real deck
 The hardware panel’s font and icon for attr0 `0x0D` in the title view’s second row still need verification.
+
+## CDJ-350 (MAIN 1.14)
+
+The CDJ-350 shows the title on row 1 and pages row 2 with the rotary in the track view. With
+`info_order` (`cdj350/`):
+
+| Rotary | Row 2 |
+|---|---|
+| page 1 | `Title - Artist`, scrolling |
+| page 2 | `128.23 8A`: the actual BPM with two decimals and the Camelot key (moved with the pitch while MASTER TEMPO is off) |
+| one more step | `RATING ****` (or `NO RATING`) |
+| next | the stock phase meter |
+
+The CDJ-350 does not load the key or rating of a track. The mod reads them where the DB server
+reads the track's row for the metadata request, so nothing else changes. USB rekordbox tracks;
+the album page is gone (it shows only when a track has neither BPM nor key).
+
+    .venv/bin/python mods/patch_update.py --model cdj350 C350MAIN.UPD out.UPD info_order
+
+See `docs/cdj350.md`, "INFO pages".
