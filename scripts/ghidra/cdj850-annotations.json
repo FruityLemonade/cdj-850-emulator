@@ -1100,6 +1100,18 @@
         {
           "address": "0c0d5590",
           "name": "waveform_amp_to_level"
+        },
+        {
+          "address": "0c0e4df6",
+          "name": "utility_scroll_item"
+        },
+        {
+          "address": "0c0e4c14",
+          "name": "utility_set_menu_level"
+        },
+        {
+          "address": "0c067996",
+          "name": "display_stage_utility"
         }
       ],
       "comments": [
@@ -1296,7 +1308,7 @@
         {
           "address": "0c0642aa",
           "type": "PRE",
-          "text": "Hook span 0x0C0642AA..0x0C0642B8 (display_stage_bpm tail), shared by bpm999, bpm_decimals, bpm_probe, hot_cues and payload_demo. The waveform mod uses this tail to stage a scrolling strip from the current play frame at column 0. It boosts amplitude contrast slightly at close zoom (4 s) and more strongly at medium zoom (16 s)."
+          "text": "Hook span 0x0C0642AA..0x0C0642B8 (display_stage_bpm tail), shared by bpm999, bpm_decimals, bpm_probe, hot_cues and payload_demo. The waveform mod stages a scrolling strip with the playhead at column 50 (Center) or 0 (Left), or writes WAVE PLAYHEAD and its value on UTILITY item 7. The close view uses peak PCM levels and the medium view uses mean PCM levels. ANLZ supplies only columns without PCM. A brief dropout can hold the previous detailed strip for up to 250 ms."
         },
         {
           "address": "0c0642c6",
@@ -1322,6 +1334,11 @@
           "address": "0c064ca4",
           "type": "PLATE",
           "text": "Text pass, runs when the panel transaction finished (0x0C9D0AD4 = 1): builds the 0x80 header (display_build_text_header) and the 0x81.. chunks, bumps the text sequence 0x0C9D0AF4 / TX 0x80 byte 1 when the burst changed, stores the chunk count to 0x80 byte 12 (0x0C9D0B15), then appends the 0x70..0x77 waveform and 0x60 saved-cue frames."
+        },
+        {
+          "address": "0c064cf2",
+          "type": "PRE",
+          "text": "Loads pool 0x0C064DDC and calls panel_tx_saved_cues (0x0C0664A8). With the centered waveform active the mod adds bit 0x20 to byte 8 of the new 0x60 packet at 0x0C9D07D0 + 16 * last-frame index. This lights red column 50 without modifying saved cues. The SCIF1 interrupt adds the checksum later."
         },
         {
           "address": "0c064d10",
@@ -2131,7 +2148,7 @@
         {
           "address": "0c066402",
           "type": "PLATE",
-          "text": "Copies the 100-byte waveform overview from 0x0CE65B82 into display_waveform_samples (0x0C9D1199) in title view (mode 10) and sets display_waveform_changed (0x0C9D1188) = 1 when changed. Runs in DisplayTask before display_stage_bpm and panel_tx_waveform."
+          "text": "Copies the 100-byte waveform overview from 0x0CE65B82 into display_waveform_samples (0x0C9D1199) in title view (mode 10). When the view and waveform identifiers match the previous pass, waveform kinds 3, 4 and 5 (byte at 0x0CE6585E) still compare and replace differing bytes, setting display_waveform_changed (0x0C9D1188) = 1. Runs in DisplayTask before display_stage_bpm and panel_tx_waveform. During a brief PCM dropout the waveform mod rewrites the cached detailed strip at the later BPM hook."
         },
         {
           "address": "0c0c2402",
@@ -2144,9 +2161,19 @@
           "text": "Maps averaged 16-bit PCM amplitude to 1..15 waveform height using a 2 dB/step logarithmic threshold table (0x0517..0x50C3)."
         },
         {
+          "address": "0c0e77c4",
+          "type": "PRE",
+          "text": "Rotary scroll in UTILITY level 2. Pool 0x0C0E797C calls utility_scroll_item with 0=CCW, 1=CW and the detent count. Stock clamps the item at 0..6; the waveform mod adds item 7 after VERSION No."
+        },
+        {
           "address": "0c0e782e",
           "type": "PRE",
           "text": "INFO screen rotary scroll handler (nav_view_selector == 0, not BPM Lock edit): increments/decrements info_cursor (0x0CE6D1E4) based on direction byte at sp+0x1c (0=CCW, 1=CW). Hooked by mods/waveform (waveform_rotary_hook) to zoom out/in at cursor 0."
+        },
+        {
+          "address": "0c0e7e64",
+          "type": "PRE",
+          "text": "Encoder press in the main UTILITY list. Pool 0x0C0E7F10 calls utility_set_menu_level(3, item). The waveform mod toggles Center/Left directly at item 7 and saves Left through mod flags byte 0x0C9DA25E, bit 0x04."
         }
       ],
       "labels": [
@@ -2249,6 +2276,14 @@
         {
           "address": "0c1e108c",
           "name": "display_menu_level"
+        },
+        {
+          "address": "0c1e108d",
+          "name": "utility_item_index"
+        },
+        {
+          "address": "0c1e1078",
+          "name": "utility_activity_timer"
         },
         {
           "address": "0c1e109a",
@@ -2857,6 +2892,10 @@
         {
           "address": "ffff8000",
           "name": "retention_ram_unused"
+        },
+        {
+          "address": "0ce6585e",
+          "name": "waveform_overview_kind"
         },
         {
           "address": "0ce65862",

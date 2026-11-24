@@ -37,7 +37,8 @@ BAKEN = ROOT / "tools" / "baken" / "baken"
 BASE = 0x0C000000
 BPM_HOOK_SITE = 0x0C0642AA
 ROTARY_HOOK_SITE = 0x0C0E782E
-MODS = ["waveform", "waveform_rotary"]
+MODS = ["waveform", "waveform_rotary", "waveform_utility_scroll",
+        "waveform_utility_select", "waveform_center_marker"]
 
 DISPLAY_MODE = 0x0C9D0AF8
 ROWS = 0x0C9D0B18
@@ -50,9 +51,18 @@ PLAY_FRAME = 0x0C7F647C
 RING_READ = 0x0C7F645C
 RING_WRITE = 0x0C7F645E
 TRACK_LEN = 0x0C7F650C
+PCM_RING = 0x0C1E8E5C
+PCM_SECTOR_BYTES = 2352
+INFO_TRACK = 0x0C9D1D96
 INFO_CURSOR = 0x0CE6D1E4
 SOURCE_INDEX = 0x0CE6D252
 PLAYER_STATE_BASE = 0x0CE6D25D
+TICK_MS = 0x0CE49F54
+SETTINGS = 0x0C9DA23C
+UTILITY_LEVEL = 0x0C1E108C
+UTILITY_CURSOR = 0x0C1E108D
+TX_BASE = 0x0C9D07D0
+TX_LAST = 0x0C9D0AC0
 
 needs_toolchain = pytest.mark.skipif(not payloadbuild.have_toolchain(), reason="sh-elf toolchain not installed")
 needs_main = pytest.mark.skipif(not MAIN.is_file(), reason="extract/cdj850/main_unpacked.bin is not present")
@@ -68,8 +78,7 @@ def test_static_hooks_outside_boot_critical_closure():
     report = {}
     combo = MODS + ["info_order", "info_order_rating", "phase_meter"]
     out = patch_main.patch(stock, combo, "cdj850", report)
-    assert report["waveform"][0] == "applied", report
-    assert report["waveform_rotary"][0] == "applied", report
+    assert all(report[name][0] == "applied" for name in MODS), report
     assert report["info_order"][0] == "applied", report
     assert report["phase_meter"][0] == "applied", report
 
@@ -78,6 +87,10 @@ def test_static_hooks_outside_boot_critical_closure():
     assert not closure.hit(ROTARY_HOOK_SITE - BASE, ROTARY_HOOK_SITE - BASE + 12)
 
     p = payloadbuild.build(combo, "cdj850")
+    for pool, name in ((0x0C0E797C, "waveform_utility_scroll"),
+                       (0x0C0E7F10, "waveform_utility_select"),
+                       (0x0C064DDC, "waveform_center_marker")):
+        assert struct.unpack_from(">I", out, pool - BASE)[0] == _sym(p, "__gate_" + name)
     wf_hook = payloadbuild.lookup(p.symbols, "waveform_hook")
     rot_hook = payloadbuild.lookup(p.symbols, "waveform_rotary_hook")
     lit_bpm = ((BPM_HOOK_SITE + 9) & ~3) - BASE
@@ -114,6 +127,9 @@ def _mem(p):
     mem.add(0x0C9D0AE0, bytes(0x800))
     mem.add(0x0CE65860, bytes(0x400))
     mem.add(0x0CE6D1E0, bytes(0x90))
+    mem.add(INFO_TRACK, bytes(2))
+    mem.add(TICK_MS, bytes(4))
+    mem.add(SETTINGS, bytes(0x58))
     # Invalid ring index forces clean ANLZ PWAV/overview fallback without calling MAIN
     mem.write(RING_READ, struct.pack(">H", 0xFFFF))
     mem.write(RING_WRITE, struct.pack(">H", 0xFFFF))
@@ -136,6 +152,7 @@ def test_interpreter_zoom_levels_and_rotary_scroll():
     p = payloadbuild.build(MODS, "cdj850")
     mem = _mem(p)
     sp = 0x0DDFF800
+    mem.write(SETTINGS + 0x22, b"\x56")  # saved Left preference
 
     # 1. Amplitude-to-height table: 0 -> 1, quiet -> 2..4, loud -> 15
     assert _call(p, mem, "waveform_amp_to_height", 0) == 1
@@ -172,7 +189,8 @@ def test_interpreter_zoom_levels_and_rotary_scroll():
     assert mem.read(ROWS, len(sentinel)) == sentinel
 
     # CCW at cursor 0 -> medium. Each bin takes one column, with a wider
-    # separation between levels 6 and 10 than in the close view.
+    # separation between levels 6 and 10 than in the close view. The top
+    # row is reserved for the strongest input.
     mem.write(sp + 0x1C, b"\x00")
     _call(p, mem, "waveform_rotary_hook", 0, sp)
     assert mem.u32(_sym(p, "waveform_zoom")) == 1
@@ -180,7 +198,7 @@ def test_interpreter_zoom_levels_and_rotary_scroll():
     _call(p, mem, "waveform_hook", 0, 0)
     samples_z1 = mem.read(WF_SAMPLES, 100)
     assert all(1 <= b <= 15 for b in samples_z1)
-    assert [(b + 2) // 3 for b in samples_z1] == [1, 1, 3, 5, 5, 5] + [1] * 94
+    assert [(b + 2) // 3 for b in samples_z1] == [1, 1, 3, 4, 4, 5] + [1] * 94
     assert mem.u32(WF_CHANGED) == 1
 
     # At the final frame, column 0 still shows audio and future columns stay at baseline.
@@ -225,6 +243,104 @@ def test_interpreter_zoom_levels_and_rotary_scroll():
     mem.write(sp + 0x1C, b"\x00")
     _call(p, mem, "waveform_rotary_hook", 0, sp)
     assert mem.u32(_sym(p, "waveform_zoom")) == 0
+
+
+@needs_toolchain
+def test_interpreter_medium_waveform_preserves_detail_during_pcm_refill():
+    p = payloadbuild.build(MODS, "cdj850")
+    mem = _mem(p)
+    mem.write(SETTINGS + 0x22, b"\x56")
+
+    # Ring slot N holds frame N, and every populated slot belongs to track 7.
+    mem.add(0x0C00851E, bytes.fromhex("6043 000b 0009"))  # mov r4,r0; rts; nop
+    mem.add(0x0C00586C, bytes.fromhex("e007 000b 0009"))  # mov #7,r0; rts; nop
+    loud = struct.pack(">h", 0x6000) * (PCM_SECTOR_BYTES // 2)
+    quiet = struct.pack(">h", 0x1000) * (PCM_SECTOR_BYTES // 2)
+    mem.add(PCM_RING, loud + quiet * 12)
+    mem.write(RING_READ, struct.pack(">H", 0))
+    mem.write(RING_WRITE, struct.pack(">H", 13))
+    mem.write(INFO_TRACK, struct.pack(">h", 7))
+    mem.write(WF_PWAV, bytes([31, 0]) * 400)
+    mem.put32(TRACK_LEN, 4800)
+    mem.put32(DISPLAY_MODE, 10)
+    mem.put32(_sym(p, "waveform_zoom"), 1)
+
+    _call(p, mem, "waveform_hook", 0, 0)
+    detailed = mem.read(WF_SAMPLES, 100)
+    # A transient in column 0 and loud PWAV in the partially filled column 1
+    # cannot max out those columns. Column 2 has only PWAV available.
+    assert detailed[:3] == bytes([8, 5, 15])
+
+    mem.write(RING_WRITE, struct.pack(">H", 0))
+    mem.put32(TICK_MS, 100)
+    mem.put32(PLAY_FRAME, 3)
+    mem.write(WF_SAMPLES, bytes(100))  # stock stager overwrote the previous image
+    _call(p, mem, "waveform_hook", 0, 0)
+    assert mem.read(WF_SAMPLES, 100) == detailed
+
+    # A sustained gap must still fall back to the available waveform.
+    mem.put32(TICK_MS, 250)
+    _call(p, mem, "waveform_hook", 0, 0)
+    assert mem.read(WF_SAMPLES, 100) == bytes([15]) * 100
+
+    # A seek to a different part of the same track should update immediately.
+    mem.write(RING_WRITE, struct.pack(">H", 13))
+    mem.put32(PLAY_FRAME, 0)
+    _call(p, mem, "waveform_hook", 0, 0)
+    assert mem.read(WF_SAMPLES, 100) == detailed
+    mem.put32(PLAY_FRAME, 1200)
+    _call(p, mem, "waveform_hook", 0, 0)
+    assert mem.read(WF_SAMPLES, 100) == bytes([15]) * 100
+
+
+@needs_toolchain
+def test_interpreter_playhead_setting_and_red_marker():
+    p = payloadbuild.build(MODS, "cdj850")
+    mem = _mem(p)
+    mem.add(0x0C1E1078, bytes(0x20))
+    mem.add(TX_BASE, bytes(TX_LAST - TX_BASE + 4))
+    # Stock stubs for settings save, display refresh and construction of the cue packet.
+    mem.add(0x0C08E9B0, bytes.fromhex("e000 000b 0009"))
+    mem.add(0x0C06F71C, bytes.fromhex("000b 0009"))
+    mem.add(0x0C0664A8, bytes.fromhex("d102 e001 2102 000b 0009 0009 0c9d0ac0"))
+
+    mem.put32(TRACK_LEN, 1200)
+    mem.put32(PLAY_FRAME, 312)
+    mem.put32(DISPLAY_MODE, 10)
+    mem.write(WF_PWAV + 104 * 2, b"\x1f")
+    _call(p, mem, "waveform_hook", 0, 0)
+    assert mem.read(WF_SAMPLES, 100) == bytes([1] * 50 + [15] + [1] * 49)
+
+    packet = bytearray(16)
+    packet[:3] = bytes([0x60, 1, 0x80])  # a genuine saved cue at column 0
+    mem.write(TX_BASE + 16, packet)
+    _call(p, mem, "waveform_center_marker")
+    packet[8] = 0x20  # zero-based column 50
+    assert mem.read(TX_BASE + 16, 16) == packet
+
+    mem.put32(DISPLAY_MODE, 12)
+    mem.write(UTILITY_LEVEL, b"\x02")
+    mem.write(UTILITY_CURSOR, b"\x06")  # VERSION No.
+    _call(p, mem, "waveform_utility_scroll", 1, 1)
+    assert mem.read(UTILITY_CURSOR, 1) == b"\x07"
+    _call(p, mem, "waveform_hook", 0, 0)
+    assert mem.read(ROWS + 0x105 + 5, 13) == b"WAVE PLAYHEAD"
+    assert mem.read(ROWS + 0x20A + 5, 6) == b"CENTER"
+    _call(p, mem, "waveform_utility_select", 3, 7)
+    assert mem.read(SETTINGS + 0x22, 1) == b"\x56"
+    _call(p, mem, "waveform_hook", 0, 0)
+    assert mem.read(ROWS + 0x20A + 4, 5) == b"\x04LEFT"
+    _call(p, mem, "waveform_utility_scroll", 0, 1)
+    assert mem.read(UTILITY_CURSOR, 1) == b"\x06"
+
+    mem.put32(DISPLAY_MODE, 10)
+    _call(p, mem, "waveform_hook", 0, 0)
+    assert mem.read(WF_SAMPLES, 100) == bytes([15] + [1] * 99)
+    packet[8] = 0
+    mem.put32(TX_LAST, 0)
+    mem.write(TX_BASE + 16, packet)
+    _call(p, mem, "waveform_center_marker")
+    assert mem.read(TX_BASE + 16, 16) == packet
 
 
 # ---- live ----
@@ -309,6 +425,10 @@ def test_live_waveform_zoom_and_info_order_coexistence(tmp_path):
 
         # Wait for playback to change the waveform and for SCIF1 to send it.
         wait_for_snap(d, lambda s: s[3] != seq1 and s[4] > upd1)
+        d.q("stop")
+        cue_packet = d.dump(TX_BASE + 16 * d.rw(TX_LAST), 16)
+        d.q("cont")
+        assert cue_packet[0] == 0x60 and cue_packet[8] & 0x20, cue_packet.hex()
 
         # 1 click CCW on Page 1 -> zoom 1 (medium, step in between)
         _udp(d, "0x03:-1:0:rot")
@@ -339,3 +459,15 @@ def test_live_waveform_zoom_and_info_order_coexistence(tmp_path):
         )
         assert mode_p2 == 11 and cur_p2 == 2 and zoom_p2 == 0, (mode_p2, cur_p2, zoom_p2)
         assert rows_p2[0][0] == 0x07, rows_p2  # info_order Page 2 starts with Artist (0x07)
+
+    utility_script = "3800:menu:1700,6500:rot+6,7500:rot+1,8500:enter:200"
+    with tr.Deck(stick, flash=flash, script=utility_script, writable=True) as d:
+        d.wait_line("[.UTILITY.]", "[A.CUE LEVEL]", timeout=60)
+        d.wait_line("[VERSION No.]", timeout=60)
+        d.wait_line("[WAVE PLAYHEAD]", "[CENTER]", timeout=60)
+        d.wait_line("[WAVE PLAYHEAD]", "[LEFT]", timeout=60)
+        d.wait_line("input release enter", timeout=60)
+        assert d.rb(SETTINGS + 0x22) & 0x04
+
+    with tr.Deck(stick, flash=flash, script="3800:menu:1700,6500:rot+7") as d:
+        d.wait_line("[WAVE PLAYHEAD]", "[LEFT]", timeout=120)
