@@ -2292,6 +2292,11 @@
           "text": "Power/standby state machine, called at 0x0C0EE644."
         },
         {
+          "address": "0c0ef998",
+          "type": "PRE",
+          "text": "Pool word -> FUN_0C08F186 (UTILITY AUTO STANDBY mode, 0 = OFF, 1 = ON), loaded only at 0x0C0EF846 in auto_standby_seconds (outside boot-critical closure). Mod auto_standby redirects it to auto_standby_get_mode."
+        },
+        {
           "address": "0c0efb9a",
           "type": "PLATE",
           "text": "pcm_ring_write(src, frames): copies stereo frames into the PCM ring at pcm_ring_or_update_buffer: 0x961 slots of 0x24C frames (0x930 bytes, one CD-DA sector of PCM each), advancing the slot index and wrapping after slot 0x960. The third copy of every PCM byte in USB playback. Called from 0x0C0C02D4 [static + emu]."

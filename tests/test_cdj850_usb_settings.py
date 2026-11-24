@@ -220,6 +220,25 @@ def test_failed_write_falls_back_to_flash(payload):
     assert _counter(p, mem, "errors") == 1 and mem.read(SETTINGS + 0x21, 1) == b"\x52"
 
 
+def test_high_flag_bits_and_standby_index_roundtrip_on_usb(payload):
+    p = payload
+    want = DRIFT_OFF | 0x0040 | 0x0100 | 0x2000 | (3 << 14)
+    mem = _mem(p, file=_file(0))
+    _call(p, mem, "c850_ui_usb_mount", CTX, 0)
+    assert _call(p, mem, "c850_ui_set_flags", 0xFFFF, want) == 1
+    written = bytes(mem.read(_arg(mem, 4, 0), 16))
+    assert written == _file(want)
+
+    mem2 = _mem(p, file=written)
+    _call(p, mem2, "c850_ui_usb_mount", CTX, 0)
+    assert _flag(p, mem2, DRIFT_OFF) == 1
+    assert _flag(p, mem2, 0x0040) == 1
+    assert _flag(p, mem2, 0x0100) == 1
+    assert _flag(p, mem2, 0x2000) == 1
+    assert _flag(p, mem2, 0x0080) == 0
+    assert _call(p, mem2, "c850_ui_standby_index") == 3
+
+
 # ---- live ----
 
 def _stick_file(image, path):
