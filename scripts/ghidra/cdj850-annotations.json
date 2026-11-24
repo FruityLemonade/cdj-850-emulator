@@ -1088,6 +1088,18 @@
         {
           "address": "0c140b0c",
           "name": "mp3_pcm_out"
+        },
+        {
+          "address": "0c066402",
+          "name": "display_stage_waveform_overview"
+        },
+        {
+          "address": "0c0c2402",
+          "name": "anlz_read_waveform"
+        },
+        {
+          "address": "0c0d5590",
+          "name": "waveform_amp_to_level"
         }
       ],
       "comments": [
@@ -2115,6 +2127,26 @@
           "address": "0c18c2c0",
           "type": "PLATE",
           "text": "sample_rate_table: 12 u32 rates indexed by record +0x3A2 bits 5-8: 96000, 88200, 64000, 48000, 44100, 32000, 24000, 22050, 16000, 12000, 11025, 8000 (the MPEG-4 sampling-frequency index order). Read by usb_decode_fill (0x0C0BF6E4) for pcm_rate_init, and by 0x0C0005F4, 0x0C0584B4, 0x0C08E460, 0x0C08F590, 0x0C08F64A, 0x0C08F7AA, 0x0C08F904, 0x0C0903D0 [static]."
+        },
+        {
+          "address": "0c066402",
+          "type": "PLATE",
+          "text": "Copies the 100-byte waveform overview from 0x0CE65B82 into display_waveform_samples (0x0C9D1199) in title view (mode 10) and sets display_waveform_changed (0x0C9D1188) = 1 when changed. Runs in DisplayTask before display_stage_bpm and panel_tx_waveform."
+        },
+        {
+          "address": "0c0c2402",
+          "type": "PLATE",
+          "text": "Reads rekordbox ANLZ PWAV (400 bytes -> 800-byte height/whiteness pairs at out+0) and PWV2 (100-byte overview at out+800) into the 900-byte waveform buffer (0x0CE65862)."
+        },
+        {
+          "address": "0c0d5590",
+          "type": "PLATE",
+          "text": "Maps averaged 16-bit PCM amplitude to 1..15 waveform height using a 2 dB/step logarithmic threshold table (0x0517..0x50C3)."
+        },
+        {
+          "address": "0c0e782e",
+          "type": "PRE",
+          "text": "INFO screen rotary scroll handler (nav_view_selector == 0, not BPM Lock edit): increments/decrements info_cursor (0x0CE6D1E4) based on direction byte at sp+0x1c (0=CCW, 1=CW). Hooked by mods/waveform (waveform_rotary_hook) to zoom out/in at cursor 0."
         }
       ],
       "labels": [
@@ -2825,6 +2857,14 @@
         {
           "address": "ffff8000",
           "name": "retention_ram_unused"
+        },
+        {
+          "address": "0ce65862",
+          "name": "waveform_pwav_400"
+        },
+        {
+          "address": "0ce65b82",
+          "name": "waveform_overview_100"
         }
       ]
     }
