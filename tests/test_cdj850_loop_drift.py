@@ -334,8 +334,8 @@ def test_in_off_the_grid_counts_from_the_in():
 
 
 @needs_toolchain
-@pytest.mark.parametrize("kind", ["nogrid", "short", "off", "deck_off", "cd", "state6", "inactive",
-                                  "locked", "stored"])
+@pytest.mark.parametrize("kind", ["nogrid", "short", "off", "deck_off", "utility_off", "cd", "state6",
+                                  "inactive", "locked", "stored"])
 def test_left_alone(kind):
     p = _payload()
     entries = [] if kind == "nogrid" else GRID_OF["128"]
@@ -344,6 +344,8 @@ def test_left_alone(kind):
                flags=QUANT_OFF if kind == "deck_off" else 0)
     if kind == "off":
         _set_sym(p, mem, "quant_loops_drift_on", 0)
+    if kind == "utility_off":                             # UTILITY QUANTIZE DRIFT OFF (+0x21 bit 1)
+        mem.write(SETTINGS + 0x21, b"\x52")
     if kind == "locked":
         mem.write(BEAT_LOCK, bytes([0xFF]))
     g = Grid(GRID_OF["128"])

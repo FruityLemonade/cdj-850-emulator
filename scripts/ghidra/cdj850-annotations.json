@@ -1372,7 +1372,7 @@
         {
           "address": "0c0642aa",
           "type": "PRE",
-          "text": "Hook span 0x0C0642AA..0x0C0642B8 (display_stage_bpm tail), shared by bpm999, bpm_decimals, bpm_probe, hot_cues and payload_demo. The waveform mod stages a scrolling strip with the playhead at column 33 (Left 1/3, default), 50 (Center), or 0 (Left), or writes WAVE PLAYHEAD and its value on UTILITY item 7. The close view uses peak PCM levels and the medium view uses mean PCM levels. ANLZ supplies only columns without PCM. A brief dropout can hold the previous detailed strip for up to 250 ms."
+          "text": "Hook span 0x0C0642AA..0x0C0642B8 (display_stage_bpm tail), shared by bpm999, bpm_decimals, bpm_probe, hot_cues and payload_demo. The waveform mod stages a scrolling strip with the playhead at column 33 (Left 1/3, default), 50 (Center), or 0 (Left), or, through c850_ui_utility_draw (also called from c850_ui_flash_hook), writes the UTILITY mod item's title and value (WAVE PLAYHEAD, QUANTIZE DRIFT). The close view uses peak PCM levels and the medium view uses mean PCM levels. ANLZ supplies only columns without PCM. A brief dropout can hold the previous detailed strip for up to 250 ms."
         },
         {
           "address": "0c0642c6",
@@ -2227,7 +2227,7 @@
         {
           "address": "0c0e77c4",
           "type": "PRE",
-          "text": "Rotary scroll in UTILITY level 2. Pool 0x0C0E797C calls utility_scroll_item with 0=CCW, 1=CW and the detent count. Stock clamps the item at 0..6; the waveform mod adds item 7 after VERSION No."
+          "text": "Rotary scroll in UTILITY level 2. Pool 0x0C0E797C calls utility_scroll_item with 0=CCW, 1=CW and the detent count. Stock clamps the item at 0..6. waveform and quant_loops redirect it to the shared c850_ui_utility_scroll, which continues the list after VERSION No. with the mod items (WAVE PLAYHEAD, then QUANTIZE DRIFT) as items 7, 8, ..."
         },
         {
           "address": "0c0e782e",
@@ -2237,7 +2237,7 @@
         {
           "address": "0c0e7e64",
           "type": "PRE",
-          "text": "Encoder press in the main UTILITY list. Pool 0x0C0E7F10 calls utility_set_menu_level(3, item). The waveform mod toggles Center/Left directly at item 7 and saves Left through mod flags byte 0x0C9DA25E, bit 0x04."
+          "text": "Encoder press in the main UTILITY list. Pool 0x0C0E7F10 calls utility_set_menu_level(3, item). waveform and quant_loops redirect it to the shared c850_ui_utility_select: a press on a mod item (7, 8, ...) switches its value in place (WAVE PLAYHEAD: Left 1/3/Center/Left, flags 0x0C9DA25E bit 0x04 and 0x0C9DA25D bit 0x01; QUANTIZE DRIFT ON/OFF: 0x0C9DA25D bit 0x02); other items go to stock utility_set_menu_level."
         },
         {
           "address": "0c01ed92",
