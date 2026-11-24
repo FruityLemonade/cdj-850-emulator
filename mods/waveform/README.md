@@ -7,10 +7,12 @@ Streams a live 50 Hz zoomed/scrolling half-waveform into the existing 100×5 VFD
 On INFO Page 1 (top cursor position, Row 1 highlighted):
 
 - **Scroll counterclockwise (CCW)**: zoom out through three levels:
-  1. **Close** (default): 4.0 s window (3 CD frames/column, playhead centered at column 50)
-  2. **Medium** (1 step in between): 16.0 s window (12 CD frames/column, playhead centered at column 50)
+  1. **Close** (default) shows the next 4.0 s (3 CD frames per column) with a slight contrast boost.
+  2. **Medium** shows the next 16.0 s (12 CD frames per column) with a stronger contrast boost.
   3. **Overview**: whole-track 100-column stock overview
 - **Scroll clockwise (CW)**: zoom back in (`overview → medium → close`), then advance normally through INFO Page 1 Row 2 and Page 2+ (`info_order`, `phase_meter`, etc.).
+
+The leftmost column is the current playhead in both scrolling views. The remaining columns show the audio ahead.
 
 ## How It Works
 

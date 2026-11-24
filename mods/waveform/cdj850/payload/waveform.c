@@ -27,7 +27,6 @@
 #include "c850.h"
 
 #define WF_COLS              100
-#define WF_PLAYHEAD_COL      50
 
 #define WF_ZOOM_CLOSE        0u   /* 3 frames/col = 300 frames = 4.0 s window */
 #define WF_ZOOM_MEDIUM       1u   /* 12 frames/col = 1200 frames = 16.0 s window */
@@ -62,6 +61,13 @@ static const u16 wf_log_thresh[13] = {
     0x0517u, 0x066Au, 0x0813u, 0x0A2Au, 0x0CCCu,
     0x101Du, 0x1449u, 0x198Au, 0x2026u, 0x287Au,
     0x32F5u, 0x4026u, 0x50C3u
+};
+
+/* Spread levels around 8 before the panel groups them into five dot heights.
+ * Keep silence at 1 because a zero byte terminates the strip. */
+static const u8 wf_zoom_contrast[][15] = {
+    [WF_ZOOM_CLOSE]  = {1, 1, 1, 3, 4, 5, 7, 8,  9, 11, 12, 13, 15, 15, 15},
+    [WF_ZOOM_MEDIUM] = {1, 1, 1, 1, 1, 2, 5, 8, 11, 14, 15, 15, 15, 15, 15},
 };
 
 /* Map mean absolute 16-bit PCM amplitude to 1..15 (never 0). */
@@ -166,9 +172,10 @@ static u8 wf_anlz_frame_level(u32 frame, u32 track_len, int has_pwav)
     }
 }
 
-/* Render 100 columns for zoom 0 (close) or 1 (medium) into wf_buf[100]. */
+/* Render the next 100 columns starting at the current play frame. */
 static void wf_render_zoomed(u32 zoom)
 {
+    const u8 *contrast = wf_zoom_contrast[zoom];
     s32 step = (zoom == WF_ZOOM_CLOSE) ? WF_STEP_CLOSE : WF_STEP_MEDIUM;
     s32 play_frame = (s32)C850_PLAY_FRAME;
     u32 track_len = C850_TRACK_LENGTH;
@@ -191,7 +198,7 @@ static void wf_render_zoomed(u32 zoom)
     }
 
     for (col = 0; col < WF_COLS; col++) {
-        s32 f0 = play_frame + (col - WF_PLAYHEAD_COL) * step;
+        s32 f0 = play_frame + col * step;
         u8 peak = 1u;
         int k;
 
@@ -228,7 +235,7 @@ static void wf_render_zoomed(u32 zoom)
             if (lvl > peak)
                 peak = lvl;
         }
-        wf_buf[col] = peak;
+        wf_buf[col] = contrast[peak - 1u];
     }
 }
 

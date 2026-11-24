@@ -4,10 +4,10 @@
 * static: hooks at display_stage_bpm tail (0x0C0642AA) and INFO rotary branch
   (0x0C0E782E), both outside the boot-critical closure, zero FPU instructions,
   small stack frames, composes cleanly with info_order and phase_meter;
-* interpreter (tests/sh2a.py): logarithmic amplitude mapping, rotary CCW zoom
-  out (0 -> 1 -> 2, clamped) and CW zoom back in (2 -> 1 -> 0, consuming CW
-  click until back at 0), cursor > 0 untouched, PWAV fallback + overview
-  restore, dot-matrix text rows untouched;
+* interpreter (tests/sh2a.py): logarithmic amplitude mapping, left-edge playhead
+  and per-zoom contrast with PWAV fallback, rotary CCW zoom out (0 -> 1 -> 2,
+  clamped) and CW zoom back in (2 -> 1 -> 0, consuming CW click until back
+  at 0), cursor > 0 untouched, overview restore, dot-matrix text rows untouched;
 * live (QEMU + baken stick): waveform + info_order together — INFO Page 1 keeps
   info_order's Title & BPM/Key/Stars rows while streaming a live scrolling
   waveform into 0x0C9D1199; CCW zooms close -> medium -> whole-track overview;
@@ -142,15 +142,17 @@ def test_interpreter_zoom_levels_and_rotary_scroll():
     assert _call(p, mem, "waveform_amp_to_height", 0x0400) == 2
     assert _call(p, mem, "waveform_amp_to_height", 0x6000) == 15
 
-    # 2. Populate PWAV (400 entries with a peak in the middle) and overview (100 entries)
+    # Each PWAV bin spans 12 frames. A loud bin just before the playhead must
+    # stay offscreen. The six bins starting at the playhead span levels 4..15.
     pwav = bytearray(800)
-    for i in range(400):
-        pwav[2 * i] = 31 if (180 <= i < 220) else 6
+    pwav[2 * 199] = 31
+    pwav[2 * 200:2 * 206:2] = bytes([8, 12, 16, 20, 25, 31])
+    pwav[2 * 399] = 31
     mem.write(WF_PWAV, bytes(pwav))
     overview = bytes([((i % 15) + 1) for i in range(100)])
     mem.write(WF_OVERVIEW, overview)
-    mem.put32(TRACK_LEN, 9000)  # 120 seconds
-    mem.put32(PLAY_FRAME, 4500)  # midpoint (PWAV index 200)
+    mem.put32(TRACK_LEN, 4800)
+    mem.put32(PLAY_FRAME, 2400)
     mem.put32(DISPLAY_MODE, 10)
     mem.write(INFO_CURSOR, b"\x00")
 
@@ -158,24 +160,33 @@ def test_interpreter_zoom_levels_and_rotary_scroll():
     sentinel = b"KEEP_INFO_ORDER"
     mem.write(ROWS, sentinel)
 
-    # Zoom 0 (close, 4 s = 300 frames = PWAV indices ~193..207 -> all inside peak 180..220)
+    # Each bin takes four close columns. Compare actual heights on the five-row display.
     _call(p, mem, "waveform_hook", 0, 0)
     samples_z0 = mem.read(WF_SAMPLES, 100)
     assert all(1 <= b <= 15 for b in samples_z0)
-    assert samples_z0[50] == 15
+    assert [(b + 2) // 3 for b in samples_z0] == [
+        1, 1, 1, 1, 2, 2, 2, 2, 3, 3, 3, 3,
+        4, 4, 4, 4, 5, 5, 5, 5, 5, 5, 5, 5,
+    ] + [1] * 76
     assert mem.u32(WF_CHANGED) == 1
     assert mem.read(ROWS, len(sentinel)) == sentinel
 
-    # CCW at cursor 0 -> zoom 1 (medium, 16 s = 1200 frames -> edges outside 180..220)
+    # CCW at cursor 0 -> medium. Each bin takes one column, with a wider
+    # separation between levels 6 and 10 than in the close view.
     mem.write(sp + 0x1C, b"\x00")
     _call(p, mem, "waveform_rotary_hook", 0, sp)
     assert mem.u32(_sym(p, "waveform_zoom")) == 1
     mem.put32(WF_CHANGED, 0)
     _call(p, mem, "waveform_hook", 0, 0)
     samples_z1 = mem.read(WF_SAMPLES, 100)
-    assert samples_z1[50] == 15 and samples_z1[0] < 15 and samples_z1[99] < 15
-    assert samples_z1 != samples_z0
+    assert all(1 <= b <= 15 for b in samples_z1)
+    assert [(b + 2) // 3 for b in samples_z1] == [1, 1, 3, 5, 5, 5] + [1] * 94
     assert mem.u32(WF_CHANGED) == 1
+
+    # At the final frame, column 0 still shows audio and future columns stay at baseline.
+    mem.put32(PLAY_FRAME, 4799)
+    _call(p, mem, "waveform_hook", 0, 0)
+    assert mem.read(WF_SAMPLES, 100) == bytes([15] + [1] * 99)
 
     # Second CCW at cursor 0 -> zoom 2 (whole-track overview restored from 0x0CE65B82)
     mem.write(sp + 0x1C, b"\x00")
@@ -271,6 +282,15 @@ def test_live_waveform_zoom_and_info_order_coexistence(tmp_path):
         d.q("cont")
         return mode, cur, zoom, seq, updates, pcm_hits, wf, ov, rows
 
+    def wait_for_snap(d, ready):
+        deadline = time.monotonic() + 30
+        while True:
+            state = snap(d)
+            if ready(state):
+                return state
+            assert time.monotonic() < deadline, state
+            time.sleep(0.2)
+
     with tr.Deck(stick, flash=flash) as d:
         d.wait_line("mode=0x0a", "[GRID128]", timeout=300)
         time.sleep(1.5)
@@ -287,36 +307,35 @@ def test_live_waveform_zoom_and_info_order_coexistence(tmp_path):
         assert all(1 <= b <= 15 for b in wf1), list(wf1)
         assert upd1 > 0 and pcm1 > 0, (upd1, pcm1)
 
-        # Wait ~1.5 s while playing: waveform scrolls and sequence advances
-        time.sleep(1.5)
-        _, _, _, seq2, upd2, _, wf2, _, _ = snap(d)
-        assert upd2 > upd1 and seq2 != seq1, (upd1, upd2, seq1, seq2)
+        # Wait for playback to change the waveform and for SCIF1 to send it.
+        wait_for_snap(d, lambda s: s[3] != seq1 and s[4] > upd1)
 
         # 1 click CCW on Page 1 -> zoom 1 (medium, step in between)
         _udp(d, "0x03:-1:0:rot")
-        time.sleep(0.8)
-        mode_m, cur_m, zoom_m, _, _, _, wf_m, _, _ = snap(d)
+        mode_m, cur_m, zoom_m, _, _, _, wf_m, _, _ = wait_for_snap(d, lambda s: s[2] == 1)
         assert mode_m == 10 and cur_m == 0 and zoom_m == 1, (mode_m, cur_m, zoom_m)
         assert all(1 <= b <= 15 for b in wf_m)
 
         # 1 more click CCW -> zoom 2 (whole-track overview matching 0x0CE65B82)
         _udp(d, "0x03:-1:0:rot")
-        time.sleep(0.8)
-        mode_o, cur_o, zoom_o, _, _, _, wf_o, ov_o, _ = snap(d)
+        mode_o, cur_o, zoom_o, _, _, _, wf_o, ov_o, _ = wait_for_snap(
+            d, lambda s: s[2] == 2 and s[6] == s[7]
+        )
         assert mode_o == 10 and cur_o == 0 and zoom_o == 2, (mode_o, cur_o, zoom_o)
         assert wf_o == ov_o
 
         # 2 clicks CW -> zooms back in (2 -> 1 -> 0) without leaving cursor 0
         for want_z in (1, 0):
             _udp(d, "0x03:1:0:rot")
-            time.sleep(0.8)
-            _, cur_b, zoom_b, _, _, _, _, _, _ = snap(d)
+            _, cur_b, zoom_b, _, _, _, _, _, _ = wait_for_snap(d, lambda s: s[2] == want_z)
             assert cur_b == 0 and zoom_b == want_z, (cur_b, zoom_b, want_z)
 
         # 2 more clicks CW -> advances cleanly to info_order Page 2 (cursor 2, mode 11)
-        for _ in range(2):
+        for want_cursor in (1, 2):
             _udp(d, "0x03:1:0:rot")
-            time.sleep(0.8)
-        mode_p2, cur_p2, zoom_p2, _, _, _, _, _, rows_p2 = snap(d)
+            wait_for_snap(d, lambda s: s[1] == want_cursor)
+        mode_p2, cur_p2, zoom_p2, _, _, _, _, _, rows_p2 = wait_for_snap(
+            d, lambda s: s[0] == 11 and s[8][0][0] == 0x07
+        )
         assert mode_p2 == 11 and cur_p2 == 2 and zoom_p2 == 0, (mode_p2, cur_p2, zoom_p2)
         assert rows_p2[0][0] == 0x07, rows_p2  # info_order Page 2 starts with Artist (0x07)

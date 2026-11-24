@@ -1296,7 +1296,7 @@
         {
           "address": "0c0642aa",
           "type": "PRE",
-          "text": "Hook span 0x0C0642AA..0x0C0642B8 (display_stage_bpm tail), shared by bpm999, bpm_decimals, bpm_probe, hot_cues and payload_demo."
+          "text": "Hook span 0x0C0642AA..0x0C0642B8 (display_stage_bpm tail), shared by bpm999, bpm_decimals, bpm_probe, hot_cues and payload_demo. The waveform mod uses this tail to stage a scrolling strip from the current play frame at column 0. It boosts amplitude contrast slightly at close zoom (4 s) and more strongly at medium zoom (16 s)."
         },
         {
           "address": "0c0642c6",
