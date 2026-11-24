@@ -12,12 +12,15 @@ On INFO Page 1 (top cursor position, Row 1 highlighted):
   3. **Overview**: whole-track 100-column stock overview
 - **Scroll clockwise (CW)**: zoom back in (`overview → medium → close`), then advance normally through INFO Page 1 Row 2 and Page 2+ (`info_order`, `phase_meter`, etc.).
 
-Hold **MENU/UTILITY**, turn the selector past **VERSION No.** to **WAVE PLAYHEAD**, then press the selector to switch positions.
+Hold **MENU/UTILITY**, turn the selector past **VERSION No.** to **WAVE PLAYHEAD**, then press the selector to cycle positions:
 
-- **CENTER** (default) shows audio on both sides of the playhead. The red center dot on the memory-cue strip marks the current position.
-- **LEFT** starts the waveform at the playhead and uses the whole window for upcoming audio.
+- **LEFT 1/3** (default) places the playhead at 1/3 of the width (column 33, zero-based), marked by a red dot on the memory-cue strip.
+- **CENTER** places the playhead at the center (column 50), marked by a red dot on the memory-cue strip.
+- **LEFT** starts the waveform at the playhead (column 0) and uses the whole window for upcoming audio.
 
-The deck saves the choice with its UTILITY settings. If the HISTORY name is longer than 30 characters, the choice lasts until power-off because the name occupies the shared mod settings byte.
+In zoomed view (close or medium), any active loop's visible `[loop-in..loop-out]` span is also lit on the 100-bit red memory-cue strip (`0x60`), while the green progress bar stays stock. In overview mode both strips behave like stock.
+
+With `quant_loops` built in, `QUANTIZE DRIFT` follows as the next item (the shared `c850_ui` UTILITY list). The deck saves the choice with its UTILITY settings. If the HISTORY name is longer than 29 characters, the choice lasts until power-off because the name occupies the shared mod settings bytes (`+0x21..+0x22`).
 
 ## How It Works
 
