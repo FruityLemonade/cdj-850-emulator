@@ -338,12 +338,24 @@
           "name": "ring_sector_to_frame"
         },
         {
+          "address": "0c0093a8",
+          "name": "loop_in_reread_needed"
+        },
+        {
           "address": "0c009e5a",
           "name": "audio_apply_loop_out"
         },
         {
+          "address": "0c00ad62",
+          "name": "loop_is_short"
+        },
+        {
           "address": "0c014fc8",
           "name": "DjControlTask"
+        },
+        {
+          "address": "0c0158d4",
+          "name": "isr_loop_out_reached"
         },
         {
           "address": "0c015b18",
@@ -1240,9 +1252,24 @@
           "text": "ring_sector_to_frame(ring_sector): play frame (1/75 s) of a PCM ring sector."
         },
         {
+          "address": "0c0093a8",
+          "type": "PLATE",
+          "text": "loop_in_reread_needed(sector): called at an ISR loop wrap (pool 0x0C077314) and from the audio task; returns 0 when the loop-in frame is still in the PCM ring (the ISR then jumps in-ring), else starts a reread from the loop in (FUN_0C009FBA / FUN_0C00A0D4) and returns 1. [static]"
+        },
+        {
+          "address": "0c00ad62",
+          "type": "PLATE",
+          "text": "loop_is_short(): true when the out in effect (0x0C7F64B0, or 0x0C7F64C4 when u8 0x0C7F64E1 != 0) minus loop in 0x0C7F6498 is under 0x466 frames (15.0 s). Gates audio_build_loop_segments in the ISR wrap path. [static]"
+        },
+        {
           "address": "0c014fc8",
           "type": "PLATE",
           "text": "Entry named DjControlTask by the 20-byte descriptor at 0x0C14F7CC. Waits on flag 2, reads audio commands from mailbox 2, and runs the audio state machine."
+        },
+        {
+          "address": "0c0158d4",
+          "type": "PLATE",
+          "text": "isr_loop_out_reached(play_sector, out_frame, 0): loop-out test of irq7_dspdreq_isr, called only through ISR pool words 0x0C07730C (forward path) and 0x0C076C74 (reverse path). When it returns true the ISR wraps in the ring with no reread: pcm_play_sector = loop-in record ring sector (u16 0x0C7F64A8), pcm_read_ptr 0x0C7F6470 = ring base + sector*0x930 (reverse: + 0x92C), unless loop_in_reread_needed asks for a ring restart. Hook point for an in-ring jump (slip / loop-roll exit): a pool redirect here, behind the service gate, runs in ISR context once per 84-frame block. [static]"
         },
         {
           "address": "0c019006",
@@ -1372,7 +1399,7 @@
         {
           "address": "0c0642aa",
           "type": "PRE",
-          "text": "Hook span 0x0C0642AA..0x0C0642B8 (display_stage_bpm tail), shared by bpm999, bpm_decimals, bpm_probe, hot_cues and payload_demo. The waveform mod stages a scrolling strip with the playhead at column 33 (Left 1/3, default), 50 (Center), or 0 (Left), or writes WAVE PLAYHEAD and its value on UTILITY item 7. The close view uses peak PCM levels and the medium view uses mean PCM levels. ANLZ supplies only columns without PCM. A brief dropout can hold the previous detailed strip for up to 250 ms."
+          "text": "Hook span 0x0C0642AA..0x0C0642B8 (display_stage_bpm tail), shared by bpm999, bpm_decimals, bpm_probe, hot_cues and payload_demo. The waveform mod stages a scrolling strip with the playhead at column 33 (Left 1/3, default), 50 (Center), or 0 (Left), or, through c850_ui_utility_draw (also called from c850_ui_flash_hook), writes the UTILITY mod item's title and value (WAVE PLAYHEAD, QUANTIZE DRIFT). The close view uses peak PCM levels and the medium view uses mean PCM levels. ANLZ supplies only columns without PCM. A brief dropout can hold the previous detailed strip for up to 250 ms."
         },
         {
           "address": "0c0642c6",
@@ -1573,6 +1600,11 @@
           "address": "0c07664c",
           "type": "PRE",
           "text": "Writes IPR02 with IRQ7 priority 0 to mask DSPDREQ before preparing the PCM block. The read of IPR02 is at 0x0C076640."
+        },
+        {
+          "address": "0c07715e",
+          "type": "EOL",
+          "text": "Loads pool 0x0C07730C (isr_loop_out_reached): the forward path's loop-out test, once per block while a loop plays. loop_roll redirects the word (service-gated) to count blocks for the roll's shadow playhead and land there on release. [static + emu]"
         },
         {
           "address": "0c077570",
@@ -2227,7 +2259,7 @@
         {
           "address": "0c0e77c4",
           "type": "PRE",
-          "text": "Rotary scroll in UTILITY level 2. Pool 0x0C0E797C calls utility_scroll_item with 0=CCW, 1=CW and the detent count. Stock clamps the item at 0..6; the waveform mod adds item 7 after VERSION No."
+          "text": "Rotary scroll in UTILITY level 2. Pool 0x0C0E797C calls utility_scroll_item with 0=CCW, 1=CW and the detent count. Stock clamps the item at 0..6. waveform and quant_loops redirect it to the shared c850_ui_utility_scroll, which continues the list after VERSION No. with the mod items (WAVE PLAYHEAD, then QUANTIZE DRIFT) as items 7, 8, ..."
         },
         {
           "address": "0c0e782e",
@@ -2237,7 +2269,7 @@
         {
           "address": "0c0e7e64",
           "type": "PRE",
-          "text": "Encoder press in the main UTILITY list. Pool 0x0C0E7F10 calls utility_set_menu_level(3, item). The waveform mod toggles Center/Left directly at item 7 and saves Left through mod flags byte 0x0C9DA25E, bit 0x04."
+          "text": "Encoder press in the main UTILITY list. Pool 0x0C0E7F10 calls utility_set_menu_level(3, item). waveform and quant_loops redirect it to the shared c850_ui_utility_select: a press on a mod item (7, 8, ...) switches its value in place (WAVE PLAYHEAD: Left 1/3/Center/Left, flags 0x0C9DA25E bit 0x04 and 0x0C9DA25D bit 0x01; QUANTIZE DRIFT ON/OFF: 0x0C9DA25D bit 0x02); other items go to stock utility_set_menu_level."
         },
         {
           "address": "0c01ed92",
@@ -2325,6 +2357,14 @@
           "name": "panel_tx_status_02"
         },
         {
+          "address": "0c076c74",
+          "name": "pool_isr_loop_out_reached_rev"
+        },
+        {
+          "address": "0c07730c",
+          "name": "pool_isr_loop_out_reached_fwd"
+        },
+        {
           "address": "0c0c68fc",
           "name": "isr_stub_template"
         },
@@ -2399,6 +2439,10 @@
         {
           "address": "0c1acbc4",
           "name": "usb_task_descriptor"
+        },
+        {
+          "address": "0c1c1460",
+          "name": "loop_segments_base_sector"
         },
         {
           "address": "0c1c1ae8",
@@ -2489,6 +2533,10 @@
           "name": "loop_in_record"
         },
         {
+          "address": "0c7f64a8",
+          "name": "loop_in_ring_sector"
+        },
+        {
           "address": "0c7f64b0",
           "name": "loop_out_record"
         },
@@ -2535,6 +2583,10 @@
         {
           "address": "0c7f6721",
           "name": "dsp_shi_rx_frame"
+        },
+        {
+          "address": "0c7f677c",
+          "name": "loop_segment_block_source"
         },
         {
           "address": "0c9d0ac0",

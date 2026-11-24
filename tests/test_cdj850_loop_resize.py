@@ -580,8 +580,8 @@ import make_test_stick as stick
 import collection_xml
 VAR = {"QVAR": [(0.0, 120.00), (16.0, 133.33)]}
 _orig_track_xml = collection_xml.track_xml
-def track_xml(track_id, path, tags, audio, notes, tempo=None, key="", marks=()):
-    x = _orig_track_xml(track_id, path, tags, audio, notes, tempo=tempo, key=key, marks=marks)
+def track_xml(track_id, path, tags, audio, notes, **kw):
+    x = _orig_track_xml(track_id, path, tags, audio, notes, **kw)
     if tags["title"] in VAR:
         lines = "".join('      <TEMPO Inizio="%.3f" Bpm="%.2f" Metro="4/4" Battito="1"/>\n' % (t, b)
                         for t, b in VAR[tags["title"]])

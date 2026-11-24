@@ -106,12 +106,13 @@ def test_cave_reservation_and_room_left():
     assert "payload_demo" not in offsets and "bpm_decimals" not in offsets
     # Four trampoline sites, including the USB browse row builder. The
     # service gates consume 112 more bytes after alignment across the sites.
-    assert total == 768
-    assert sigpatch.layout(lambda n: patch_main.blob_path(n, "cdj850"), ps.mods)[1] == 656
+    # loop_roll_flash (c850_ui_flash_hook on the display_stage_bpm site) adds one 16-byte slot.
+    assert total == 784
+    assert sigpatch.layout(lambda n: patch_main.blob_path(n, "cdj850"), ps.mods)[1] == 672
     if MAIN.is_file():
         img = sigpatch.Image(ps.profile, MAIN.read_bytes())
         start, end = sigpatch.find_cave(img)
-        assert end - ((start + 3) & ~3) - total == 348
+        assert end - ((start + 3) & ~3) - total == 332
 
 
 @needs_toolchain

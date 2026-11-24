@@ -58,16 +58,29 @@ Interaction with stock features (checked in the emulator, see the test):
 - LOOP OUT pressed past the snapped out (nearest beat behind the playhead): the loop closes at
   once and plays from in, as stock does for its own out.
 
+## Drift correction on/off in UTILITY
+**Hold MENU/UTILITY, turn the selector past VERSION No. to `QUANTIZE DRIFT`** (after
+`WAVE PLAYHEAD` when `waveform` is built in), **press the selector** to switch `ON` / `OFF`.
+- `ON` (default; a fresh deck, factory reset or HISTORY name change): the drift correction below.
+- `OFF`: every loop plays the out it was set with (whole frames, the stock drift); snapping
+  to the grid is unchanged.
+
+Saved with the UTILITY settings, in the mod flags (settings `+0x21` bit `0x02`,
+`C850_UI_FLAG_DRIFT_OFF`, `payload/include/c850_ui.h`). A HISTORY name longer than 29
+characters occupies that byte: the choice then lasts until power-off. The list is the shared
+`c850_ui` UTILITY list (`c850_ui_utility_scroll` / `_select`, the same pool words and routines
+as `waveform`'s); `c850_ui_flash_hook` draws the rows.
+
 ## Use
     .venv/bin/python mods/patch_update.py --model cdj850 C850MAIN.UPD C850MAIN_MOD.UPD quant_loops
-Switch: `CDJ_MAIN_QUANT_LOOPS=1` (and its nine sibling `CDJ_MAIN_QUANT_LOOPS_*` knobs in
-`mod.conf`, all one row: `quant_loops` on the command line brings all ten patches). The payload
+Switch: `CDJ_MAIN_QUANT_LOOPS=1` (and its eleven sibling `CDJ_MAIN_QUANT_LOOPS_*` knobs in
+`mod.conf`, all one row: `quant_loops` on the command line brings all twelve patches). The payload
 word `quant_loops_on` (1 = the mod may snap) and the on-deck switch above are both checked first by
-every routine, the drift correction included. `quant_loops_drift_on` (1) turns the drift
-correction alone off at run time.
+every routine, the drift correction included. `quant_loops_drift_on` (1) and the UTILITY setting (`QUANTIZE DRIFT ON`) are
+both needed for the drift correction.
 
 ## How
-Nine pool-word redirects and one display hook into the shared payload
+Eleven pool-word redirects and one display hook into the shared payload
 (`cdj850/payload/quant_loops.c`, about 4.4 KB, `loop_tick.c`, and the shared
 `payload/common/c850_ui.c`), no cave bytes but one 8-byte trampoline slot. Each word and every
 instruction that reads it is outside the boot-critical closure (`mods/bootcrit.py`). See
@@ -85,6 +98,8 @@ instruction that reads it is outside the boot-critical closure (`mods/bootcrit.p
 | `quant_loops_keys` | `0x0C0ED038` (`FUN_0C0DD492`) | `0x0C0ECEFC` | `c850_ui_keys`, the shared key filter chain (also `hot_cues`'): BEAT SELECT + LOOP IN |
 | `quant_loops_flash` | hook, tail of `display_stage_bpm` (`0x0C0642AA`, the shared `bpm999` span) | DisplayTask | `c850_ui_flash_hook`: `QUANTIZE ON/OFF` on the matrix, rows put back after 1.5 s |
 | `quant_loops_drift` | `0x0C0D7B98` (`keys_state4_looping`) | `0x0C0D79A6` | the shared state-4 tick `c850_loop_tick` → `quant_loops_drift_tick`, then stock |
+| `quant_loops_utility_scroll` | `0x0C0E797C` (`utility_scroll_item`) | `0x0C0E77C4` | `c850_ui_utility_scroll`: UTILITY list continues after VERSION No. (shared with `waveform`) |
+| `quant_loops_utility_select` | `0x0C0E7F10` (`utility_set_menu_level`) | `0x0C0E7E64` | `c850_ui_utility_select`: QUANTIZE DRIFT ON/OFF (shared with `waveform`) |
 
 The grid is read from the window in RAM (`0x0C9D24FC`, read-only, never paged; `bpm_decimals`'
 redirect of `grid_find_beat` is not involved), and only when the base BPM word equals what
