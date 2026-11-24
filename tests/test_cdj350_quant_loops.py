@@ -258,6 +258,7 @@ def _mem(p):
     m.add(TRACKLEN_TABLE, bytes(0x33C * 4))
     m.add(SECTOR_TABLE, bytes(2400 * 16))
     m.add(0x0DDFE000, bytes(0x400))
+    m.add(0x0C9BE004, b"\xC3\x02\x10" + bytes(0x15))   # settings record: quantize and drift on
     return m
 
 

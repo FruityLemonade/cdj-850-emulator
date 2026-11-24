@@ -186,6 +186,186 @@
         {
           "address": "0c01662e",
           "name": "loop_divide_position"
+        },
+        {
+          "address": "0c061700",
+          "name": "display_text_rows_clear"
+        },
+        {
+          "address": "0c063c88",
+          "name": "utility_draw_list"
+        },
+        {
+          "address": "0c0665ca",
+          "name": "utility_display"
+        },
+        {
+          "address": "0c066a7e",
+          "name": "display_error_digits"
+        },
+        {
+          "address": "0c06777a",
+          "name": "display_request"
+        },
+        {
+          "address": "0c0679cc",
+          "name": "display_text_rows_copy"
+        },
+        {
+          "address": "0c084de4",
+          "name": "settings_save"
+        },
+        {
+          "address": "0c085368",
+          "name": "settings_load_scan"
+        },
+        {
+          "address": "0c085472",
+          "name": "settings_set_cue_level"
+        },
+        {
+          "address": "0c085494",
+          "name": "settings_get_cue_level"
+        },
+        {
+          "address": "0c0854ee",
+          "name": "settings_set_midi_ch"
+        },
+        {
+          "address": "0c085512",
+          "name": "settings_get_midi_ch"
+        },
+        {
+          "address": "0c08552c",
+          "name": "settings_set_auto_standby"
+        },
+        {
+          "address": "0c085554",
+          "name": "settings_get_auto_standby"
+        },
+        {
+          "address": "0c085584",
+          "name": "settings_log_error"
+        },
+        {
+          "address": "0c085602",
+          "name": "settings_error_detail"
+        },
+        {
+          "address": "0c085606",
+          "name": "settings_defaults"
+        },
+        {
+          "address": "0c0d6374",
+          "name": "utility_set_level"
+        },
+        {
+          "address": "0c0d641a",
+          "name": "utility_scroll"
+        },
+        {
+          "address": "0c0d6560",
+          "name": "utility_value_scroll"
+        },
+        {
+          "address": "0c0d65e6",
+          "name": "utility_value_commit"
+        },
+        {
+          "address": "0c067f1c",
+          "name": "track_view_rows"
+        },
+        {
+          "address": "0c0d664a",
+          "name": "info_page_scroll"
+        },
+        {
+          "address": "0c06bd38",
+          "name": "record_of_track"
+        },
+        {
+          "address": "0c06c3c4",
+          "name": "track_title"
+        },
+        {
+          "address": "0c06c3dc",
+          "name": "track_artist"
+        },
+        {
+          "address": "0c06c3f8",
+          "name": "track_album"
+        },
+        {
+          "address": "0c06c414",
+          "name": "track_genre_ptr"
+        },
+        {
+          "address": "0c06c3b0",
+          "name": "track_record_id"
+        },
+        {
+          "address": "0c051fd6",
+          "name": "db_server_track_info"
+        },
+        {
+          "address": "0c0519d0",
+          "name": "db_track_info_build"
+        },
+        {
+          "address": "0c0719a4",
+          "name": "db_track_row"
+        },
+        {
+          "address": "0c07d14c",
+          "name": "db_key_name"
+        },
+        {
+          "address": "0c0aee7c",
+          "name": "db_item_release"
+        },
+        {
+          "address": "0c04a926",
+          "name": "db_request_track_info"
+        },
+        {
+          "address": "0c0f9b2c",
+          "name": "text_copy_r0_r1"
+        },
+        {
+          "address": "0c02cb9c",
+          "name": "browse_reply_loop"
+        },
+        {
+          "address": "0c02b900",
+          "name": "browse_reply_add_item"
+        },
+        {
+          "address": "0c06cc04",
+          "name": "db_load_sort_menu"
+        },
+        {
+          "address": "0c04ca9c",
+          "name": "db_unmount"
+        },
+        {
+          "address": "0c073c68",
+          "name": "db_track_query"
+        },
+        {
+          "address": "0c0b083c",
+          "name": "db_menu_cache"
+        },
+        {
+          "address": "0c1073c4",
+          "name": "db_sort_cursor"
+        },
+        {
+          "address": "0c0afa30",
+          "name": "db_finish_results"
+        },
+        {
+          "address": "0c0af72e",
+          "name": "db_results_title_compare"
         }
       ],
       "labels": [
@@ -488,6 +668,146 @@
         {
           "address": "0c7e4f24",
           "name": "loop_divide_feed_enable"
+        },
+        {
+          "address": "0c0666a4",
+          "name": "utility_draw_list_pool"
+        },
+        {
+          "address": "0c0c902c",
+          "name": "utility_scroll_pool"
+        },
+        {
+          "address": "0c0c9670",
+          "name": "utility_set_level_pool"
+        },
+        {
+          "address": "0c177a88",
+          "name": "auto_standby_seconds_table"
+        },
+        {
+          "address": "0c1caf04",
+          "name": "utility_timeout_ms"
+        },
+        {
+          "address": "0c1caf1a",
+          "name": "utility_level"
+        },
+        {
+          "address": "0c1caf1b",
+          "name": "utility_cursor"
+        },
+        {
+          "address": "0c1caf1c",
+          "name": "utility_value"
+        },
+        {
+          "address": "0c1caf1d",
+          "name": "utility_editing"
+        },
+        {
+          "address": "0c9b816f",
+          "name": "display_text_mode"
+        },
+        {
+          "address": "0c9b87f3",
+          "name": "display_text_row1"
+        },
+        {
+          "address": "0c9b88f3",
+          "name": "display_text_row2"
+        },
+        {
+          "address": "0c9be004",
+          "name": "settings_record"
+        },
+        {
+          "address": "0c9be01b",
+          "name": "settings_mod_flags"
+        },
+        {
+          "address": "0cd48bc6",
+          "name": "utility_cue_level_shadow"
+        },
+        {
+          "address": "0cd48bc7",
+          "name": "utility_midi_ch_shadow"
+        },
+        {
+          "address": "0cd48bc8",
+          "name": "utility_auto_standby_shadow"
+        },
+        {
+          "address": "0cd48bc9",
+          "name": "utility_library_creator_shadow"
+        },
+        {
+          "address": "0cd48cf6",
+          "name": "version_text"
+        },
+        {
+          "address": "0cd48be2",
+          "name": "info_page"
+        },
+        {
+          "address": "0cd4853e",
+          "name": "pitch"
+        },
+        {
+          "address": "0cd48bc4",
+          "name": "master_tempo"
+        },
+        {
+          "address": "0c068428",
+          "name": "info_page0_getter_pool"
+        },
+        {
+          "address": "0c06842c",
+          "name": "info_page1_getter_pool"
+        },
+        {
+          "address": "0c0c9048",
+          "name": "info_page_scroll_pool"
+        },
+        {
+          "address": "0c051aec",
+          "name": "db_track_row_pool"
+        },
+        {
+          "address": "0c9b8abf",
+          "name": "info_meter_page_flag"
+        },
+        {
+          "address": "0c02ce98",
+          "name": "browse_add_item_pool"
+        },
+        {
+          "address": "0c053d94",
+          "name": "db_load_sort_menu_pool"
+        },
+        {
+          "address": "0c0542e4",
+          "name": "db_unmount_pool"
+        },
+        {
+          "address": "0c06cb34",
+          "name": "db_track_query_pool"
+        },
+        {
+          "address": "0c04f478",
+          "name": "db_menu_cache_pool"
+        },
+        {
+          "address": "0c07411c",
+          "name": "db_sort_cursor_pool"
+        },
+        {
+          "address": "0c0afab4",
+          "name": "db_results_compare_pool"
+        },
+        {
+          "address": "0c0ae44c",
+          "name": "keys_tick_1ms_pool"
         }
       ],
       "comments": [
@@ -790,6 +1110,86 @@
           "address": "0c06e890",
           "type": "PRE",
           "text": "Audio feeder: when beat_lamp_loop_in is not -1 and loop_divide_feed_enable (0x0C7E4F24) is set, the frame fetch (0x0C06DF68) reads from loop_divide_feed_pos instead of the normal position, seeding it with that position when it is -1. Same check at 0x0C06E224 behind 0x0C7E4F1C. This is where LOOP DIVIDE becomes audible [emu]."
+        },
+        {
+          "address": "0c063c88",
+          "type": "PLATE",
+          "text": "UTILITY list (level 2): row 1 UTILITY, row 2 the item at utility_cursor (0 A.CUE LEVEL, 1 MIDI CH, 2 AUTO STANDBY, 3 LIBRARY CREATOR, 4 Ver), then display_text_rows_copy(3,2). Nothing for cursor >= 5: quant_loops (c350_ui.c) redirects pool 0x0C0666A4 to draw its items 5, 6, ..."
+        },
+        {
+          "address": "0c06b866",
+          "type": "PLATE",
+          "text": "bpm999grid: movi20 #0x708 (180.0) clamp of the beat-grid tempo tenths; the mod makes it 9990."
+        },
+        {
+          "address": "0c084de4",
+          "type": "PLATE",
+          "text": "settings_save(kind, record): kind 2 appends the 24-byte record at 0x0C9BE004 to the flash log."
+        },
+        {
+          "address": "0c085368",
+          "type": "PLATE",
+          "text": "Boot load of the settings record: walks 24-byte entries from flash 0x3F8000 (sector marked ACTV at 0x3FFFFC) and stops at an entry with +0 bit 4, +1 & 0x70 or +3 & 0xF0 set (erased flash), then copies the last accepted entry to 0x0C9BE004."
+        },
+        {
+          "address": "0c085584",
+          "type": "PLATE",
+          "text": "Logs error code r4 (0x12, 0x15, 0x22, 0x26, 0x90, 0x91, 0x62, 0xF0) in the 16-slot ring at record +4 (index +3); for 0x12/0x15 also copies 4 detail bytes to +0x14..+0x17, then saves. The mods keep their flags in +0x17 (0x50 | off bits)."
+        },
+        {
+          "address": "0c0c6064",
+          "type": "PLATE",
+          "text": "bpm999range: BPM LOCK takes the base tempo 0x0C9B8E24 as master BPM only in 60.0..199.9, else 130.0 (Default 130); the mod raises 1999 to 9990."
+        },
+        {
+          "address": "0c0c61d0",
+          "type": "PLATE",
+          "text": "bpm999lock: the master BPM rotary edit range 40.0..199.9; the mod raises 1999 to 9990."
+        },
+        {
+          "address": "0c0d6374",
+          "type": "PLATE",
+          "text": "utility_set_level(level, item): 1 leaves, 2 the list (cursor reset from level 1), 3 edits item (not 4, Ver), 5 ... The list push calls it as (3, cursor) through pool 0x0C0C9670 (read at 0x0C0C955A)."
+        },
+        {
+          "address": "0c0d641a",
+          "type": "PLATE",
+          "text": "UTILITY rotary at level 2 (pool 0x0C0C902C, read at 0x0C0C8EFE): r4 = 1 clockwise, r5 = steps; clamps the cursor to 0..4, timeout 15000, display_request(1)."
+        },
+        {
+          "address": "0c177a88",
+          "type": "PLATE",
+          "text": "AUTO STANDBY limits in seconds per UTILITY value: OFF, 1200, 2400, 3600 (u16 BE)."
+        },
+        {
+          "address": "0c0519d0",
+          "type": "PLATE",
+          "text": "Request 0x2002 builder: reads the track row (0x0C0719A4: +0x1C rating, +0x2C key id, +0x18 BPM, title/comment pointers, ids), then sends the first four fields of the USB INFO list only (index < 4). info_order notes rating and key name at the row fetch."
+        },
+        {
+          "address": "0c067f1c",
+          "type": "PLATE",
+          "text": "Track view rows: row 1 title (0x0C06C3C4), row 2 by INFO page 0x0CD48BE2: 0 artist (pool 0x0C068428), 1 album (pool 0x0C06842C), 2 phase meter flag 0x0C9B8ABF. info_order redirects both getter pools."
+        },
+        {
+          "address": "0c0d664a",
+          "type": "PLATE",
+          "text": "INFO rotary: r4 1 = clockwise, r5 steps; page 0..2 (2 = phase meter, sets 0x0C1D0728). Pool 0x0C0C9048, read at 0x0C0C8F8A."
+        },
+        {
+          "address": "0c06bd38",
+          "type": "PLATE",
+          "text": "record_of_track(handle): the 0x35C-byte DB record (+0x10 id, +0x18 BPM valid, +0x1C BPM x100, +0x38 title, +0x98 artist, +0xC8 album); same code as the CDJ-850 0x0C073F7C."
+        },
+        {
+          "address": "0c0afa30",
+          "type": "PLATE",
+          "text": "finish_results(results): with sort byte +4 set, pushes the row indices through a heap ordered by the comparator in pool 0x0C0AFAB4 (0x0C0AF72E: results, row a, row b) into the index at +0x2C. Called by bsr; browse (CDJ-350) redirects the comparator instead."
+        },
+        {
+          "address": "0c02b900",
+          "type": "PLATE",
+          "text": "Adds one browse reply item: r4 reply, r5 type (0x04 track, 0x5A loaded, 0x5D), r6 attributes, r7 UTF-16 title at +0x14 of the 0x114-byte cache entry (track id at +0). browse prefixes \"*\" to played titles via pool 0x0C02CE98."
         }
       ]
     }
