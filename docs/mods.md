@@ -11,7 +11,7 @@ it on. All of them target CDJ-850 MAIN 1.13.
 | [`bpm_decimals`](../mods/bpm_decimals/README.md) | The actual BPM with two decimals in place of the rekordbox BPM in the INFO view (tracks with a grid). |
 | [`quant_loops`](../mods/quant_loops/README.md) | Loops snap to the nearest beat of the rekordbox grid (behind or ahead): auto beat loops, LOOP IN and LOOP OUT, with no drift over many passes (USB tracks with a grid). BEAT SELECT + LOOP IN switches quantize (saved, QUANTIZE ON/OFF on the display); UTILITY > QUANTIZE DRIFT switches the drift correction ON/OFF (saved). Also on the CDJ-350, where UTILITY has QUANTIZE and DRIFT FIX ON/OFF after `Ver`. |
 | [`info_order`](../mods/info_order/README.md) | INFO screens in the order Track, `128.23 12A *****` (actual BPM, Camelot key, track rating as asterisks), waveform / Artist, Rating, Key / Album, Comment (USB tracks). On the CDJ-350: `Title - Artist`, `128.23 8A`, `RATING ****` on the INFO rotary. |
-| [`browse`](../mods/browse/README.md) | Played markers and BPM or key order in the rekordbox USB browser. |
+| [`browse`](../mods/browse/README.md) | Played markers and BPM or key order in the rekordbox USB browser. Also on the CDJ-350 (order in UTILITY > SORT). |
 | [`loop_resize`](../mods/loop_resize/README.md) | While a loop plays, CUE/LOOP CALL < halves it and CALL > doubles it (grid aware); outside a loop CALL works as stock. |
 | [`loop_roll`](../mods/loop_roll/README.md) | Prototype loop roll: BEAT SELECT + LOOP OUT toggles roll mode (ROLL ON/OFF, not saved); a held BEAT 1/2/4/8 loops, and on release playback lands where the track would have been (USB, within the buffered audio). |
 | [`hot_cues`](../mods/hot_cues/README.md) | Hot-cue mode (BEAT SELECT + RELOOP, saved, HOT CUE ON/OFF on the display): BEAT 1/2/4 are hot cues A–C from the rekordbox ANLZ (jump, record, hold 8 + pad to delete, saved to the stick); the beat LEDs show the set slots. |
@@ -51,6 +51,9 @@ command, for example:
 ```sh
 python mods/patch_update.py C850MAIN.UPD out/C850MAIN.UPD bpm999
 ```
+
+On the CDJ-350 (`--model cdj350`) a mod name takes the patches of its `MOD_ENV_CDJ350`
+list in `mod.conf`.
 
 The CDJ-850 is the default player of `patch_update.py`, `validate.py`,
 `mod_check.py` and `./setup.sh`, so none of them needs `--model`.

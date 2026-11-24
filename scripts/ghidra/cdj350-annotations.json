@@ -330,6 +330,42 @@
         {
           "address": "0c0f9b2c",
           "name": "text_copy_r0_r1"
+        },
+        {
+          "address": "0c02cb9c",
+          "name": "browse_reply_loop"
+        },
+        {
+          "address": "0c02b900",
+          "name": "browse_reply_add_item"
+        },
+        {
+          "address": "0c06cc04",
+          "name": "db_load_sort_menu"
+        },
+        {
+          "address": "0c04ca9c",
+          "name": "db_unmount"
+        },
+        {
+          "address": "0c073c68",
+          "name": "db_track_query"
+        },
+        {
+          "address": "0c0b083c",
+          "name": "db_menu_cache"
+        },
+        {
+          "address": "0c1073c4",
+          "name": "db_sort_cursor"
+        },
+        {
+          "address": "0c0afa30",
+          "name": "db_finish_results"
+        },
+        {
+          "address": "0c0af72e",
+          "name": "db_results_title_compare"
         }
       ],
       "labels": [
@@ -740,6 +776,38 @@
         {
           "address": "0c9b8abf",
           "name": "info_meter_page_flag"
+        },
+        {
+          "address": "0c02ce98",
+          "name": "browse_add_item_pool"
+        },
+        {
+          "address": "0c053d94",
+          "name": "db_load_sort_menu_pool"
+        },
+        {
+          "address": "0c0542e4",
+          "name": "db_unmount_pool"
+        },
+        {
+          "address": "0c06cb34",
+          "name": "db_track_query_pool"
+        },
+        {
+          "address": "0c04f478",
+          "name": "db_menu_cache_pool"
+        },
+        {
+          "address": "0c07411c",
+          "name": "db_sort_cursor_pool"
+        },
+        {
+          "address": "0c0afab4",
+          "name": "db_results_compare_pool"
+        },
+        {
+          "address": "0c0ae44c",
+          "name": "keys_tick_1ms_pool"
         }
       ],
       "comments": [
@@ -1112,6 +1180,16 @@
           "address": "0c06bd38",
           "type": "PLATE",
           "text": "record_of_track(handle): the 0x35C-byte DB record (+0x10 id, +0x18 BPM valid, +0x1C BPM x100, +0x38 title, +0x98 artist, +0xC8 album); same code as the CDJ-850 0x0C073F7C."
+        },
+        {
+          "address": "0c0afa30",
+          "type": "PLATE",
+          "text": "finish_results(results): with sort byte +4 set, pushes the row indices through a heap ordered by the comparator in pool 0x0C0AFAB4 (0x0C0AF72E: results, row a, row b) into the index at +0x2C. Called by bsr; browse (CDJ-350) redirects the comparator instead."
+        },
+        {
+          "address": "0c02b900",
+          "type": "PLATE",
+          "text": "Adds one browse reply item: r4 reply, r5 type (0x04 track, 0x5A loaded, 0x5D), r6 attributes, r7 UTF-16 title at +0x14 of the 0x114-byte cache entry (track id at +0). browse prefixes \"*\" to played titles via pool 0x0C02CE98."
         }
       ]
     }

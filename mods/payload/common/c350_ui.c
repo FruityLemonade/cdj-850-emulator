@@ -5,7 +5,7 @@
  *
  * Built once into the payload when any built mod names 'c350_ui' in
  * PAYLOAD_COMMON (mods/payloadbuild.py). Users: quant_loops (QUANTIZE,
- * DRIFT FIX).
+ * DRIFT FIX), browse (SORT).
  */
 #include "c350_ui.h"
 
@@ -33,6 +33,19 @@ void c350_ui_set_flag(u32 flag, int on)
 
     flag &= C350_UI_FLAGS_MASK;
     f = on ? (f | flag) : (f & ~flag);
+    C350_UI_FLAGS_BYTE = f ? (u8)(C350_UI_FLAGS_MAGIC | f) : 0;
+    UI_SETTINGS_SAVE(2, C350_UI_SETTINGS);
+}
+
+u32 c350_ui_field(u32 mask, u32 shift)
+{
+    return (ui_flags() & mask) >> shift;
+}
+
+void c350_ui_set_field(u32 mask, u32 shift, u32 value)
+{
+    u32 f = (ui_flags() & ~mask) | ((value << shift) & mask & C350_UI_FLAGS_MASK);
+
     C350_UI_FLAGS_BYTE = f ? (u8)(C350_UI_FLAGS_MAGIC | f) : 0;
     UI_SETTINGS_SAVE(2, C350_UI_SETTINGS);
 }

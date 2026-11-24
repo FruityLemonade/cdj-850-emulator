@@ -42,10 +42,14 @@
 #define C350_UI_FLAGS_MAGIC      0x50u           /* high nibble of a valid flags byte */
 #define C350_UI_FLAG_QUANT_OFF   0x01u           /* quantize off (default on) */
 #define C350_UI_FLAG_DRIFT_OFF   0x02u           /* loop drift correction off (default on) */
-#define C350_UI_FLAGS_MASK       0x0Fu           /* bits 2 and 3 are free for the next switches */
+#define C350_UI_FLAG_SORT_MASK   0x0Cu           /* browse: TRACK sort 0 default, 1 BPM, 2 key */
+#define C350_UI_FLAG_SORT_SHIFT  2u
+#define C350_UI_FLAGS_MASK       0x0Fu
 
 int c350_ui_flag(u32 flag);                     /* 1 = set */
 void c350_ui_set_flag(u32 flag, int on);        /* changes the bit and saves the record */
+u32 c350_ui_field(u32 mask, u32 shift);         /* a multi-bit field of the flags */
+void c350_ui_set_field(u32 mask, u32 shift, u32 value);  /* ... and saves the record */
 int c350_ui_quantize(void);                     /* 1 = grid snapping on */
 int c350_ui_drift(void);                        /* 1 = loop drift correction on */
 
