@@ -78,10 +78,12 @@ needs_main = pytest.mark.skipif(not MAIN.is_file(), reason="extract/cdj850/main_
 @needs_toolchain
 def test_static_hooks_outside_boot_critical_closure():
     import bootcrit
+    import validate
+    from players.cdj850 import GATED_BOOT_POOLS, MAIN_PROFILE
     stock = MAIN.read_bytes()
-    report = {}
+    report, spans = {}, {}
     combo = MODS + ["info_order", "info_order_rating", "phase_meter"]
-    out = patch_main.patch(stock, combo, "cdj850", report)
+    out = patch_main.patch(stock, patch_main.with_loader(combo, "cdj850"), "cdj850", report, spans)
     assert all(report[name][0] == "applied" for name in MODS), report
     assert report["info_order"][0] == "applied", report
     assert report["phase_meter"][0] == "applied", report
@@ -89,6 +91,10 @@ def test_static_hooks_outside_boot_critical_closure():
     closure = bootcrit.closure(stock, BASE, byteorder=">")
     assert not closure.hit(BPM_HOOK_SITE - BASE, BPM_HOOK_SITE - BASE + 14)
     assert not closure.hit(ROTARY_HOOK_SITE - BASE, ROTARY_HOOK_SITE - BASE + 12)
+
+    rep = validate.Report()
+    validate.check_main_image(stock, out, MAIN_PROFILE, spans, rep, gated_boot_pools=GATED_BOOT_POOLS)
+    assert rep.exit_code == 0, rep.text()
 
     p = payloadbuild.build(combo, "cdj850")
     for pool, name in ((0x0C0E797C, "waveform_utility_scroll"),
