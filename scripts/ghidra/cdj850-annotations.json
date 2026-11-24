@@ -1112,6 +1112,70 @@
         {
           "address": "0c067996",
           "name": "display_stage_utility"
+        },
+        {
+          "address": "0c01ed1a",
+          "name": "dbclient_init_request"
+        },
+        {
+          "address": "0c020628",
+          "name": "dbclient_insert_history"
+        },
+        {
+          "address": "0c02b4f6",
+          "name": "browser_append_view_item"
+        },
+        {
+          "address": "0c02c87c",
+          "name": "browser_emit_list_reply"
+        },
+        {
+          "address": "0c04f2b0",
+          "name": "db_close_drive_tables"
+        },
+        {
+          "address": "0c056560",
+          "name": "db_open_export"
+        },
+        {
+          "address": "0c064948",
+          "name": "display_fill_browser_rows"
+        },
+        {
+          "address": "0c074d98",
+          "name": "db_build_track_list"
+        },
+        {
+          "address": "0c0750d8",
+          "name": "db_load_sort_menu"
+        },
+        {
+          "address": "0c07c330",
+          "name": "db_query_content"
+        },
+        {
+          "address": "0c0bbabe",
+          "name": "db_check_menu_results_cache"
+        },
+        {
+          "address": "0c0eea70",
+          "name": "player_request_browse_refresh"
+        },
+        {
+          "address": "0c11d224",
+          "name": "db_sort_query_cursor"
+        },
+        {
+          "address": "0c0babac",
+          "name": "db_finalize_left_buffer"
+        },
+        {
+          "address": "0c0bb612",
+          "name": "db_publish_left_buffer"
+        },
+        {
+          "address": "0c079ff8",
+          "name": "db_read_content_metadata"
         }
       ],
       "comments": [
@@ -1463,7 +1527,7 @@
         {
           "address": "0c073f7c",
           "type": "PLATE",
-          "text": "db_record_of_track(track): the DB record of a loaded track in db_track_records (3 slots of 0x864 bytes at 0x0C9D44D4: +0 == 3 in use, +0x14 s16 track number), only on USB (active source 2, 0x0C1E109C == 2). Record: +0x18 BPM valid (1), +0x1C BPM x 100, +0x38 title, +0xB8 artist, +0x138 album, +0x428 genre, +0x4A8 comment, +0x5A8 rating, +0x630 label, +0x730 key text, +0x851 INFO item count, +0x852.. item codes [static + emu]."
+          "text": "db_record_of_track(track): the DB record of a loaded track in db_track_records (3 slots of 0x864 bytes at 0x0C9D44D4: +0 == 3 in use, +0x14 s16 track number), only on USB (active source 2, 0x0C1E109C == 2). Record: +0x18 BPM valid (1), +0x1C BPM x 100, +0x38 title, +0xB8 artist, +0x138 album, +0x428 genre, +0x4A8 comment, +0x5A8 rating, +0x630 label, +0x730 key text, +0x851 INFO item count, +0x852.. item codes [static + emu]. Looks up a loaded record by display track number. A valid DB record has the rekordbox content ID at +0x10, the display track number at +0x14 and the drive at +0x16 (3 = USB)."
         },
         {
           "address": "0c074804",
@@ -2174,6 +2238,81 @@
           "address": "0c0e7e64",
           "type": "PRE",
           "text": "Encoder press in the main UTILITY list. Pool 0x0C0E7F10 calls utility_set_menu_level(3, item). The waveform mod toggles Center/Left directly at item 7 and saves Left through mod flags byte 0x0C9DA25E, bit 0x04."
+        },
+        {
+          "address": "0c01ed92",
+          "type": "PLATE",
+          "text": "Writes the sort argument to request +0x18 for supported DB menu requests, including 0x1004 TRACK."
+        },
+        {
+          "address": "0c020628",
+          "type": "PLATE",
+          "text": "Builds DB request 0x3001 to append a song to the stock HISTORY playlist."
+        },
+        {
+          "address": "0c02caf4",
+          "type": "PLATE",
+          "text": "Browse reply loop over 0x114-byte client cache entries. The entry ID is u32 at +0, the type is u16 at +4, and the UTF-16 title starts at +0x14. The call at 0x0C02CB04 passes the title to the display reply appender. The browse mod replaces only this call’s title pointer."
+        },
+        {
+          "address": "0c051ca8",
+          "type": "PLATE",
+          "text": "Cache check for menu requests. r5 packs menu location, media slot and media type. r6 is the opcode. r7 points to the selection word followed by query arguments. USB rekordbox TRACK requests have opcode 0x1004 and selection low halfword 0x0301."
+        },
+        {
+          "address": "0c056764",
+          "type": "PLATE",
+          "text": "After opening export.pdb and loading the drive metadata, call the sort-menu loader with the drive number (3 for USB). The browse mod starts a new played-history session here."
+        },
+        {
+          "address": "0c056b48",
+          "type": "PLATE",
+          "text": "USB database teardown calls db_close_drive_tables through 0x0C056CE8 with r4 database and r5 drive."
+        },
+        {
+          "address": "0c064948",
+          "type": "PLATE",
+          "text": "Copies browse request rows at 0x0C9D0E3C (0x10E-byte stride) to the 0x105-byte matrix rows. This is the row writer for rekordbox USB lists, reached from the display event pass."
+        },
+        {
+          "address": "0c074d98",
+          "type": "PLATE",
+          "text": "Local TRACK (0x1004) handler. Builds a djdbContent cursor with flags 0 and kind 4, feeds it to the list builder and closes it. The stock function ignores the sort argument passed in r5."
+        },
+        {
+          "address": "0c0750d8",
+          "type": "PLATE",
+          "text": "Loads the sort-menu table for one drive. Called after the successful export.pdb open."
+        },
+        {
+          "address": "0c07c330",
+          "type": "PLATE",
+          "text": "Builds a djdbContent cursor and optionally sorts it. Bit 7 of r4 requests the sortable cursor. Query kind 4 selects all tracks."
+        },
+        {
+          "address": "0c07c6be",
+          "type": "PLATE",
+          "text": "Sorts the all-track cursor through 0x0C07C7E4. r5 is the column count, r6 points to u32 column IDs and r7 to the per-column sort direction bytes. Stock uses title (4) and ID (0)."
+        },
+        {
+          "address": "0c0eea70",
+          "type": "PLATE",
+          "text": "Requests an asynchronous USB browse update (r4 = 1 for the browser). The stock BROWSE action calls this from the player task."
+        },
+        {
+          "address": "0c0babac",
+          "type": "PLATE",
+          "text": "Finalizes DB menu results. Count is u16 at +2, primary sort mode is u8 at +4, and the u16 row index pointer is at +0x2C. A nonzero primary sort mode builds the index with the stock comparator. The finalizer then releases its sort workspace."
+        },
+        {
+          "address": "0c0bb68a",
+          "type": "PLATE",
+          "text": "Finalizes the left buffer immediately before publishing it to the destination menu cache, shared by local menu requests. The browse mod writes the sorted cursor order into the index and skips the second title sort."
+        },
+        {
+          "address": "0c079ff8",
+          "type": "PLATE",
+          "text": "Reads djdbContent metadata by content ID. Column 4 is TITLE, column 8 is BPM x100, and column 0x14 is KEYID. The metadata builder at 0x0C054424 resolves that key ID to the INFO key text."
         }
       ],
       "labels": [
@@ -2904,6 +3043,34 @@
         {
           "address": "0ce65b82",
           "name": "waveform_overview_100"
+        },
+        {
+          "address": "0c051cec",
+          "name": "db_check_track_menu_cache_pool"
+        },
+        {
+          "address": "0c056834",
+          "name": "db_export_load_sort_menu_pool"
+        },
+        {
+          "address": "0c056ce8",
+          "name": "db_usb_close_tables_pool"
+        },
+        {
+          "address": "0c074ff4",
+          "name": "db_query_content_pool"
+        },
+        {
+          "address": "0c07c7e4",
+          "name": "db_sort_query_cursor_pool"
+        },
+        {
+          "address": "0c9d0e3c",
+          "name": "display_browse_request_rows"
+        },
+        {
+          "address": "0c0bb804",
+          "name": "db_finalize_left_buffer_pool"
         }
       ]
     }
