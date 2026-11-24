@@ -144,6 +144,34 @@
           "name": "file_size"
         },
         {
+          "address": "0c006950",
+          "name": "sector_track"
+        },
+        {
+          "address": "0c006a92",
+          "name": "next_sector"
+        },
+        {
+          "address": "0c008e38",
+          "name": "ring_add"
+        },
+        {
+          "address": "0c0090d6",
+          "name": "ring_sector_to_frame"
+        },
+        {
+          "address": "0c0c7850",
+          "name": "audio_send_cmd"
+        },
+        {
+          "address": "0c0cde6e",
+          "name": "auto_beat_loop_set"
+        },
+        {
+          "address": "0c0d28ac",
+          "name": "keys_state4_looping"
+        },
+        {
           "address": "0c12ae44",
           "name": "audio_synth_filterbank"
         },
@@ -360,6 +388,74 @@
         {
           "address": "0cd70695",
           "name": "panel_rx_buf"
+        },
+        {
+          "address": "0c7e4d10",
+          "name": "play_sector"
+        },
+        {
+          "address": "0c7e4d1c",
+          "name": "in_sector"
+        },
+        {
+          "address": "0c7e4d30",
+          "name": "play_frame"
+        },
+        {
+          "address": "0c7e4d4c",
+          "name": "cue_frame"
+        },
+        {
+          "address": "0c7e4d74",
+          "name": "loop_out_frame"
+        },
+        {
+          "address": "0c7e4d8c",
+          "name": "loop_out_request"
+        },
+        {
+          "address": "0c7e4dbc",
+          "name": "track_length"
+        },
+        {
+          "address": "0c9b8e24",
+          "name": "bpm_base_tenths"
+        },
+        {
+          "address": "0c9b8f34",
+          "name": "beat_grid_ctx"
+        },
+        {
+          "address": "0cd3d7e0",
+          "name": "tracklen_table"
+        },
+        {
+          "address": "0cd48574",
+          "name": "loop_d1c0"
+        },
+        {
+          "address": "0cd48bd1",
+          "name": "loop_active"
+        },
+        {
+          "address": "0cd48ccc",
+          "name": "loop_out_cmd"
+        },
+        {
+          "address": "0cd48d06",
+          "name": "source_index"
+        },
+        {
+          "address": "0cd48d0e",
+          "name": "is_usb_mode"
+        },
+        {
+          "address": "0cd48d11",
+          "name": "player_state_base"
+        },
+        {
+          "address": "0cd48d5a",
+          "name": "cue_track"
         },
         {
           "address": "0cd706ac",
@@ -639,6 +735,21 @@
           "address": "0c13e7f4",
           "type": "PLATE",
           "text": "CDJ-350 FL messages: 16-byte entries already in wire format (0x0A 0x0A + 13 characters + 0x00), the same layout as the text slot frames at 0x0C9B85CC. NO USB MEM is used from 0x0C062ED0, DISC and EMPTY from about 0x0C06124C."
+        },
+        {
+          "address": "0c0cde6e",
+          "type": "PLATE",
+          "text": "CDJ-350 auto 4-beat loop handler (BEAT LOOP rocker): computes out frame from bpm_base_tenths (0x0C9B8E24) and sends audio_send_cmd(0x1e, ...). Pool words 0x0C0CE8B4 (next_sector) and 0x0C0CEBCC (audio_send_cmd) are redirected by quant_loops [static + emu]."
+        },
+        {
+          "address": "0c0d1270",
+          "type": "PLATE",
+          "text": "CDJ-350 manual LOOP IN / LOOP OUT paths in keys_state3_playing: LOOP IN reads next_sector via pool words 0x0C0D1380 and 0x0C0D2728 (and 0x0C0D31B8 in state 4); LOOP OUT sends audio_send_cmd(cmd=1, mode=3, sector=play_sector) via pool words 0x0C0D1688, 0x0C0D1984, and 0x0C0D1BB8 (redirected by quant_loops) [static + emu]."
+        },
+        {
+          "address": "0c0d28ac",
+          "type": "PLATE",
+          "text": "CDJ-350 state-4 looping key handler (keys_state4_looping), jumped to via pool word 0x0C0C7F7C at 0x0C0C7D92 (redirected by quant_loops_drift for per-pass loop drift correction) [static + emu]."
         },
         {
           "address": "0c1caae0",
