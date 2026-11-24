@@ -1188,6 +1188,94 @@
         {
           "address": "0c079ff8",
           "name": "db_read_content_metadata"
+        },
+        {
+          "address": "0c10e150",
+          "name": "usb_file_open"
+        },
+        {
+          "address": "0c10e330",
+          "name": "usb_file_read"
+        },
+        {
+          "address": "0c10e3e0",
+          "name": "usb_file_write"
+        },
+        {
+          "address": "0c10e434",
+          "name": "usb_file_seek"
+        },
+        {
+          "address": "0c10e468",
+          "name": "usb_file_tell"
+        },
+        {
+          "address": "0c10e840",
+          "name": "usb_file_truncate"
+        },
+        {
+          "address": "0c088f74",
+          "name": "file_open_drive"
+        },
+        {
+          "address": "0c088fce",
+          "name": "file_close_logged"
+        },
+        {
+          "address": "0c0890e6",
+          "name": "file_read_logged"
+        },
+        {
+          "address": "0c08910c",
+          "name": "file_write_logged"
+        },
+        {
+          "address": "0c089016",
+          "name": "file_seek_logged"
+        },
+        {
+          "address": "0c089036",
+          "name": "file_tell_logged"
+        },
+        {
+          "address": "0c089132",
+          "name": "file_size_logged"
+        },
+        {
+          "address": "0c08915a",
+          "name": "file_truncate_logged"
+        },
+        {
+          "address": "0c08908e",
+          "name": "file_rename"
+        },
+        {
+          "address": "0c08925a",
+          "name": "file_stat"
+        },
+        {
+          "address": "0c0892e4",
+          "name": "file_set_hidden"
+        },
+        {
+          "address": "0c0c3a8c",
+          "name": "anlz_find_or_create"
+        },
+        {
+          "address": "0c05d208",
+          "name": "pdj_index_create"
+        },
+        {
+          "address": "0c0c45b4",
+          "name": "usb_anlz_mount"
+        },
+        {
+          "address": "0c0c0f88",
+          "name": "usb_anlz_manager_open"
+        },
+        {
+          "address": "0c10f148",
+          "name": "wcscpy16"
         }
       ],
       "comments": [
@@ -2345,6 +2433,41 @@
           "address": "0c079ff8",
           "type": "PLATE",
           "text": "Reads djdbContent metadata by content ID. Column 4 is TITLE, column 8 is BPM x100, and column 0x14 is KEYID. The metadata builder at 0x0C054424 resolves that key ID to the INFO key text."
+        },
+        {
+          "address": "0c088f74",
+          "type": "PLATE",
+          "text": "file_open_drive(drive, _, path, mode): builds the path \"<drive>:\" + path (16-bit characters; the path argument is already 16-bit, copied with wcscpy16 0x0C10F148) and calls usb_file_open (0x0C10E150). Modes seen as C strings: \"r\", \"rb\", \"r+\", \"w\", \"w+\". Emulator fopen trace on a writable stick, at mount: export.pdb \"r\" and \"r+\", then C:/PIONEER/USBANLZ/USBMNG.DAT \"r+\" and, missing, \"w+\" (the deck creates it), C:/PIONEER/CUE/MEPCUE.PDJ \"r\"; at track load: ANLZ0000.DAT \"r\"/\"rb\" and the audio file \"rb\" [static + emu]. A mod can keep its own file on the stick through this layer."
+        },
+        {
+          "address": "0c10e150",
+          "type": "PLATE",
+          "text": "usb_file_open(path16, mode): fopen of the media file system. The drive letter (lower-cased) picks the device entry (table stride 0xC, type 3 = USB, takes the FS semaphore around the call; type 4 = other). Returns a file handle or 0. \"w\"/\"w+\" create or truncate [static + emu]."
+        },
+        {
+          "address": "0c088fce",
+          "type": "PLATE",
+          "text": "File-layer wrappers with error log ids (FUN_0C095162 errno): close 0x212, seek(file, off, whence) 0x213 (0x0C089016), tell 0x214 (0x0C089036), read(buf, n, file) 0x215 (0x0C0890E6, = fread(buf, 1, n, file)), write(buf, n, file) 0x216 (0x0C08910C, = fwrite(buf, 1, n, file)), size 0x217 (0x0C089132), stat 0x21B (0x0C08925A), truncate(file, pos) 0x21C (0x0C08915A, used by anlz_write_section after its writes), 0x21D (0x0C088FF2); rename(a, b) 0x0C08908E; set attribute | 2 (hidden) 0x0C0892E4; 0x0C089324 a one-path call into FUN_0C10E52A (likely mkdir or remove, not checked) [static]."
+        },
+        {
+          "address": "0c0c3a8c",
+          "type": "PLATE",
+          "text": "Finds the ANLZ file of a track under <drive>:/PIONEER (or /.PIONEER)/USBANLZ/... and, when none matches and param_3 != 0, creates /ANLZ%04X.DAT with mode \"w+\" (pool 0x0C0C4004) and writes its header: the deck creates analysis files on the stick [static]."
+        },
+        {
+          "address": "0c05d208",
+          "type": "PLATE",
+          "text": "Creates a play-history index/file (CDJINDX%d.PDJ / CDJ%05d, MPJINDX%d.PDJ / MPJ%05d) with mode \"w\" (pool 0x0C05D508) and writes a 0x18-byte \"PIONEER \" header and a record [static]."
+        },
+        {
+          "address": "0c0c45b4",
+          "type": "PLATE",
+          "text": "usb_anlz_mount(ctx, arg): USB ANLZ manager set-up of a newly mounted stick. Builds <drive>:/PIONEER (or /.PIONEER)/USBANLZ, opens /PIONEER/USBANLZ/USBMNG.DAT (\"r+\", created \"w+\" when missing) and indexes the P%03X folders. ctx+0xC is the drive record (first halfword = drive letter, \"C\" for USB), as anlz_find_or_create passes it to file_open_drive. Called through pool 0x0C0C11E8, read only at 0x0C0C1010 in FUN_0C0C0F88 (outside the boot-critical closure); quant_loops/waveform redirect it to c850_ui_usb_mount, which then reads the mod settings file /PIONEER/MODSET.DAT [static + emu]."
+        },
+        {
+          "address": "0c10f148",
+          "type": "PLATE",
+          "text": "wcscpy16(dst, src): copies a 0-terminated 16-bit string (paths of the file layer are 16-bit characters; file_open_drive copies its path argument with it, so the path must already be 16-bit) [static]."
         }
       ],
       "labels": [

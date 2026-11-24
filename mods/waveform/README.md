@@ -20,7 +20,7 @@ Hold **MENU/UTILITY**, turn the selector past **VERSION No.** to **WAVE PLAYHEAD
 
 In zoomed view (close or medium), any active loop's visible `[loop-in..loop-out]` span is also lit on the 100-bit red memory-cue strip (`0x60`), while the green progress bar stays stock. In overview mode both strips behave like stock.
 
-With `quant_loops` built in, `QUANTIZE DRIFT` follows as the next item (the shared `c850_ui` UTILITY list). The deck saves the choice with its UTILITY settings. If the HISTORY name is longer than 29 characters, the choice lasts until power-off because the name occupies the shared mod settings bytes (`+0x21..+0x22`).
+With `quant_loops` built in, `QUANTIZE DRIFT` follows as the next item (the shared `c850_ui` UTILITY list). The deck saves the choice with its UTILITY settings. With a rekordbox stick in, the choice is also saved on the stick (`/PIONEER/MODSET.DAT`, `waveform_usb_settings`) and comes back on any deck with this build. Without a stick, if the HISTORY name is longer than 29 characters, the choice lasts until power-off because the name occupies the shared mod settings bytes (`+0x21..+0x22`).
 
 ## How It Works
 
