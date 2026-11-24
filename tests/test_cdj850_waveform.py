@@ -48,6 +48,9 @@ WF_SAMPLES = 0x0C9D1199
 WF_PWAV = 0x0CE65862
 WF_OVERVIEW = 0x0CE65B82
 PLAY_FRAME = 0x0C7F647C
+LOOP_IN_FRAME = 0x0C7F6498
+LOOP_OUT_FRAME = 0x0C7F64B0
+LOOP_OUT_REQUEST = 0x0C7F64DC
 RING_READ = 0x0C7F645C
 RING_WRITE = 0x0C7F645E
 TRACK_LEN = 0x0C7F650C
@@ -57,6 +60,7 @@ INFO_TRACK = 0x0C9D1D96
 INFO_CURSOR = 0x0CE6D1E4
 SOURCE_INDEX = 0x0CE6D252
 PLAYER_STATE_BASE = 0x0CE6D25D
+LOOP_ACTIVE = 0x0CE6D0ED
 TICK_MS = 0x0CE49F54
 SETTINGS = 0x0C9DA23C
 UTILITY_LEVEL = 0x0C1E108C
@@ -126,6 +130,7 @@ def _mem(p):
     mem.add(0x0C7F6450, bytes(0x100))
     mem.add(0x0C9D0AE0, bytes(0x800))
     mem.add(0x0CE65860, bytes(0x400))
+    mem.add(0x0CE6D0E0, bytes(0x20))
     mem.add(0x0CE6D1E0, bytes(0x90))
     mem.add(INFO_TRACK, bytes(2))
     mem.add(TICK_MS, bytes(4))
@@ -293,6 +298,10 @@ def test_interpreter_medium_waveform_preserves_detail_during_pcm_refill():
     assert mem.read(WF_SAMPLES, 100) == bytes([15]) * 100
 
 
+def _red_cols(packet):
+    return [c for c in range(100) if packet[2 + c // 8] & (0x80 >> (c % 8))]
+
+
 @needs_toolchain
 def test_interpreter_playhead_setting_and_red_marker():
     p = payloadbuild.build(MODS, "cdj850")
@@ -304,20 +313,49 @@ def test_interpreter_playhead_setting_and_red_marker():
     mem.add(0x0C06F71C, bytes.fromhex("000b 0009"))
     mem.add(0x0C0664A8, bytes.fromhex("d102 e001 2102 000b 0009 0009 0c9d0ac0"))
 
+    # Default is LEFT 1/3 (column 33).
     mem.put32(TRACK_LEN, 1200)
     mem.put32(PLAY_FRAME, 312)
     mem.put32(DISPLAY_MODE, 10)
     mem.write(WF_PWAV + 104 * 2, b"\x1f")
     _call(p, mem, "waveform_hook", 0, 0)
-    assert mem.read(WF_SAMPLES, 100) == bytes([1] * 50 + [15] + [1] * 49)
+    assert mem.read(WF_SAMPLES, 100) == bytes([1] * 33 + [15] + [1] * 66)
 
-    packet = bytearray(16)
-    packet[:3] = bytes([0x60, 1, 0x80])  # a genuine saved cue at column 0
-    mem.write(TX_BASE + 16, packet)
+    base_packet = bytearray(16)
+    base_packet[:3] = bytes([0x60, 1, 0x80])  # a genuine saved cue at column 0
+    mem.write(TX_BASE + 16, base_packet)
     _call(p, mem, "waveform_center_marker")
-    packet[8] = 0x20  # zero-based column 50
-    assert mem.read(TX_BASE + 16, 16) == packet
+    assert _red_cols(mem.read(TX_BASE + 16, 16)) == [0, 33]
 
+    # Active loop in close zoom (step = 3, base = 312 - 33*3 = 213):
+    # frames [303..330) -> columns (303-213)//3 = 30 .. (329-213)//3 = 38.
+    mem.write(LOOP_ACTIVE, b"\x01")
+    mem.put32(LOOP_IN_FRAME, 303)
+    mem.put32(LOOP_OUT_FRAME, 330)
+    mem.put32(TX_LAST, 0)
+    mem.write(TX_BASE + 16, base_packet)
+    _call(p, mem, "waveform_center_marker")
+    assert _red_cols(mem.read(TX_BASE + 16, 16)) == [0] + list(range(30, 39))
+
+    # Resized loop via LOOP_OUT_REQUEST updates the red loop span immediately:
+    # frames [303..345) -> columns 30..43.
+    mem.put32(LOOP_OUT_REQUEST, 345)
+    mem.put32(TX_LAST, 0)
+    mem.write(TX_BASE + 16, base_packet)
+    _call(p, mem, "waveform_center_marker")
+    assert _red_cols(mem.read(TX_BASE + 16, 16)) == [0] + list(range(30, 44))
+
+    # Zoomed out to overview: 0x60 behaves like stock (no playhead or loop span added).
+    mem.put32(_sym(p, "waveform_zoom"), 2)
+    mem.put32(TX_LAST, 0)
+    mem.write(TX_BASE + 16, base_packet)
+    _call(p, mem, "waveform_center_marker")
+    assert _red_cols(mem.read(TX_BASE + 16, 16)) == [0]
+
+    mem.put32(_sym(p, "waveform_zoom"), 0)
+    mem.write(LOOP_ACTIVE, b"\x00")
+
+    # Cycle UTILITY: LEFT 1/3 -> CENTER -> LEFT -> LEFT 1/3.
     mem.put32(DISPLAY_MODE, 12)
     mem.write(UTILITY_LEVEL, b"\x02")
     mem.write(UTILITY_CURSOR, b"\x06")  # VERSION No.
@@ -325,9 +363,26 @@ def test_interpreter_playhead_setting_and_red_marker():
     assert mem.read(UTILITY_CURSOR, 1) == b"\x07"
     _call(p, mem, "waveform_hook", 0, 0)
     assert mem.read(ROWS + 0x105 + 5, 13) == b"WAVE PLAYHEAD"
-    assert mem.read(ROWS + 0x20A + 5, 6) == b"CENTER"
+    assert mem.read(ROWS + 0x20A + 4, 9) == b"\x08LEFT 1/3"
+
+    # Press 1 -> CENTER (+0x21 = 0x51, +0x22 = 0)
     _call(p, mem, "waveform_utility_select", 3, 7)
-    assert mem.read(SETTINGS + 0x22, 1) == b"\x56"
+    assert mem.read(SETTINGS + 0x21, 2) == b"\x51\x00"
+    _call(p, mem, "waveform_hook", 0, 0)
+    assert mem.read(ROWS + 0x20A + 4, 7) == b"\x06CENTER"
+
+    mem.put32(DISPLAY_MODE, 10)
+    _call(p, mem, "waveform_hook", 0, 0)
+    assert mem.read(WF_SAMPLES, 100) == bytes([1] * 50 + [15] + [1] * 49)
+    mem.put32(TX_LAST, 0)
+    mem.write(TX_BASE + 16, base_packet)
+    _call(p, mem, "waveform_center_marker")
+    assert _red_cols(mem.read(TX_BASE + 16, 16)) == [0, 50]
+
+    # Press 2 -> LEFT (+0x21 = 0, +0x22 = 0x56)
+    mem.put32(DISPLAY_MODE, 12)
+    _call(p, mem, "waveform_utility_select", 3, 7)
+    assert mem.read(SETTINGS + 0x21, 2) == b"\x00\x56"
     _call(p, mem, "waveform_hook", 0, 0)
     assert mem.read(ROWS + 0x20A + 4, 5) == b"\x04LEFT"
     _call(p, mem, "waveform_utility_scroll", 0, 1)
@@ -336,11 +391,15 @@ def test_interpreter_playhead_setting_and_red_marker():
     mem.put32(DISPLAY_MODE, 10)
     _call(p, mem, "waveform_hook", 0, 0)
     assert mem.read(WF_SAMPLES, 100) == bytes([15] + [1] * 99)
-    packet[8] = 0
     mem.put32(TX_LAST, 0)
-    mem.write(TX_BASE + 16, packet)
+    mem.write(TX_BASE + 16, base_packet)
     _call(p, mem, "waveform_center_marker")
-    assert mem.read(TX_BASE + 16, 16) == packet
+    assert _red_cols(mem.read(TX_BASE + 16, 16)) == [0]
+
+    # Press 3 -> back to LEFT 1/3 (+0x21 = 0, +0x22 = 0)
+    mem.put32(DISPLAY_MODE, 12)
+    _call(p, mem, "waveform_utility_select", 3, 7)
+    assert mem.read(SETTINGS + 0x21, 2) == b"\x00\x00"
 
 
 # ---- live ----
@@ -428,7 +487,21 @@ def test_live_waveform_zoom_and_info_order_coexistence(tmp_path):
         d.q("stop")
         cue_packet = d.dump(TX_BASE + 16 * d.rw(TX_LAST), 16)
         d.q("cont")
-        assert cue_packet[0] == 0x60 and cue_packet[8] & 0x20, cue_packet.hex()
+        assert cue_packet[0] == 0x60 and cue_packet[6] & 0x40, cue_packet.hex()
+
+        # Start a 1-beat loop and verify the red strip lights a multi-column span.
+        d.key("beat_1")
+        deadline = time.monotonic() + 15
+        while True:
+            d.q("stop")
+            loop_active = d.rb(LOOP_ACTIVE)
+            cue_packet = d.dump(TX_BASE + 16 * d.rw(TX_LAST), 16)
+            d.q("cont")
+            if loop_active == 1 and cue_packet[0] == 0x60 and len(_red_cols(cue_packet)) >= 5:
+                break
+            assert time.monotonic() < deadline, (loop_active, cue_packet.hex())
+            time.sleep(0.2)
+        d.key("reloop")
 
         # 1 click CCW on Page 1 -> zoom 1 (medium, step in between)
         _udp(d, "0x03:-1:0:rot")
@@ -460,10 +533,11 @@ def test_live_waveform_zoom_and_info_order_coexistence(tmp_path):
         assert mode_p2 == 11 and cur_p2 == 2 and zoom_p2 == 0, (mode_p2, cur_p2, zoom_p2)
         assert rows_p2[0][0] == 0x07, rows_p2  # info_order Page 2 starts with Artist (0x07)
 
-    utility_script = "3800:menu:1700,6500:rot+6,7500:rot+1,8500:enter:200"
+    utility_script = "3800:menu:1700,6500:rot+6,7500:rot+1,8500:enter:200,9500:enter:200"
     with tr.Deck(stick, flash=flash, script=utility_script, writable=True) as d:
         d.wait_line("[.UTILITY.]", "[A.CUE LEVEL]", timeout=60)
         d.wait_line("[VERSION No.]", timeout=60)
+        d.wait_line("[WAVE PLAYHEAD]", "[LEFT 1/3]", timeout=60)
         d.wait_line("[WAVE PLAYHEAD]", "[CENTER]", timeout=60)
         d.wait_line("[WAVE PLAYHEAD]", "[LEFT]", timeout=60)
         d.wait_line("input release enter", timeout=60)
