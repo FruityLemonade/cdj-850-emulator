@@ -6,7 +6,8 @@
  * Built once into the payload when any built mod names 'c850_ui' in
  * PAYLOAD_COMMON (mods/payloadbuild.py). Users: hot_cues (BEAT SELECT +
  * RELOOP, hot-cue mode), quant_loops (BEAT SELECT + LOOP IN, quantize),
- * loop_resize (reads the quantize flag).
+ * loop_resize (reads the quantize flag), loop_roll (BEAT SELECT + LOOP OUT,
+ * roll mode, kept in RAM: the flags byte has no free bit).
  */
 #include "c850_ui.h"
 

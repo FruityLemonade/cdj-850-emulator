@@ -20,7 +20,7 @@
  * mods' shift: c850_ui_shift() says whether `key` (K0 bit) was pressed with
  * BEAT SELECT held, takes both keys and undoes the fraction-mode toggle the
  * BEAT SELECT press made (stock toggles 0x0CE6D154/D156 on the press, in
- * player_keys_latch_prev). Used: RELOOP (hot_cues), LOOP IN (quant_loops).
+ * player_keys_latch_prev). Used: RELOOP (hot_cues), LOOP IN (quant_loops), LOOP OUT (loop_roll).
  *
  * Mod flags. One byte of the settings record keeps the mods' on-deck
  * switches across restarts: +0x22 (0x0C9DA25E), the last byte of the HISTORY
