@@ -108,12 +108,13 @@ def test_cave_reservation_and_room_left():
     # service gates consume 112 more bytes after alignment across the sites.
     # loop_roll_flash (c850_ui_flash_hook on the display_stage_bpm site) adds one 16-byte slot.
     # version_display adds its 128-byte cave routine and one 16-byte slot on display_stage_bpm.
-    assert total == 928
-    assert sigpatch.layout(lambda n: patch_main.blob_path(n, "cdj850"), ps.mods)[1] == 816
+    # autostandby_flash adds one 16-byte slot on display_stage_bpm.
+    assert total == 944
+    assert sigpatch.layout(lambda n: patch_main.blob_path(n, "cdj850"), ps.mods)[1] == 832
     if MAIN.is_file():
         img = sigpatch.Image(ps.profile, MAIN.read_bytes())
         start, end = sigpatch.find_cave(img)
-        assert end - ((start + 3) & ~3) - total == 188
+        assert end - ((start + 3) & ~3) - total == 172
 
 
 @needs_toolchain

@@ -370,18 +370,18 @@ def test_interpreter_playhead_setting_and_red_marker():
     mem.put32(_sym(p, "waveform_zoom"), 0)
     mem.write(LOOP_ACTIVE, b"\x00")
 
-    # Cycle UTILITY: LEFT 1/3 -> CENTER -> LEFT -> LEFT 1/3.
+    # Cycle UTILITY: item 7 is WAVEFORM, item 8 is WAVE PLAYHEAD (LEFT 1/3 -> CENTER -> LEFT -> LEFT 1/3).
     mem.put32(DISPLAY_MODE, 12)
     mem.write(UTILITY_LEVEL, b"\x02")
     mem.write(UTILITY_CURSOR, b"\x06")  # VERSION No.
-    _call(p, mem, "c850_ui_utility_scroll", 1, 1)
-    assert mem.read(UTILITY_CURSOR, 1) == b"\x07"
+    _call(p, mem, "c850_ui_utility_scroll", 1, 2)
+    assert mem.read(UTILITY_CURSOR, 1) == b"\x08"
     _call(p, mem, "waveform_hook", 0, 0)
     assert mem.read(ROWS + 0x105 + 5, 13) == b"WAVE PLAYHEAD"
     assert mem.read(ROWS + 0x20A + 4, 9) == b"\x08LEFT 1/3"
 
     # Press 1 -> CENTER (+0x21 = 0x51, +0x22 = 0)
-    _call(p, mem, "c850_ui_utility_select", 3, 7)
+    _call(p, mem, "c850_ui_utility_select", 3, 8)
     assert mem.read(SETTINGS + 0x21, 2) == b"\x51\x00"
     _call(p, mem, "waveform_hook", 0, 0)
     assert mem.read(ROWS + 0x20A + 4, 7) == b"\x06CENTER"
@@ -396,11 +396,11 @@ def test_interpreter_playhead_setting_and_red_marker():
 
     # Press 2 -> LEFT (+0x21 = 0, +0x22 = 0x56)
     mem.put32(DISPLAY_MODE, 12)
-    _call(p, mem, "c850_ui_utility_select", 3, 7)
+    _call(p, mem, "c850_ui_utility_select", 3, 8)
     assert mem.read(SETTINGS + 0x21, 2) == b"\x00\x56"
     _call(p, mem, "waveform_hook", 0, 0)
     assert mem.read(ROWS + 0x20A + 4, 5) == b"\x04LEFT"
-    _call(p, mem, "c850_ui_utility_scroll", 0, 1)
+    _call(p, mem, "c850_ui_utility_scroll", 0, 2)
     assert mem.read(UTILITY_CURSOR, 1) == b"\x06"
 
     mem.put32(DISPLAY_MODE, 10)
@@ -424,7 +424,7 @@ def test_interpreter_playhead_setting_and_red_marker():
 
     # Press 3 -> back to LEFT 1/3 (+0x21 = 0, +0x22 = 0)
     mem.put32(DISPLAY_MODE, 12)
-    _call(p, mem, "c850_ui_utility_select", 3, 7)
+    _call(p, mem, "c850_ui_utility_select", 3, 8)
     assert mem.read(SETTINGS + 0x21, 2) == b"\x00\x00"
 
 
@@ -561,7 +561,7 @@ def test_live_waveform_zoom_and_info_order_coexistence(tmp_path):
         assert mode_p2 == 11 and cur_p2 == 2 and zoom_p2 == 0, (mode_p2, cur_p2, zoom_p2)
         assert rows_p2[0][0] == 0x07, rows_p2  # info_order Page 2 starts with Artist (0x07)
 
-    utility_script = "3800:menu:1700,6500:rot+6,7500:rot+1,8500:enter:200,9500:enter:200"
+    utility_script = "3800:menu:1700,6500:rot+6,7500:rot+3,8500:enter:200,9500:enter:200"
     with tr.Deck(stick, flash=flash, script=utility_script, writable=True) as d:
         d.wait_line("[.UTILITY.]", "[A.CUE LEVEL]", timeout=60)
         d.wait_line("[VERSION No.]", timeout=60)
@@ -571,5 +571,5 @@ def test_live_waveform_zoom_and_info_order_coexistence(tmp_path):
         d.wait_line("input release enter", timeout=60)
         assert d.rb(SETTINGS + 0x22) & 0x04
 
-    with tr.Deck(stick, flash=flash, script="3800:menu:1700,6500:rot+7") as d:
+    with tr.Deck(stick, flash=flash, script="3800:menu:1700,6500:rot+9") as d:
         d.wait_line("[WAVE PLAYHEAD]", "[LEFT]", timeout=120)

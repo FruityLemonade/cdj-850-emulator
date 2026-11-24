@@ -71,9 +71,14 @@ def test_utility_words_shared_and_valid(names, folders):
 
 @needs_toolchain
 def test_item_table_has_the_linked_mods():
-    for folders, want in ((["quant_loops"], ["ql_utility_item"]), (["waveform"], ["wf_utility_item"]),
-                          (["hot_cues"], []),
-                          (["quant_loops", "waveform"], ["ql_utility_item", "wf_utility_item"])):
+    for folders, want in (
+        (["quant_loops"], ["ql_q_utility_item", "ql_utility_item"]),
+        (["waveform"], ["wf_mod_utility_item", "wf_utility_item"]),
+        (["hot_cues"], ["hc_utility_item"]),
+        (["auto_standby"], ["as_utility_item"]),
+        (["quant_loops", "waveform"], ["ql_q_utility_item", "ql_utility_item",
+                                        "wf_mod_utility_item", "wf_utility_item"]),
+    ):
         p = payloadbuild.build(folders, "cdj850")
         a, b = (payloadbuild.lookup(p.symbols, n) for n in ("c850_ui_items_start", "c850_ui_items_end"))
         words = [struct.unpack_from(">I", p.blob, x - payloadbuild.BASE)[0] for x in range(a, b + 4, 4)]
@@ -117,6 +122,7 @@ def _call(p, mem, name, *args):
     for i, a in enumerate(args):
         cpu.r[4 + i] = a & 0xFFFFFFFF
     cpu.run(_sym(p, name), Sh2a.RET)
+    return cpu.r[0]
 
 
 def _calls(mem, k):
@@ -140,16 +146,29 @@ def test_quantize_drift_alone_is_item_7():
     mem.write(CURSOR, b"\x06")                            # VERSION No.
     _call(p, mem, "c850_ui_utility_scroll", 1, 1)
     assert mem.read(CURSOR, 1) == b"\x07" and mem.u32(TIMEOUT) == 15000 and _calls(mem, 3) == 1
+    assert _rows(p, mem) == ("QUANTIZE", "ON")
+    _call(p, mem, "c850_ui_utility_scroll", 1, 1)
+    assert mem.read(CURSOR, 1) == b"\x08"
     assert _rows(p, mem) == ("QUANTIZE DRIFT", "ON")      # a fresh deck: correction on
     _call(p, mem, "c850_ui_utility_scroll", 1, 3)         # the last item: clamps
-    assert mem.read(CURSOR, 1) == b"\x07"
+    assert mem.read(CURSOR, 1) == b"\x08"
 
-    _call(p, mem, "c850_ui_utility_select", 3, 7)
+    _call(p, mem, "c850_ui_utility_select", 3, 8)
     assert mem.read(SETTINGS + 0x21, 2) == b"\x52\x00" and _calls(mem, 0) == 1 and _calls(mem, 2) == 0
     assert _rows(p, mem) == ("QUANTIZE DRIFT", "OFF")
-    _call(p, mem, "c850_ui_utility_select", 3, 7)
+    _call(p, mem, "c850_ui_utility_select", 3, 8)
     assert mem.read(SETTINGS + 0x21, 2) == b"\x00\x00" and _calls(mem, 0) == 2
     assert _rows(p, mem) == ("QUANTIZE DRIFT", "ON")
+
+    # Turning QUANTIZE OFF hides QUANTIZE DRIFT.
+    _call(p, mem, "c850_ui_utility_scroll", 0, 1)
+    assert mem.read(CURSOR, 1) == b"\x07"
+    _call(p, mem, "c850_ui_utility_select", 3, 7)
+    assert _rows(p, mem) == ("QUANTIZE", "OFF")
+    _call(p, mem, "c850_ui_utility_scroll", 1, 1)
+    assert mem.read(CURSOR, 1) == b"\x07"
+    _call(p, mem, "c850_ui_utility_select", 3, 7)
+    assert _rows(p, mem) == ("QUANTIZE", "ON")
 
     _call(p, mem, "c850_ui_utility_select", 3, 2)         # a stock item
     assert _calls(mem, 2) == 1 and mem.u32(LOG + 0x80) == 3 and mem.u32(LOG + 0x84) == 2
@@ -168,15 +187,20 @@ def test_quantize_drift_after_wave_playhead():
     mem = _mem(p)
     mem.write(CURSOR, b"\x06")
     _call(p, mem, "c850_ui_utility_scroll", 1, 1)
-    assert mem.read(CURSOR, 1) == b"\x07" and _rows(p, mem) == ("WAVE PLAYHEAD", "LEFT 1/3")
-    _call(p, mem, "c850_ui_utility_scroll", 1, 5)
+    assert mem.read(CURSOR, 1) == b"\x07" and _rows(p, mem) == ("QUANTIZE", "ON")
+    _call(p, mem, "c850_ui_utility_scroll", 1, 1)
     assert mem.read(CURSOR, 1) == b"\x08" and _rows(p, mem) == ("QUANTIZE DRIFT", "ON")
+    _call(p, mem, "c850_ui_utility_scroll", 1, 1)
+    assert mem.read(CURSOR, 1) == b"\x09" and _rows(p, mem) == ("WAVEFORM", "ON")
+    _call(p, mem, "c850_ui_utility_scroll", 1, 1)
+    assert mem.read(CURSOR, 1) == b"\x0A" and _rows(p, mem) == ("WAVE PLAYHEAD", "LEFT 1/3")
     _call(p, mem, "c850_ui_utility_select", 3, 8)
     assert mem.read(SETTINGS + 0x21, 2) == b"\x52\x00"   # drift off, playhead untouched
+    mem.write(CURSOR, b"\x08")
     assert _rows(p, mem) == ("QUANTIZE DRIFT", "OFF")
-    _call(p, mem, "c850_ui_utility_select", 3, 7)         # WAVE PLAYHEAD -> CENTER (bit 0), drift kept
+    _call(p, mem, "c850_ui_utility_select", 3, 10)        # WAVE PLAYHEAD -> CENTER (bit 0), drift kept
     assert mem.read(SETTINGS + 0x21, 2) == b"\x53\x00"
-    _call(p, mem, "c850_ui_utility_scroll", 0, 1)
+    mem.write(CURSOR, b"\x0A")
     assert _rows(p, mem) == ("WAVE PLAYHEAD", "CENTER")
     mem.write(ROWS, bytes(3 * 0x105))
     _call(p, mem, "waveform_hook", 0, 0)                  # waveform's display hook draws it too
@@ -184,14 +208,52 @@ def test_quantize_drift_after_wave_playhead():
 
 
 @needs_toolchain
+def test_all_experimental_utility_items_and_gating():
+    folders = ["auto_standby", "bpm_decimals", "bpm_lock", "browse", "flac",
+               "hot_cues", "info_order", "loop_resize", "loop_roll",
+               "phase_meter", "quant_loops", "waveform"]
+    p = payloadbuild.build(folders, "cdj850")
+    mem = _mem(p)
+    want = [
+        ("STANDBY TIME", "20 MIN"),
+        ("QUANTIZE", "ON"),
+        ("QUANTIZE DRIFT", "ON"),
+        ("BPM DECIMALS", "ON"),
+        ("BPM LOCK", "ON"),
+        ("PHASE METER", "ON"),
+        ("INFO ORDER", "ON"),
+        ("BROWSE MODS", "ON"),
+        ("HOT CUES", "ON"),
+        ("WAVEFORM", "ON"),
+        ("WAVE PLAYHEAD", "LEFT 1/3"),
+        ("LOOP ROLL", "ON"),
+    ]
+    for i, item in enumerate(want):
+        mem.write(CURSOR, bytes([7 + i]))
+        assert _rows(p, mem) == item
+
+    # Toggle BPM DECIMALS (item 10) -> OFF, HOT CUES (item 15) -> OFF
+    _call(p, mem, "c850_ui_utility_select", 3, 10)
+    mem.write(CURSOR, bytes([10]))
+    assert _rows(p, mem) == ("BPM DECIMALS", "OFF")
+    assert _call(p, mem, "c850_ui_flag", 0x0040) == 1
+
+    # Hot cues flag in flash does not enable hot_cues_mode() while HOT CUES is OFF in UTILITY.
+    mem.write(SETTINGS + 0x22, b"\x58")
+    assert _call(p, mem, "hot_cues_mode") == 1
+    _call(p, mem, "c850_ui_utility_select", 3, 15)
+    assert _call(p, mem, "hot_cues_mode") == 0
+
+
+@needs_toolchain
 def test_long_history_name_keeps_the_choice_in_ram():
     p = payloadbuild.build(["quant_loops"], "cdj850")
     mem = _mem(p, name=b"H" * 30)                         # reaches +0x21
-    mem.write(CURSOR, b"\x07")
-    _call(p, mem, "c850_ui_utility_select", 3, 7)
+    mem.write(CURSOR, b"\x08")
+    _call(p, mem, "c850_ui_utility_select", 3, 8)
     assert mem.read(SETTINGS + 0x21, 2) == b"\x00\x00" and _calls(mem, 0) == 0
     assert _rows(p, mem) == ("QUANTIZE DRIFT", "OFF")
-    _call(p, mem, "c850_ui_utility_select", 3, 7)
+    _call(p, mem, "c850_ui_utility_select", 3, 8)
     assert _rows(p, mem) == ("QUANTIZE DRIFT", "ON")
 
 
@@ -225,7 +287,7 @@ def test_live_quantize_drift_in_utility(tmp_path):
     script = "3800:menu:1700,6500:rot+6,7500:rot+1,8500:rot+1,9500:enter:200"
     with tr.Deck(stick, flash=flash, script=script, writable=True) as d:
         d.wait_line("[VERSION No.]", timeout=60)
-        d.wait_line("[WAVE PLAYHEAD]", "[LEFT 1/3]", timeout=60)
+        d.wait_line("[QUANTIZE]", "[ON]", timeout=60)
         d.wait_line("[QUANTIZE DRIFT]", "[ON]", timeout=60)
         d.wait_line("[QUANTIZE DRIFT]", "[OFF]", timeout=60)
         d.wait_line("input release enter", timeout=60)
