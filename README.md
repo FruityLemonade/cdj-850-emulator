@@ -122,9 +122,9 @@ PERSIST=1 ./start.sh --app
 ### Browser firmware patchers
 
 - **CDJ-850 ([repo](https://github.com/FruityLemonade/cdj-850-mods) · [patcher](https://fruitylemonade.github.io/cdj-850-mods/)):** Builds installable updates from an original `C850MAIN.UPD` (v1.13). Options include **USB WIDE tempo**, **USB FLAC playback** (stereo 16/24-bit at 44.1/48 kHz), **Hot cues** (*unfinished*), **Quantized loops**, **Loop resize**, **BPM up to 999**, **BPM decimals**, **BPM lock** (±100%), **Phase meter**, **INFO screen order** (playing BPM, Camelot key, and rekordbox rating), and **20-minute auto standby**.
-- **CDJ-350 ([repo](https://github.com/FruityLemonade/cdj-350-mods) · [patcher](https://fruitylemonade.github.io/cdj-350-mods/)):** Builds installable updates from an original `C350MAIN.UPD` (v1.14), including **USB FLAC playback** (stereo 16/24-bit at 44.1/48 kHz; see the [FLAC documentation](mods/flac/README.md)).
+- **CDJ-350 ([repo](https://github.com/FruityLemonade/cdj-350-mods) · [patcher](https://fruitylemonade.github.io/cdj-350-mods/)):** Builds installable updates from an original `C350MAIN.UPD` (v1.14). Options include **USB FLAC playback** (stereo 16/24-bit at 44.1/48 kHz; see the [FLAC documentation](mods/flac/README.md)), **Quantized loops** (QUANTIZE and DRIFT FIX in UTILITY), **INFO track details** (`Title - Artist`, actual BPM with Camelot key, and rekordbox rating), **Played markers and track sort** (BPM or key order in UTILITY > SORT), and **BPM up to 999**. See [CDJ-350 firmware notes](docs/cdj350.md) for each port.
 
-The CDJ-850 INFO rating display, BPM lock, and Phase meter, as well as the CDJ-350 USB FLAC playback mod, have been verified in the emulator and still need verification on physical decks.
+The CDJ-850 INFO rating display, BPM lock, and Phase meter, as well as all CDJ-350 mods, have been verified in the emulator and still need verification on physical decks.
 
 ### CLI patching, validation & scripting
 
