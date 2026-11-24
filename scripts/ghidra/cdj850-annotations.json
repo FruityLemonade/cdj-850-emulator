@@ -382,12 +382,28 @@
           "name": "usb_host_handle_interrupt"
         },
         {
+          "address": "0c01ed1a",
+          "name": "dbclient_init_request"
+        },
+        {
+          "address": "0c020628",
+          "name": "dbclient_insert_history"
+        },
+        {
           "address": "0c0220e8",
           "name": "db_format_info_item"
         },
         {
           "address": "0c026a26",
           "name": "db_collect_track_info_reply"
+        },
+        {
+          "address": "0c02b4f6",
+          "name": "browser_append_view_item"
+        },
+        {
+          "address": "0c02c87c",
+          "name": "browser_emit_list_reply"
         },
         {
           "address": "0c038642",
@@ -402,12 +418,20 @@
           "name": "usb_classify_dir_entry"
         },
         {
+          "address": "0c04f2b0",
+          "name": "db_close_drive_tables"
+        },
+        {
           "address": "0c054424",
           "name": "db_build_track_info"
         },
         {
           "address": "0c054a36",
           "name": "db_track_info_request"
+        },
+        {
+          "address": "0c056560",
+          "name": "db_open_export"
         },
         {
           "address": "0c057ce4",
@@ -436,6 +460,10 @@
         {
           "address": "0c058ff2",
           "name": "wav_decode_block"
+        },
+        {
+          "address": "0c05d208",
+          "name": "pdj_index_create"
         },
         {
           "address": "0c060c4c",
@@ -488,6 +516,10 @@
         {
           "address": "0c064768",
           "name": "display_take_view_request"
+        },
+        {
+          "address": "0c064948",
+          "name": "display_fill_browser_rows"
         },
         {
           "address": "0c064ca4",
@@ -546,6 +578,10 @@
           "name": "display_build_3"
         },
         {
+          "address": "0c066402",
+          "name": "display_stage_waveform_overview"
+        },
+        {
           "address": "0c0664a8",
           "name": "panel_tx_saved_cues"
         },
@@ -560,6 +596,22 @@
         {
           "address": "0c0676c0",
           "name": "display_set_jog_markers"
+        },
+        {
+          "address": "0c0677fc",
+          "name": "version_screen_build"
+        },
+        {
+          "address": "0c067972",
+          "name": "version_write_stock"
+        },
+        {
+          "address": "0c067996",
+          "name": "display_stage_utility"
+        },
+        {
+          "address": "0c067b8c",
+          "name": "utility_display_items"
         },
         {
           "address": "0c067e40",
@@ -614,6 +666,14 @@
           "name": "info_item_text"
         },
         {
+          "address": "0c074d98",
+          "name": "db_build_track_list"
+        },
+        {
+          "address": "0c0750d8",
+          "name": "db_load_sort_menu"
+        },
+        {
           "address": "0c075e40",
           "name": "ssi_init_0"
         },
@@ -648,6 +708,58 @@
         {
           "address": "0c07800a",
           "name": "ssu0_16bit_cmd"
+        },
+        {
+          "address": "0c079ff8",
+          "name": "db_read_content_metadata"
+        },
+        {
+          "address": "0c07c330",
+          "name": "db_query_content"
+        },
+        {
+          "address": "0c088f74",
+          "name": "file_open_drive"
+        },
+        {
+          "address": "0c088fce",
+          "name": "file_close_logged"
+        },
+        {
+          "address": "0c089016",
+          "name": "file_seek_logged"
+        },
+        {
+          "address": "0c089036",
+          "name": "file_tell_logged"
+        },
+        {
+          "address": "0c08908e",
+          "name": "file_rename"
+        },
+        {
+          "address": "0c0890e6",
+          "name": "file_read_logged"
+        },
+        {
+          "address": "0c08910c",
+          "name": "file_write_logged"
+        },
+        {
+          "address": "0c089132",
+          "name": "file_size_logged"
+        },
+        {
+          "address": "0c08915a",
+          "name": "file_truncate_logged"
+        },
+        {
+          "address": "0c08925a",
+          "name": "file_stat"
+        },
+        {
+          "address": "0c0892e4",
+          "name": "file_set_hidden"
         },
         {
           "address": "0c0894cc",
@@ -730,6 +842,18 @@
           "name": "tick_1ms"
         },
         {
+          "address": "0c0babac",
+          "name": "db_finalize_left_buffer"
+        },
+        {
+          "address": "0c0bb612",
+          "name": "db_publish_left_buffer"
+        },
+        {
+          "address": "0c0bbabe",
+          "name": "db_check_menu_results_cache"
+        },
+        {
           "address": "0c0be3e4",
           "name": "wav_pcm_read"
         },
@@ -738,12 +862,28 @@
           "name": "usb_decode_fill"
         },
         {
+          "address": "0c0c0f88",
+          "name": "usb_anlz_manager_open"
+        },
+        {
           "address": "0c0c1442",
           "name": "anlz_add_cue"
         },
         {
           "address": "0c0c166c",
           "name": "anlz_set_hot_cue"
+        },
+        {
+          "address": "0c0c2402",
+          "name": "anlz_read_waveform"
+        },
+        {
+          "address": "0c0c3a8c",
+          "name": "anlz_find_or_create"
+        },
+        {
+          "address": "0c0c45b4",
+          "name": "usb_anlz_mount"
         },
         {
           "address": "0c0c5960",
@@ -854,6 +994,10 @@
           "name": "memory_button"
         },
         {
+          "address": "0c0d5590",
+          "name": "waveform_amp_to_level"
+        },
+        {
           "address": "0c0d5912",
           "name": "show_popup_message"
         },
@@ -902,6 +1046,14 @@
           "name": "player_keys_latch_prev"
         },
         {
+          "address": "0c0e4c14",
+          "name": "utility_set_menu_level"
+        },
+        {
+          "address": "0c0e4df6",
+          "name": "utility_scroll_item"
+        },
+        {
           "address": "0c0e5590",
           "name": "beat_loop_out_from_bpm"
         },
@@ -932,6 +1084,10 @@
         {
           "address": "0c0ed178",
           "name": "playertask"
+        },
+        {
+          "address": "0c0eea70",
+          "name": "player_request_browse_refresh"
         },
         {
           "address": "0c0eeb12",
@@ -1074,124 +1230,12 @@
           "name": "usb_cdetflg_poll"
         },
         {
-          "address": "0c10e246",
-          "name": "usb_file_close"
-        },
-        {
-          "address": "0c10e7c8",
-          "name": "usb_file_size"
-        },
-        {
-          "address": "0c1100b8",
-          "name": "memcpy"
-        },
-        {
-          "address": "0c1105d4",
-          "name": "memcpy_block32"
-        },
-        {
-          "address": "0c11066c",
-          "name": "memcpy_aligned"
-        },
-        {
-          "address": "0c1106ec",
-          "name": "memset"
-        },
-        {
-          "address": "0c140b0c",
-          "name": "mp3_pcm_out"
-        },
-        {
-          "address": "0c066402",
-          "name": "display_stage_waveform_overview"
-        },
-        {
-          "address": "0c0c2402",
-          "name": "anlz_read_waveform"
-        },
-        {
-          "address": "0c0d5590",
-          "name": "waveform_amp_to_level"
-        },
-        {
-          "address": "0c0e4df6",
-          "name": "utility_scroll_item"
-        },
-        {
-          "address": "0c0e4c14",
-          "name": "utility_set_menu_level"
-        },
-        {
-          "address": "0c067996",
-          "name": "display_stage_utility"
-        },
-        {
-          "address": "0c01ed1a",
-          "name": "dbclient_init_request"
-        },
-        {
-          "address": "0c020628",
-          "name": "dbclient_insert_history"
-        },
-        {
-          "address": "0c02b4f6",
-          "name": "browser_append_view_item"
-        },
-        {
-          "address": "0c02c87c",
-          "name": "browser_emit_list_reply"
-        },
-        {
-          "address": "0c04f2b0",
-          "name": "db_close_drive_tables"
-        },
-        {
-          "address": "0c056560",
-          "name": "db_open_export"
-        },
-        {
-          "address": "0c064948",
-          "name": "display_fill_browser_rows"
-        },
-        {
-          "address": "0c074d98",
-          "name": "db_build_track_list"
-        },
-        {
-          "address": "0c0750d8",
-          "name": "db_load_sort_menu"
-        },
-        {
-          "address": "0c07c330",
-          "name": "db_query_content"
-        },
-        {
-          "address": "0c0bbabe",
-          "name": "db_check_menu_results_cache"
-        },
-        {
-          "address": "0c0eea70",
-          "name": "player_request_browse_refresh"
-        },
-        {
-          "address": "0c11d224",
-          "name": "db_sort_query_cursor"
-        },
-        {
-          "address": "0c0babac",
-          "name": "db_finalize_left_buffer"
-        },
-        {
-          "address": "0c0bb612",
-          "name": "db_publish_left_buffer"
-        },
-        {
-          "address": "0c079ff8",
-          "name": "db_read_content_metadata"
-        },
-        {
           "address": "0c10e150",
           "name": "usb_file_open"
+        },
+        {
+          "address": "0c10e246",
+          "name": "usb_file_close"
         },
         {
           "address": "0c10e330",
@@ -1210,72 +1254,40 @@
           "name": "usb_file_tell"
         },
         {
+          "address": "0c10e7c8",
+          "name": "usb_file_size"
+        },
+        {
           "address": "0c10e840",
           "name": "usb_file_truncate"
         },
         {
-          "address": "0c088f74",
-          "name": "file_open_drive"
-        },
-        {
-          "address": "0c088fce",
-          "name": "file_close_logged"
-        },
-        {
-          "address": "0c0890e6",
-          "name": "file_read_logged"
-        },
-        {
-          "address": "0c08910c",
-          "name": "file_write_logged"
-        },
-        {
-          "address": "0c089016",
-          "name": "file_seek_logged"
-        },
-        {
-          "address": "0c089036",
-          "name": "file_tell_logged"
-        },
-        {
-          "address": "0c089132",
-          "name": "file_size_logged"
-        },
-        {
-          "address": "0c08915a",
-          "name": "file_truncate_logged"
-        },
-        {
-          "address": "0c08908e",
-          "name": "file_rename"
-        },
-        {
-          "address": "0c08925a",
-          "name": "file_stat"
-        },
-        {
-          "address": "0c0892e4",
-          "name": "file_set_hidden"
-        },
-        {
-          "address": "0c0c3a8c",
-          "name": "anlz_find_or_create"
-        },
-        {
-          "address": "0c05d208",
-          "name": "pdj_index_create"
-        },
-        {
-          "address": "0c0c45b4",
-          "name": "usb_anlz_mount"
-        },
-        {
-          "address": "0c0c0f88",
-          "name": "usb_anlz_manager_open"
-        },
-        {
           "address": "0c10f148",
           "name": "wcscpy16"
+        },
+        {
+          "address": "0c1100b8",
+          "name": "memcpy"
+        },
+        {
+          "address": "0c1105d4",
+          "name": "memcpy_block32"
+        },
+        {
+          "address": "0c11066c",
+          "name": "memcpy_aligned"
+        },
+        {
+          "address": "0c1106ec",
+          "name": "memset"
+        },
+        {
+          "address": "0c11d224",
+          "name": "db_sort_query_cursor"
+        },
+        {
+          "address": "0c140b0c",
+          "name": "mp3_pcm_out"
         }
       ],
       "comments": [
@@ -1370,6 +1382,16 @@
           "text": "Start of the documented USB host control-transfer path. SUREQ starts setup, default control pipe BRDY handles the data packets, and a control read sends its zero-length OUT status through pipe 5."
         },
         {
+          "address": "0c01ed92",
+          "type": "PLATE",
+          "text": "Writes the sort argument to request +0x18 for supported DB menu requests, including 0x1004 TRACK."
+        },
+        {
+          "address": "0c020628",
+          "type": "PLATE",
+          "text": "Builds DB request 0x3001 to append a song to the stock HISTORY playlist."
+        },
+        {
           "address": "0c0220e8",
           "type": "PLATE",
           "text": "Formats the INFO item data. For type 0x0A, a numeric rating 0 to 5 selects one of six five-star strings via the table at 0x0C1C165C [static]."
@@ -1378,6 +1400,11 @@
           "address": "0c026a26",
           "type": "PLATE",
           "text": "Fetches the item count for a track (local USB 0x2002 request), renders the requested rows and assembles the compact reply. The synthetic stick produced six items with rating disabled and seven with it enabled [static + emu]."
+        },
+        {
+          "address": "0c02caf4",
+          "type": "PLATE",
+          "text": "Browse reply loop over 0x114-byte client cache entries. The entry ID is u32 at +0, the type is u16 at +4, and the UTF-16 title starts at +0x14. The call at 0x0C02CB04 passes the title to the display reply appender. The browse mod replaces only this call\u2019s title pointer."
         },
         {
           "address": "0c038642",
@@ -1400,6 +1427,11 @@
           "text": "Directory entry classifier (drive, dir entry, mode, flags) -> file type; upper-cases the extension. Called by bsr from 0x0C040ACE and 0x0C0408A0 (no pool word). The flac mod redirects its entry."
         },
         {
+          "address": "0c051ca8",
+          "type": "PLATE",
+          "text": "Cache check for menu requests. r5 packs menu location, media slot and media type. r6 is the opcode. r7 points to the selection word followed by query arguments. USB rekordbox TRACK requests have opcode 0x1004 and selection low halfword 0x0301."
+        },
+        {
           "address": "0c052d80",
           "type": "PLATE",
           "text": "Pool word for the 0x2002 dispatch, loaded at 0x0C052C1E. Stock target db_track_info_request (0x0C054A36), redirected by info_order_rating [static]."
@@ -1415,9 +1447,34 @@
           "text": "Server handler for dbserver request 0x2002. Selection low byte 1 selects the rekordbox path, selection bits 8..15 select the drive (3 = USB). Calls db_build_track_info at 0x0C054A76 [static + emu]."
         },
         {
+          "address": "0c056764",
+          "type": "PLATE",
+          "text": "After opening export.pdb and loading the drive metadata, call the sort-menu loader with the drive number (3 for USB). The browse mod starts a new played-history session here."
+        },
+        {
+          "address": "0c056b48",
+          "type": "PLATE",
+          "text": "USB database teardown calls db_close_drive_tables through 0x0C056CE8 with r4 database and r5 drive."
+        },
+        {
           "address": "0c057ce4",
           "type": "PLATE",
           "text": "Opens a USB audio file (the flac mod redirects pools 0x0C0BE79C and 0x0C0BED94)."
+        },
+        {
+          "address": "0c05825a",
+          "type": "PLATE",
+          "text": "usb_audio_buffered_read(pos, count, *read_count, **data): USB audio file reads go through an 8 KB window: a request outside the cached window reads the 8 KB-aligned block at pos & ~0x7FF through usb_audio_read_retry (0x0C0583AA, count 0x2000) and returns a pointer into it; a request inside the window is served from it. The WAV header path (mode 1) goes to wav_header_read instead. A read error clears the window and posts -80 (0xFFFFFFB0) through pool 0x0C058448 unless 0x0CE5A9EC == 2 [static]."
+        },
+        {
+          "address": "0c0583aa",
+          "type": "PLATE",
+          "text": "usb_audio_read_retry(pos, count, *read_count): calls wav_pcm_read through pool 0x0C0585F4 (call 0x0C058460, return 0x0C058464; the flac mod redirects this pool) or the optical reader, and on a non-zero result retries up to 10 times with kernel_delay_ms(10) (0x0C0CE5E8) between tries, stopping early when 0x0CE5A9EC == 2; the result is mapped through the 6-entry table at 0x0C1C18EC [static]. With the flac mod a failed read closes the decoder, so each retry reopens the FLAC file. Emulator: no read failed in any search/jog run, stock WAV or flac mod [emu]."
+        },
+        {
+          "address": "0c058460",
+          "type": "PRE",
+          "text": "PCM read call (jsr; r4 track, r5 file offset, r6 = r8 count, r7 = r11 read_count, @r15 destination). Every USB audio read is 8 KB, sequential within a burst. Read pattern [emu: emulator, gdbstub breakpoints on 0x0C058460/0x0C058464 with tick_ms 0x0CE49F54, stock WAV and the flac mod, 150 s track, icount shift 2-5]: track load reads 16 s ahead (345 x 8 KB). Holding SEARCH reads one 0.41 s snippet (9 x 8 KB) every 7.57 s of the track across the whole track in about 350 ms (state 9); releasing SEARCH re-reads 16 s ahead of the landing point (345 x 8 KB), then fills about 11 s behind it in five chunks read forward from successively earlier starts (35, 35, 58, 58, 58 reads). Jog scratch and reverse inside the buffered range read nothing. Stock WAV refills the ring to ~1100 sectors within 1 s of a landing; the flac mod at icount shift 4 (~62 MIPS) stays at 4-56 sectors while searching and stops the DSP stream (dsp_stream_stop 0x0C005BB6) on underrun; WAV never underruns, even at shift 5."
         },
         {
           "address": "0c058c80",
@@ -1433,6 +1490,11 @@
           "address": "0c058ff2",
           "type": "PLATE",
           "text": "USB WAV decode block (codec type 5 of usb_decoder_read; the file-level read is wav_pcm_read, 0x0C0BE3E4): takes the next chunk of the file buffer (0x0C0592A6) and writes it to the output buffer: 24-bit (bits-per-sample byte +0x55 = 0x18, set by wav_header_parse) reduced to 16-bit samples bytewise by keeping bytes 1-2 of each 3 (the top 16 bits, truncated, no rounding or dither; the flac mod cuts 24-bit FLAC the same way), 16-bit copied with memcpy (mono duplicated to both channels), then every 16-bit sample byte-swapped in place (little-endian WAV to big-endian). The output buffer is in the uncached SDRAM mirror, so the swap is one uncached read and one uncached write per sample: ~5.5M of each, about 80% of all uncached accesses in a USB play run, which the emulator cannot show [static + emu: call trace, cache model]."
+        },
+        {
+          "address": "0c05d208",
+          "type": "PLATE",
+          "text": "Creates a play-history index/file (CDJINDX%d.PDJ / CDJ%05d, MPJINDX%d.PDJ / MPJ%05d) with mode \"w\" (pool 0x0C05D508) and writes a 0x18-byte \"PIONEER \" header and a record [static]."
         },
         {
           "address": "0c060c4c",
@@ -1510,6 +1572,11 @@
           "text": "Takes the view request at 0x0C9D0E28 (posted to DisplayTask) into the view context 0x0C9D0AF8: mode word, header bytes 3..8 (C[8], C[9], list count, first visible row) and the message id; saves the previous mode in 0x0C9D1168 and sets the matrix dirty flag on a change."
         },
         {
+          "address": "0c064948",
+          "type": "PLATE",
+          "text": "Copies browse request rows at 0x0C9D0E3C (0x10E-byte stride) to the 0x105-byte matrix rows. This is the row writer for rekordbox USB lists, reached from the display event pass."
+        },
+        {
           "address": "0c064ca4",
           "type": "PLATE",
           "text": "Text pass, runs when the panel transaction finished (0x0C9D0AD4 = 1): builds the 0x80 header (display_build_text_header) and the 0x81.. chunks, bumps the text sequence 0x0C9D0AF4 / TX 0x80 byte 1 when the burst changed, stores the chunk count to 0x80 byte 12 (0x0C9D0B15), then appends the 0x70..0x77 waveform and 0x60 saved-cue frames."
@@ -1585,6 +1652,11 @@
           "text": "Packs 100 waveform samples from 0x0C9D1199 into frames 0x70..0x77. Data occupies 0x70 bytes 3..14, 0x71..0x76 bytes 1..14, and 0x77 bytes 1..4. 0x70 byte 1 is a sequence (0x0C9D1184) bumped when 0x0C9D1188 says the overview changed, byte 2 is 0; the first zero sample zeroes all later columns. Only in the loaded view with message 0x200."
         },
         {
+          "address": "0c066402",
+          "type": "PLATE",
+          "text": "Copies the 100-byte waveform overview from 0x0CE65B82 into display_waveform_samples (0x0C9D1199) in title view (mode 10). When the view and waveform identifiers match the previous pass, waveform kinds 3, 4 and 5 (byte at 0x0CE6585E) still compare and replace differing bytes, setting display_waveform_changed (0x0C9D1188) = 1. Runs in DisplayTask before display_stage_bpm and panel_tx_waveform. During a brief PCM dropout the waveform mod rewrites the cached detailed strip at the later BPM hook."
+        },
+        {
           "address": "0c0664a8",
           "type": "PLATE",
           "text": "Sends SCIF1 page 0x60. Byte 1 is a sequence (0x0C9D1200, +1 per frame); bytes 2..14 hold the MSB-first saved cue/loop bitmap from every fourth byte at 0x0C9D121C, or zeros with no track, while a USB track loads or while the header status code is non-zero. Status 0x02 byte 11 bit 4 carries the MEMORY legend."
@@ -1603,6 +1675,21 @@
           "address": "0c0676c0",
           "type": "PLATE",
           "text": "Sets the jog cue marker (arg 2, only if display_cue_lamp_state(0)) and playhead (arg 1) in both staging copies S[0]/S[0xE] and S[2]/S[0x10] and directly in both TX status pages, so the jog ring updates from either page."
+        },
+        {
+          "address": "0c0677fc",
+          "type": "PLATE",
+          "text": "Builds the service-mode Main / Panel / DSP version screen into row source buffers 0x0C9D196F..0x0C9D1B6F; calls version_write_stock (0x0C067972) for Main."
+        },
+        {
+          "address": "0c067972",
+          "type": "PLATE",
+          "text": "Writes hardcoded ASCII \"1.13\\0\" at dst+off (r4+r5). Called by utility_display_items (0x0C067B8C, item 6 VERSION No.) and version_screen_build (0x0C0677FC)."
+        },
+        {
+          "address": "0c067b8c",
+          "type": "PLATE",
+          "text": "Builds UTILITY level-2 rows (items 0..6 from 0x0C15492A; item 6 VERSION No. writes \"Ver. \" then calls version_write_stock at 0x0C067972)."
         },
         {
           "address": "0c067e40",
@@ -1653,6 +1740,16 @@
           "address": "0c074824",
           "type": "PLATE",
           "text": "info_item_text(track, code, dest): strcpy of the record text of an INFO item through a jump table on code-2 (0x0C07486C): 2 +0x138, 4 +0x38, 6 +0x428, 7 +0xB8, 0A +0x5A8, 0B +0x83C, 0E +0x630, 0F +0x730, 10 +0x7B0, 11 +0x848, 13..22 +0x7BC (NUL-terminated, zeroed by FUN_0C037DF8), 23 +0x4A8, 28 +0x6B0, 29 +0x5B0. Code 0D (BPM) is formatted by info_screen_fill with FUN_0C06734E [static]."
+        },
+        {
+          "address": "0c074d98",
+          "type": "PLATE",
+          "text": "Local TRACK (0x1004) handler. Builds a djdbContent cursor with flags 0 and kind 4, feeds it to the list builder and closes it. The stock function ignores the sort argument passed in r5."
+        },
+        {
+          "address": "0c0750d8",
+          "type": "PLATE",
+          "text": "Loads the sort-menu table for one drive. Called after the successful export.pdb open."
         },
         {
           "address": "0c076288",
@@ -1710,9 +1807,49 @@
           "text": "16-bit SSU0 command to the PCM1742 DAC using PF7/DACCS."
         },
         {
+          "address": "0c079ff8",
+          "type": "PLATE",
+          "text": "Reads djdbContent metadata by content ID. Column 4 is TITLE, column 8 is BPM x100, and column 0x14 is KEYID. The metadata builder at 0x0C054424 resolves that key ID to the INFO key text."
+        },
+        {
+          "address": "0c07c330",
+          "type": "PLATE",
+          "text": "Builds a djdbContent cursor and optionally sorts it. Bit 7 of r4 requests the sortable cursor. Query kind 4 selects all tracks."
+        },
+        {
+          "address": "0c07c6be",
+          "type": "PLATE",
+          "text": "Sorts the all-track cursor through 0x0C07C7E4. r5 is the column count, r6 points to u32 column IDs and r7 to the per-column sort direction bytes. Stock uses title (4) and ID (0)."
+        },
+        {
+          "address": "0c088f74",
+          "type": "PLATE",
+          "text": "file_open_drive(drive, _, path, mode): builds the path \"<drive>:\" + path (16-bit characters; the path argument is already 16-bit, copied with wcscpy16 0x0C10F148) and calls usb_file_open (0x0C10E150). Modes seen as C strings: \"r\", \"rb\", \"r+\", \"w\", \"w+\". Emulator fopen trace on a writable stick, at mount: export.pdb \"r\" and \"r+\", then C:/PIONEER/USBANLZ/USBMNG.DAT \"r+\" and, missing, \"w+\" (the deck creates it), C:/PIONEER/CUE/MEPCUE.PDJ \"r\"; at track load: ANLZ0000.DAT \"r\"/\"rb\" and the audio file \"rb\" [static + emu]. A mod can keep its own file on the stick through this layer."
+        },
+        {
+          "address": "0c088fce",
+          "type": "PLATE",
+          "text": "File-layer wrappers with error log ids (FUN_0C095162 errno): close 0x212, seek(file, off, whence) 0x213 (0x0C089016), tell 0x214 (0x0C089036), read(buf, n, file) 0x215 (0x0C0890E6, = fread(buf, 1, n, file)), write(buf, n, file) 0x216 (0x0C08910C, = fwrite(buf, 1, n, file)), size 0x217 (0x0C089132), stat 0x21B (0x0C08925A), truncate(file, pos) 0x21C (0x0C08915A, used by anlz_write_section after its writes), 0x21D (0x0C088FF2); rename(a, b) 0x0C08908E; set attribute | 2 (hidden) 0x0C0892E4; 0x0C089324 a one-path call into FUN_0C10E52A (likely mkdir or remove, not checked) [static]."
+        },
+        {
           "address": "0c0894cc",
           "type": "PLATE",
           "text": "alloc_zeroed(n): p = 0x0C088BC4(n) (allocator), memset(p, 0, n) if p != 0, return p. Over 200 call sites [static]."
+        },
+        {
+          "address": "0c08bd54",
+          "type": "PLATE",
+          "text": "Byte-for-byte equivalent of sample_rate_index (0x0C08E59C), called from the parsers at 0x0C089730, 0x0C08993E, 0x0C089E40, 0x0C08AB8E [static]."
+        },
+        {
+          "address": "0c08ca8e",
+          "type": "PLATE",
+          "text": "wav_header_parse(track, ?): RIFF/WAVE parser of the loaded USB track. Reads the header through wav_header_read (pool 0x0C08CBF0, the flac mod's redirect) and walks the chunks. From 'fmt ': bits per sample -> record +0x54 (u16; wav_decode_block reads its low byte +0x55); sample rate -> sample_rate_index (0x0C08E59C) -> record +0x3A2 bits 5-8; record +0x3A1 bits 2-3 = 1 for 44100, 2 for any other rate; channels -> +0x3A2 bits 1-6; format tag must be 1 (PCM); byte rate * 8 -> bitrate in kbps at +0x52, and 0x0C08CEC8(data size, bitrate) -> +0x08. Record = 0x3A4-byte track slot. 48 kHz WAV takes the same path as 44.1 kHz, only the rate index differs [static]."
+        },
+        {
+          "address": "0c08e59c",
+          "type": "PLATE",
+          "text": "sample_rate_index(rate): 96000->0, 88200->1, 64000->2, 48000->3, 44100->4, 32000->5, 24000->6, 22050->7, 16000->8, 12000->9, 11025->10, 8000->11, else 15. The inverse of sample_rate_table (0x0C18C2C0). Called by wav_header_parse and other header parsers at 0x0C08CF1A, 0x0C08D41C, 0x0C08D6E8, 0x0C08DD30 [static]."
         },
         {
           "address": "0c08e80a",
@@ -1785,6 +1922,16 @@
           "text": "Pool word -> power_tick_1ms, loaded at 0x0C0B92EA. Mod payload_demo redirects it."
         },
         {
+          "address": "0c0babac",
+          "type": "PLATE",
+          "text": "Finalizes DB menu results. Count is u16 at +2, primary sort mode is u8 at +4, and the u16 row index pointer is at +0x2C. A nonzero primary sort mode builds the index with the stock comparator. The finalizer then releases its sort workspace."
+        },
+        {
+          "address": "0c0bb68a",
+          "type": "PLATE",
+          "text": "Finalizes the left buffer immediately before publishing it to the destination menu cache, shared by local menu requests. The browse mod writes the sorted cursor order into the index and skips the second title sort."
+        },
+        {
           "address": "0c0be3e4",
           "type": "PLATE",
           "text": "Reads WAV PCM data from a USB audio file (the flac mod redirects pool 0x0C0585F4)."
@@ -1808,6 +1955,21 @@
           "address": "0c0c195c",
           "type": "PRE",
           "text": "Pool word -> anlz_write_section, read only at 0x0C0C17CE. Mod hot_cues (hot_cues_anlz) redirects it."
+        },
+        {
+          "address": "0c0c2402",
+          "type": "PLATE",
+          "text": "Reads rekordbox ANLZ PWAV (400 bytes -> 800-byte height/whiteness pairs at out+0) and PWV2 (100-byte overview at out+800) into the 900-byte waveform buffer (0x0CE65862)."
+        },
+        {
+          "address": "0c0c3a8c",
+          "type": "PLATE",
+          "text": "Finds the ANLZ file of a track under <drive>:/PIONEER (or /.PIONEER)/USBANLZ/... and, when none matches and param_3 != 0, creates /ANLZ%04X.DAT with mode \"w+\" (pool 0x0C0C4004) and writes its header: the deck creates analysis files on the stick [static]."
+        },
+        {
+          "address": "0c0c45b4",
+          "type": "PLATE",
+          "text": "usb_anlz_mount(ctx, arg): USB ANLZ manager set-up of a newly mounted stick. Builds <drive>:/PIONEER (or /.PIONEER)/USBANLZ, opens /PIONEER/USBANLZ/USBMNG.DAT (\"r+\", created \"w+\" when missing) and indexes the P%03X folders. ctx+0xC is the drive record (first halfword = drive letter, \"C\" for USB), as anlz_find_or_create passes it to file_open_drive. Called through pool 0x0C0C11E8, read only at 0x0C0C1010 in FUN_0C0C0F88 (outside the boot-critical closure); quant_loops/waveform redirect it to c850_ui_usb_mount, which then reads the mod settings file /PIONEER/MODSET.DAT [static + emu]."
         },
         {
           "address": "0c0c5960",
@@ -1908,6 +2070,11 @@
           "address": "0c0d41bc",
           "type": "PRE",
           "text": "Pool word -> cue_select_from_list, read only at 0x0C0D3F5C. Mod hot_cues (hot_cues_select) redirects it."
+        },
+        {
+          "address": "0c0d5590",
+          "type": "PLATE",
+          "text": "Maps averaged 16-bit PCM amplitude to 1..15 waveform height using a 2 dB/step logarithmic threshold table (0x0517..0x50C3)."
         },
         {
           "address": "0c0d5912",
@@ -2045,6 +2212,21 @@
           "text": "Pool word -> pcm_next_feed_sector, read only at 0x0C0E5DAA, right after the cmd 6 sends. Mod quant_loops (quant_loops_auto_keep) redirects it."
         },
         {
+          "address": "0c0e77c4",
+          "type": "PRE",
+          "text": "Rotary scroll in UTILITY level 2. Pool 0x0C0E797C calls utility_scroll_item with 0=CCW, 1=CW and the detent count. Stock clamps the item at 0..6. waveform and quant_loops redirect it to the shared c850_ui_utility_scroll, which continues the list after VERSION No. with the mod items (WAVE PLAYHEAD, then QUANTIZE DRIFT) as items 7, 8, ..."
+        },
+        {
+          "address": "0c0e782e",
+          "type": "PRE",
+          "text": "INFO screen rotary scroll handler (nav_view_selector == 0, not BPM Lock edit): increments/decrements info_cursor (0x0CE6D1E4) based on direction byte at sp+0x1c (0=CCW, 1=CW). Hooked by mods/waveform (waveform_rotary_hook) to zoom out/in at cursor 0."
+        },
+        {
+          "address": "0c0e7e64",
+          "type": "PRE",
+          "text": "Encoder press in the main UTILITY list. Pool 0x0C0E7F10 calls utility_set_menu_level(3, item). waveform and quant_loops redirect it to the shared c850_ui_utility_select: a press on a mod item (7, 8, ...) switches its value in place (WAVE PLAYHEAD: Left 1/3/Center/Left, flags 0x0C9DA25E bit 0x04 and 0x0C9DA25D bit 0x01; QUANTIZE DRIFT ON/OFF: 0x0C9DA25D bit 0x02); other items go to stock utility_set_menu_level."
+        },
+        {
           "address": "0c0eae2a",
           "type": "PRE",
           "text": "USB load-completion state selection. The normal path selects playing state 3 and sends audio command (1, 1). The audio task starts streaming after 75 buffered sectors."
@@ -2085,6 +2267,11 @@
           "text": "Pool word -> wai_flg, read only at 0x0C0ED1B0 in the playertask loop. Mod hot_cues (hot_cues_leds) redirects it."
         },
         {
+          "address": "0c0eea70",
+          "type": "PLATE",
+          "text": "Requests an asynchronous USB browse update (r4 = 1 for the browser). The stock BROWSE action calls this from the player task."
+        },
+        {
           "address": "0c0eeb12",
           "type": "PLATE",
           "text": "Sets S[0x15] (TX 0x02 byte 8): bit 0 = arg bit 0 (auto-standby request, power_state_tick 0x0C0EFAAE), bit 2 = arg bit 2 (firmware-update mode: set by the RELOOP-held boot path 0x0C0ED01C, cleared by the updater at 0x0C08EBD2)."
@@ -2115,6 +2302,11 @@
           "text": "audio_build_loop_in_record(sector): builds the loop-in record 0x0C7F6498.. (frame, MSF, ring sector) from the s16 sector 0x0C7F6468 (writer 0x0C0F022A). Called by 0x0C009DB4 for audio cmd 6 and cmd 7/2. A sector ahead of the playhead works for cmd 6: the feeder plays on to it, then loops in..out (BEAT 4 at frame 301 with the sector of 308: wrap 447 -> 308) [emu]."
         },
         {
+          "address": "0c0f1266",
+          "type": "PRE",
+          "text": "Reader timeout expiry: reached when audio_read_timeout 0x0C7F6648 counts down to 0 (decrement 0x0C0F1260) or from state 6 (0x0C0F124C); reports to the audio task with FUN_0C009310(8, .., 2, -0x6F) [static]. Not reached in search/jog runs (stock WAV, flac mod, icount shift 2-5): the countdown is only armed by the cue prefill (0x0C0F533E) [emu]."
+        },
+        {
           "address": "0c0f533e",
           "type": "PRE",
           "text": "USB cue prefill (CALL of a memory cue, a hot_cues jump; state 6 with 0x0CE6D26A = 0xFF): mov #100,r14; shll2 r14 = 400 sectors (5.33 s of audio), requested at 0x0C0F534E as FUN_0C008C8A(4, *0x0C7F6494, .., 0x0C7F673E, 400, 120, ..): fill ring slots from 120. r14 + 100 = 500 goes to the reader timeout 0x0C7F6648 (0x0C0F535A..0x0C0F5362), which the reader counts down (0x0C0F1258). Emulator (WAV stick, stock): write index 120 -> 520, ready 100 ms of guest time after the CALL. On a deck, reading and decoding these 5.33 s is the several-second CALL/hot-cue delay. Inside the boot-critical closure (0x0C0F494C..0x0C0F63F0), so no mod changes it [static + emu]."
@@ -2130,9 +2322,19 @@
           "text": "USB playback state handler and refill scheduler. USB state at 0x0CE6D25F includes browse 0x0A, load 2, play 3, pause 4 and brake/pause 5. Refills the circular PCM ring while fill is below 500 sectors."
         },
         {
+          "address": "0c0f95c0",
+          "type": "PLATE",
+          "text": "pcm_rate_init(rate): zeroes a 12-byte buffer and a counter, stores rate in pcm_sample_rate (0x0CE6DBAC), then calls 0x0C0F96A8(rate). usb_decode_fill (0x0C0BF6BA) calls it at 0x0C0BF748 with sample_rate_table[record +0x3A2 bits 5-8] before the decode loop [static]."
+        },
+        {
           "address": "0c0f95e6",
           "type": "PLATE",
           "text": "pcm_rate_copy(src, dst, ?, samples, &frames_out): if pcm_sample_rate (0x0CE6DBAC) is 44100, memcpy samples * 2 bytes from src (wav_decode_block's uncached buffer) to dst and report samples / 2 frames; otherwise resamples block by block through pcm_resample_cubic (0x0C0F97B8), keeping the remainder in a carry buffer. Called from 0x0C0BF6BA [static + emu]."
+        },
+        {
+          "address": "0c0f97b8",
+          "type": "PLATE",
+          "text": "pcm_resample_cubic(src, dst, channels, in_frames, out_frames): converts 16-bit frames to out_frames with a 4-point cubic interpolator, 11-bit fractional position, integer only, clipped to 16 bits; stereo when channels == 2. Copies the last 3 input frames (12 bytes) ahead of src for the next call. Called only from pcm_rate_copy (0x0C0F9644) for rates other than 44100 [static]."
         },
         {
           "address": "0c0f9ee8",
@@ -2205,6 +2407,11 @@
           "text": "Poll USB_CDETFLG on PE10 (high normal, low overcurrent) and update the overcurrent flag at 0x0C1E1271."
         },
         {
+          "address": "0c10e150",
+          "type": "PLATE",
+          "text": "usb_file_open(path16, mode): fopen of the media file system. The drive letter (lower-cased) picks the device entry (table stride 0xC, type 3 = USB, takes the FS semaphore around the call; type 4 = other). Returns a file handle or 0. \"w\"/\"w+\" create or truncate [static + emu]."
+        },
+        {
           "address": "0c10e246",
           "type": "PLATE",
           "text": "Closes a USB file (the flac mod redirects pool 0x0C058150)."
@@ -2213,6 +2420,11 @@
           "address": "0c10e7c8",
           "type": "PLATE",
           "text": "Size of a USB file (the flac mod redirects pools 0x0C057F1C and 0x0C05814C)."
+        },
+        {
+          "address": "0c10f148",
+          "type": "PLATE",
+          "text": "wcscpy16(dst, src): copies a 0-terminated 16-bit string (paths of the file layer are 16-bit characters; file_open_drive copies its path argument with it, so the path must already be 16-bit) [static]."
         },
         {
           "address": "0c1100b8",
@@ -2235,6 +2447,36 @@
           "text": "C library memset(dst r4, byte r5, n r6), filling backwards from the end in 16-byte longword blocks. 1031 references; most bytes come from large clears (alloc_zeroed, table resets). On the write-allocate operand cache every missed line is first read from SDRAM: 609k write misses in a USB play run. The emulator's CDJ_NATIVE_COPY hook recognises it by its first opcode 0x2FE6 [static + emu]."
         },
         {
+          "address": "0c140b0c",
+          "type": "PLATE",
+          "text": "MP3 output stage: converts one granule (576 stereo frames, or 288 mono) from float to clipped 16-bit pairs packed in longwords and stores them through the uncached mirror into usb_pcm_decode_buf (0x2DFE0000). 1.27M uncached stores in a short MP3 run."
+        },
+        {
+          "address": "0c141f4c",
+          "type": "PLATE",
+          "text": "The hottest routine of the MP3 decoder core (0x0C13EC04..0x0C141FD8): 43M accesses to the on-chip MP3 work buffers in a 30 s USB MP3 run [emu]."
+        },
+        {
+          "address": "0c18c2c0",
+          "type": "PLATE",
+          "text": "sample_rate_table: 12 u32 rates indexed by record +0x3A2 bits 5-8: 96000, 88200, 64000, 48000, 44100, 32000, 24000, 22050, 16000, 12000, 11025, 8000 (the MPEG-4 sampling-frequency index order). Read by usb_decode_fill (0x0C0BF6E4) for pcm_rate_init, and by 0x0C0005F4, 0x0C0584B4, 0x0C08E460, 0x0C08F590, 0x0C08F64A, 0x0C08F7AA, 0x0C08F904, 0x0C0903D0 [static]."
+        },
+        {
+          "address": "0c7f6625",
+          "type": "PLATE",
+          "text": "USB playback sub-state (record 0x0C7F6620 + 5) switched on by player_tick_usb_playback: 0x10-0x17 when +6 is 0, 0x20-0x2B when +6 is 1, 0x30-0x32 when +6 is 2 [static]. Observed [emu]: 0x30 at load, 0x10 while playing, 0x11/0x12 briefly when a refill is scheduled, and 0x12 during SEARCH underruns in the original FLAC prototype."
+        },
+        {
+          "address": "0c7f6686",
+          "type": "PLATE",
+          "text": "Observed [emu]: PCM ring sectors buffered ahead of playback. Drops to 0 when the ring restarts (track load, SEARCH press, SEARCH release), rises as the audio task fills, falls by 75/s while no reads run; stock WAV holds ~900-1240."
+        },
+        {
+          "address": "0c7f6688",
+          "type": "PLATE",
+          "text": "Observed [emu]: played sectors still held in the ring behind playback. Reset on a ring restart, climbs by 75/s during playback and stops at 1001."
+        },
+        {
           "address": "0c9d0ae4",
           "type": "PRE",
           "text": "u16 S+0xC, sent as TX 0x01 bytes 13..14. No store in MAIN; 0 in all captures (unused)."
@@ -2253,221 +2495,6 @@
           "address": "0c9d0b14",
           "type": "PRE",
           "text": "TX 0x80 byte 11: bits 0..4 header status code (display_stage_header_status), bits 5..7 per-row flags for rows 1..3 (display_set_row_flag)."
-        },
-        {
-          "address": "0c140b0c",
-          "type": "PLATE",
-          "text": "MP3 output stage: converts one granule (576 stereo frames, or 288 mono) from float to clipped 16-bit pairs packed in longwords and stores them through the uncached mirror into usb_pcm_decode_buf (0x2DFE0000). 1.27M uncached stores in a short MP3 run."
-        },
-        {
-          "address": "0c141f4c",
-          "type": "PLATE",
-          "text": "The hottest routine of the MP3 decoder core (0x0C13EC04..0x0C141FD8): 43M accesses to the on-chip MP3 work buffers in a 30 s USB MP3 run [emu]."
-        },
-        {
-          "address": "0c05825a",
-          "type": "PLATE",
-          "text": "usb_audio_buffered_read(pos, count, *read_count, **data): USB audio file reads go through an 8 KB window: a request outside the cached window reads the 8 KB-aligned block at pos & ~0x7FF through usb_audio_read_retry (0x0C0583AA, count 0x2000) and returns a pointer into it; a request inside the window is served from it. The WAV header path (mode 1) goes to wav_header_read instead. A read error clears the window and posts -80 (0xFFFFFFB0) through pool 0x0C058448 unless 0x0CE5A9EC == 2 [static]."
-        },
-        {
-          "address": "0c0583aa",
-          "type": "PLATE",
-          "text": "usb_audio_read_retry(pos, count, *read_count): calls wav_pcm_read through pool 0x0C0585F4 (call 0x0C058460, return 0x0C058464; the flac mod redirects this pool) or the optical reader, and on a non-zero result retries up to 10 times with kernel_delay_ms(10) (0x0C0CE5E8) between tries, stopping early when 0x0CE5A9EC == 2; the result is mapped through the 6-entry table at 0x0C1C18EC [static]. With the flac mod a failed read closes the decoder, so each retry reopens the FLAC file. Emulator: no read failed in any search/jog run, stock WAV or flac mod [emu]."
-        },
-        {
-          "address": "0c058460",
-          "type": "PRE",
-          "text": "PCM read call (jsr; r4 track, r5 file offset, r6 = r8 count, r7 = r11 read_count, @r15 destination). Every USB audio read is 8 KB, sequential within a burst. Read pattern [emu: emulator, gdbstub breakpoints on 0x0C058460/0x0C058464 with tick_ms 0x0CE49F54, stock WAV and the flac mod, 150 s track, icount shift 2-5]: track load reads 16 s ahead (345 x 8 KB). Holding SEARCH reads one 0.41 s snippet (9 x 8 KB) every 7.57 s of the track across the whole track in about 350 ms (state 9); releasing SEARCH re-reads 16 s ahead of the landing point (345 x 8 KB), then fills about 11 s behind it in five chunks read forward from successively earlier starts (35, 35, 58, 58, 58 reads). Jog scratch and reverse inside the buffered range read nothing. Stock WAV refills the ring to ~1100 sectors within 1 s of a landing; the flac mod at icount shift 4 (~62 MIPS) stays at 4-56 sectors while searching and stops the DSP stream (dsp_stream_stop 0x0C005BB6) on underrun; WAV never underruns, even at shift 5."
-        },
-        {
-          "address": "0c0f1266",
-          "type": "PRE",
-          "text": "Reader timeout expiry: reached when audio_read_timeout 0x0C7F6648 counts down to 0 (decrement 0x0C0F1260) or from state 6 (0x0C0F124C); reports to the audio task with FUN_0C009310(8, .., 2, -0x6F) [static]. Not reached in search/jog runs (stock WAV, flac mod, icount shift 2-5): the countdown is only armed by the cue prefill (0x0C0F533E) [emu]."
-        },
-        {
-          "address": "0c7f6686",
-          "type": "PLATE",
-          "text": "Observed [emu]: PCM ring sectors buffered ahead of playback. Drops to 0 when the ring restarts (track load, SEARCH press, SEARCH release), rises as the audio task fills, falls by 75/s while no reads run; stock WAV holds ~900-1240."
-        },
-        {
-          "address": "0c7f6688",
-          "type": "PLATE",
-          "text": "Observed [emu]: played sectors still held in the ring behind playback. Reset on a ring restart, climbs by 75/s during playback and stops at 1001."
-        },
-        {
-          "address": "0c7f6625",
-          "type": "PLATE",
-          "text": "USB playback sub-state (record 0x0C7F6620 + 5) switched on by player_tick_usb_playback: 0x10-0x17 when +6 is 0, 0x20-0x2B when +6 is 1, 0x30-0x32 when +6 is 2 [static]. Observed [emu]: 0x30 at load, 0x10 while playing, 0x11/0x12 briefly when a refill is scheduled, and 0x12 during SEARCH underruns in the original FLAC prototype."
-        },
-        {
-          "address": "0c08ca8e",
-          "type": "PLATE",
-          "text": "wav_header_parse(track, ?): RIFF/WAVE parser of the loaded USB track. Reads the header through wav_header_read (pool 0x0C08CBF0, the flac mod's redirect) and walks the chunks. From 'fmt ': bits per sample -> record +0x54 (u16; wav_decode_block reads its low byte +0x55); sample rate -> sample_rate_index (0x0C08E59C) -> record +0x3A2 bits 5-8; record +0x3A1 bits 2-3 = 1 for 44100, 2 for any other rate; channels -> +0x3A2 bits 1-6; format tag must be 1 (PCM); byte rate * 8 -> bitrate in kbps at +0x52, and 0x0C08CEC8(data size, bitrate) -> +0x08. Record = 0x3A4-byte track slot. 48 kHz WAV takes the same path as 44.1 kHz, only the rate index differs [static]."
-        },
-        {
-          "address": "0c08e59c",
-          "type": "PLATE",
-          "text": "sample_rate_index(rate): 96000->0, 88200->1, 64000->2, 48000->3, 44100->4, 32000->5, 24000->6, 22050->7, 16000->8, 12000->9, 11025->10, 8000->11, else 15. The inverse of sample_rate_table (0x0C18C2C0). Called by wav_header_parse and other header parsers at 0x0C08CF1A, 0x0C08D41C, 0x0C08D6E8, 0x0C08DD30 [static]."
-        },
-        {
-          "address": "0c08bd54",
-          "type": "PLATE",
-          "text": "Byte-for-byte equivalent of sample_rate_index (0x0C08E59C), called from the parsers at 0x0C089730, 0x0C08993E, 0x0C089E40, 0x0C08AB8E [static]."
-        },
-        {
-          "address": "0c0f95c0",
-          "type": "PLATE",
-          "text": "pcm_rate_init(rate): zeroes a 12-byte buffer and a counter, stores rate in pcm_sample_rate (0x0CE6DBAC), then calls 0x0C0F96A8(rate). usb_decode_fill (0x0C0BF6BA) calls it at 0x0C0BF748 with sample_rate_table[record +0x3A2 bits 5-8] before the decode loop [static]."
-        },
-        {
-          "address": "0c0f97b8",
-          "type": "PLATE",
-          "text": "pcm_resample_cubic(src, dst, channels, in_frames, out_frames): converts 16-bit frames to out_frames with a 4-point cubic interpolator, 11-bit fractional position, integer only, clipped to 16 bits; stereo when channels == 2. Copies the last 3 input frames (12 bytes) ahead of src for the next call. Called only from pcm_rate_copy (0x0C0F9644) for rates other than 44100 [static]."
-        },
-        {
-          "address": "0c18c2c0",
-          "type": "PLATE",
-          "text": "sample_rate_table: 12 u32 rates indexed by record +0x3A2 bits 5-8: 96000, 88200, 64000, 48000, 44100, 32000, 24000, 22050, 16000, 12000, 11025, 8000 (the MPEG-4 sampling-frequency index order). Read by usb_decode_fill (0x0C0BF6E4) for pcm_rate_init, and by 0x0C0005F4, 0x0C0584B4, 0x0C08E460, 0x0C08F590, 0x0C08F64A, 0x0C08F7AA, 0x0C08F904, 0x0C0903D0 [static]."
-        },
-        {
-          "address": "0c066402",
-          "type": "PLATE",
-          "text": "Copies the 100-byte waveform overview from 0x0CE65B82 into display_waveform_samples (0x0C9D1199) in title view (mode 10). When the view and waveform identifiers match the previous pass, waveform kinds 3, 4 and 5 (byte at 0x0CE6585E) still compare and replace differing bytes, setting display_waveform_changed (0x0C9D1188) = 1. Runs in DisplayTask before display_stage_bpm and panel_tx_waveform. During a brief PCM dropout the waveform mod rewrites the cached detailed strip at the later BPM hook."
-        },
-        {
-          "address": "0c0c2402",
-          "type": "PLATE",
-          "text": "Reads rekordbox ANLZ PWAV (400 bytes -> 800-byte height/whiteness pairs at out+0) and PWV2 (100-byte overview at out+800) into the 900-byte waveform buffer (0x0CE65862)."
-        },
-        {
-          "address": "0c0d5590",
-          "type": "PLATE",
-          "text": "Maps averaged 16-bit PCM amplitude to 1..15 waveform height using a 2 dB/step logarithmic threshold table (0x0517..0x50C3)."
-        },
-        {
-          "address": "0c0e77c4",
-          "type": "PRE",
-          "text": "Rotary scroll in UTILITY level 2. Pool 0x0C0E797C calls utility_scroll_item with 0=CCW, 1=CW and the detent count. Stock clamps the item at 0..6. waveform and quant_loops redirect it to the shared c850_ui_utility_scroll, which continues the list after VERSION No. with the mod items (WAVE PLAYHEAD, then QUANTIZE DRIFT) as items 7, 8, ..."
-        },
-        {
-          "address": "0c0e782e",
-          "type": "PRE",
-          "text": "INFO screen rotary scroll handler (nav_view_selector == 0, not BPM Lock edit): increments/decrements info_cursor (0x0CE6D1E4) based on direction byte at sp+0x1c (0=CCW, 1=CW). Hooked by mods/waveform (waveform_rotary_hook) to zoom out/in at cursor 0."
-        },
-        {
-          "address": "0c0e7e64",
-          "type": "PRE",
-          "text": "Encoder press in the main UTILITY list. Pool 0x0C0E7F10 calls utility_set_menu_level(3, item). waveform and quant_loops redirect it to the shared c850_ui_utility_select: a press on a mod item (7, 8, ...) switches its value in place (WAVE PLAYHEAD: Left 1/3/Center/Left, flags 0x0C9DA25E bit 0x04 and 0x0C9DA25D bit 0x01; QUANTIZE DRIFT ON/OFF: 0x0C9DA25D bit 0x02); other items go to stock utility_set_menu_level."
-        },
-        {
-          "address": "0c01ed92",
-          "type": "PLATE",
-          "text": "Writes the sort argument to request +0x18 for supported DB menu requests, including 0x1004 TRACK."
-        },
-        {
-          "address": "0c020628",
-          "type": "PLATE",
-          "text": "Builds DB request 0x3001 to append a song to the stock HISTORY playlist."
-        },
-        {
-          "address": "0c02caf4",
-          "type": "PLATE",
-          "text": "Browse reply loop over 0x114-byte client cache entries. The entry ID is u32 at +0, the type is u16 at +4, and the UTF-16 title starts at +0x14. The call at 0x0C02CB04 passes the title to the display reply appender. The browse mod replaces only this call’s title pointer."
-        },
-        {
-          "address": "0c051ca8",
-          "type": "PLATE",
-          "text": "Cache check for menu requests. r5 packs menu location, media slot and media type. r6 is the opcode. r7 points to the selection word followed by query arguments. USB rekordbox TRACK requests have opcode 0x1004 and selection low halfword 0x0301."
-        },
-        {
-          "address": "0c056764",
-          "type": "PLATE",
-          "text": "After opening export.pdb and loading the drive metadata, call the sort-menu loader with the drive number (3 for USB). The browse mod starts a new played-history session here."
-        },
-        {
-          "address": "0c056b48",
-          "type": "PLATE",
-          "text": "USB database teardown calls db_close_drive_tables through 0x0C056CE8 with r4 database and r5 drive."
-        },
-        {
-          "address": "0c064948",
-          "type": "PLATE",
-          "text": "Copies browse request rows at 0x0C9D0E3C (0x10E-byte stride) to the 0x105-byte matrix rows. This is the row writer for rekordbox USB lists, reached from the display event pass."
-        },
-        {
-          "address": "0c074d98",
-          "type": "PLATE",
-          "text": "Local TRACK (0x1004) handler. Builds a djdbContent cursor with flags 0 and kind 4, feeds it to the list builder and closes it. The stock function ignores the sort argument passed in r5."
-        },
-        {
-          "address": "0c0750d8",
-          "type": "PLATE",
-          "text": "Loads the sort-menu table for one drive. Called after the successful export.pdb open."
-        },
-        {
-          "address": "0c07c330",
-          "type": "PLATE",
-          "text": "Builds a djdbContent cursor and optionally sorts it. Bit 7 of r4 requests the sortable cursor. Query kind 4 selects all tracks."
-        },
-        {
-          "address": "0c07c6be",
-          "type": "PLATE",
-          "text": "Sorts the all-track cursor through 0x0C07C7E4. r5 is the column count, r6 points to u32 column IDs and r7 to the per-column sort direction bytes. Stock uses title (4) and ID (0)."
-        },
-        {
-          "address": "0c0eea70",
-          "type": "PLATE",
-          "text": "Requests an asynchronous USB browse update (r4 = 1 for the browser). The stock BROWSE action calls this from the player task."
-        },
-        {
-          "address": "0c0babac",
-          "type": "PLATE",
-          "text": "Finalizes DB menu results. Count is u16 at +2, primary sort mode is u8 at +4, and the u16 row index pointer is at +0x2C. A nonzero primary sort mode builds the index with the stock comparator. The finalizer then releases its sort workspace."
-        },
-        {
-          "address": "0c0bb68a",
-          "type": "PLATE",
-          "text": "Finalizes the left buffer immediately before publishing it to the destination menu cache, shared by local menu requests. The browse mod writes the sorted cursor order into the index and skips the second title sort."
-        },
-        {
-          "address": "0c079ff8",
-          "type": "PLATE",
-          "text": "Reads djdbContent metadata by content ID. Column 4 is TITLE, column 8 is BPM x100, and column 0x14 is KEYID. The metadata builder at 0x0C054424 resolves that key ID to the INFO key text."
-        },
-        {
-          "address": "0c088f74",
-          "type": "PLATE",
-          "text": "file_open_drive(drive, _, path, mode): builds the path \"<drive>:\" + path (16-bit characters; the path argument is already 16-bit, copied with wcscpy16 0x0C10F148) and calls usb_file_open (0x0C10E150). Modes seen as C strings: \"r\", \"rb\", \"r+\", \"w\", \"w+\". Emulator fopen trace on a writable stick, at mount: export.pdb \"r\" and \"r+\", then C:/PIONEER/USBANLZ/USBMNG.DAT \"r+\" and, missing, \"w+\" (the deck creates it), C:/PIONEER/CUE/MEPCUE.PDJ \"r\"; at track load: ANLZ0000.DAT \"r\"/\"rb\" and the audio file \"rb\" [static + emu]. A mod can keep its own file on the stick through this layer."
-        },
-        {
-          "address": "0c10e150",
-          "type": "PLATE",
-          "text": "usb_file_open(path16, mode): fopen of the media file system. The drive letter (lower-cased) picks the device entry (table stride 0xC, type 3 = USB, takes the FS semaphore around the call; type 4 = other). Returns a file handle or 0. \"w\"/\"w+\" create or truncate [static + emu]."
-        },
-        {
-          "address": "0c088fce",
-          "type": "PLATE",
-          "text": "File-layer wrappers with error log ids (FUN_0C095162 errno): close 0x212, seek(file, off, whence) 0x213 (0x0C089016), tell 0x214 (0x0C089036), read(buf, n, file) 0x215 (0x0C0890E6, = fread(buf, 1, n, file)), write(buf, n, file) 0x216 (0x0C08910C, = fwrite(buf, 1, n, file)), size 0x217 (0x0C089132), stat 0x21B (0x0C08925A), truncate(file, pos) 0x21C (0x0C08915A, used by anlz_write_section after its writes), 0x21D (0x0C088FF2); rename(a, b) 0x0C08908E; set attribute | 2 (hidden) 0x0C0892E4; 0x0C089324 a one-path call into FUN_0C10E52A (likely mkdir or remove, not checked) [static]."
-        },
-        {
-          "address": "0c0c3a8c",
-          "type": "PLATE",
-          "text": "Finds the ANLZ file of a track under <drive>:/PIONEER (or /.PIONEER)/USBANLZ/... and, when none matches and param_3 != 0, creates /ANLZ%04X.DAT with mode \"w+\" (pool 0x0C0C4004) and writes its header: the deck creates analysis files on the stick [static]."
-        },
-        {
-          "address": "0c05d208",
-          "type": "PLATE",
-          "text": "Creates a play-history index/file (CDJINDX%d.PDJ / CDJ%05d, MPJINDX%d.PDJ / MPJ%05d) with mode \"w\" (pool 0x0C05D508) and writes a 0x18-byte \"PIONEER \" header and a record [static]."
-        },
-        {
-          "address": "0c0c45b4",
-          "type": "PLATE",
-          "text": "usb_anlz_mount(ctx, arg): USB ANLZ manager set-up of a newly mounted stick. Builds <drive>:/PIONEER (or /.PIONEER)/USBANLZ, opens /PIONEER/USBANLZ/USBMNG.DAT (\"r+\", created \"w+\" when missing) and indexes the P%03X folders. ctx+0xC is the drive record (first halfword = drive letter, \"C\" for USB), as anlz_find_or_create passes it to file_open_drive. Called through pool 0x0C0C11E8, read only at 0x0C0C1010 in FUN_0C0C0F88 (outside the boot-critical closure); quant_loops/waveform redirect it to c850_ui_usb_mount, which then reads the mod settings file /PIONEER/MODSET.DAT [static + emu]."
-        },
-        {
-          "address": "0c10f148",
-          "type": "PLATE",
-          "text": "wcscpy16(dst, src): copies a 0-terminated 16-bit string (paths of the file layer are 16-bit characters; file_open_drive copies its path argument with it, so the path must already be 16-bit) [static]."
         }
       ],
       "labels": [
