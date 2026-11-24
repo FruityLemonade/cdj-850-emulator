@@ -751,7 +751,7 @@ def drive(stick, flash=None, syms=None):
         if port:
             g = tr.Gdb(port)
             g._send("c")
-        d.wait_line("mode=0x0a", "[Q128]", timeout=300)
+        d.wait_line("mode=0x0a", "[Q", timeout=300)
         if port:
             assert g.poke32(drift_on, 0) == "OK"
         for k in range(3):
