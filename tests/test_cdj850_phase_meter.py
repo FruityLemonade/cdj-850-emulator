@@ -159,33 +159,39 @@ def test_grid_and_bpm_phase_rendering_with_and_without_lock():
     assert rows[0] == "B2/4 126.00 GRID"
     assert rows[1] == "_1_ (2) _3_ _4_"
     assert rows[2] == "[-----+-------]"
-    # Centered, unhighlighted, icon-free rows (tag 0x11..0x13, attr0 0x00)
+    # Centered, unhighlighted, icon-free rows (tag 0x11..0x13, attr0 0x00) and mode 0x07
+    assert mem.u32(DISPLAY_MODE) == 7
     for r in range(3):
         hdr = mem.read(ROWS + r * 0x105, 4)
         assert hdr[0] == 0x11 + r and hdr[1] == 0x00, (r, hdr)
 
     # Single-click Page 2 snap transitions: 2 -> 3 => 5 (Page 3), 5 -> 4 => 2 (Page 2)
+    mem.put32(DISPLAY_MODE, 11)
     mem.write(INFO_CURSOR, b"\x03")
     _call(p, mem, "phase_meter_hook", 0, 0)
     assert mem.read(INFO_CURSOR, 1)[0] == 5
+    mem.put32(DISPLAY_MODE, 11)
     mem.write(INFO_CURSOR, b"\x04")
     _call(p, mem, "phase_meter_hook", 0, 0)
-    assert mem.read(INFO_CURSOR, 1)[0] == 2
+    assert mem.read(INFO_CURSOR, 1)[0] == 2 and mem.u32(DISPLAY_MODE) == 7
     # When INFO_COUNT <= 5 (no Page 3), 2 -> 3 snaps back to 2
+    mem.put32(DISPLAY_MODE, 11)
     mem.write(INFO_COUNT, b"\x05")
     mem.write(INFO_CURSOR, b"\x03")
     _call(p, mem, "phase_meter_hook", 0, 0)
-    assert mem.read(INFO_CURSOR, 1)[0] == 2
+    assert mem.read(INFO_CURSOR, 1)[0] == 2 and mem.u32(DISPLAY_MODE) == 7
 
     # With BPM Lock active (+10.00%), uses BL_PITCH regardless of PITCH fader
+    mem.put32(DISPLAY_MODE, 11)
     mem.write(BL_ACTIVE, b"\x01")
     mem.write(BL_PITCH, struct.pack(">h", 1000))
     _call(p, mem, "phase_meter_hook", 0, 0)
     rows_locked = [mem.read(ROWS + r * 0x105 + 5, mem.read(ROWS + r * 0x105 + 4, 1)[0]).decode("ascii")
                    for r in range(3)]
-    assert rows_locked[0] == "L2/4 132.00 LOCK"
+    assert rows_locked[0] == "L2/4 132.00 LOCK" and mem.u32(DISPLAY_MODE) == 7
 
     # Base-BPM fallback (no grid)
+    mem.put32(DISPLAY_MODE, 11)
     mem.put32(GRID_CTX + 0x74, 0)
     mem.write(BL_ACTIVE, b"\x00")
     mem.write(PITCH, struct.pack(">h", 0))
@@ -193,7 +199,7 @@ def test_grid_and_bpm_phase_rendering_with_and_without_lock():
     _call(p, mem, "phase_meter_hook", 0, 0)
     rows_fb = [mem.read(ROWS + r * 0x105 + 5, mem.read(ROWS + r * 0x105 + 4, 1)[0]).decode("ascii")
                for r in range(3)]
-    assert rows_fb[0] == "B3/4 120.00 BPM"
+    assert rows_fb[0] == "B3/4 120.00 BPM" and mem.u32(DISPLAY_MODE) == 7
     assert rows_fb[1] == "_1_ _2_ (3) _4_"
     assert rows_fb[2] == "[+------------]"
 
@@ -241,46 +247,47 @@ def test_live_info_page2_phase_meter_and_page3_shift(tmp_path):
         cur = d.rb(INFO_CURSOR)
         cnt = d.rb(INFO_COUNT)
         mode = d.rw(DISPLAY_MODE)
+        hdr_mode = d.rb(0x0C9D07D2)
         d.q("cont")
-        return mode, cur, cnt, out
+        return mode, hdr_mode, cur, cnt, out
 
-    with tr.Deck(stick, flash=flash) as d:
-        d.wait_line("mode=0x0a", "[GRID128]", timeout=300)
-        time.sleep(1.5)
-        if d.rb(0x0CE6D25F) != 3:
-            d.key("play")
-            time.sleep(1.5)
-        d.key("info")
-        time.sleep(1.2)
-        # Step +2 from the top of INFO (0 -> 1 -> 2) to reach Page 2
-        for _ in range(2):
-            _udp(d, "0x03:1:0:rot")
-            time.sleep(0.8)
-        time.sleep(0.5)
-        mode, cur, cnt, page2_a = read_rows(d)
-        assert mode == 11 and cur == 2 and cnt >= 5, (mode, cur, cnt)
+    script = tr.LOAD_SCRIPT + ",13600:info:200,14200:rot+1,14800:rot+1"
+    with tr.Deck(stick, flash=flash, script=script) as d:
+        frame, _ = d.wait_line("mode=0x0a", "[GRID128]", timeout=300)
+        # Page 2 enters centered mode 0x07, icon-free attr=00, tag=11/12/13
+        frame, line_a = d.wait_line("mode=0x07", "tag=11/12/13",
+                                    "attr=00:00:00/00:00:00/00:00:00",
+                                    "128.00", start=frame + 1, timeout=180)
+        assert "B" in line_a and ("GRID" in line_a or "BPM" in line_a), line_a
+        mode, hdr_mode, cur, cnt, page2_a = read_rows(d)
+        assert mode in (7, 11) and hdr_mode == 7 and cur == 2 and cnt >= 5, (mode, hdr_mode, cur, cnt)
         assert [(r, tag, attr) for r, (tag, attr, _) in enumerate(page2_a)] == [
             (0, 0x11, 0), (1, 0x12, 0), (2, 0x13, 0)], page2_a
         assert page2_a[0][2].startswith("B") and "128.00" in page2_a[0][2], page2_a
         assert "(" in page2_a[1][2] and ")" in page2_a[1][2], page2_a
         assert page2_a[2][2].startswith("[") and "+" in page2_a[2][2], page2_a
 
-        # While playing, phase updates across consecutive snapshots
-        time.sleep(1.2)
-        _, _, _, page2_b = read_rows(d)
-        assert page2_b != page2_a or page2_b[0][2].startswith("B")
+        # While playing, phase updates across consecutive panel frames
+        f0 = d.rw(PLAY_FRAME)
+        deadline = time.monotonic() + 30
+        while time.monotonic() < deadline and d.rw(PLAY_FRAME) < f0 + 15:
+            time.sleep(0.2)
+        _, hdr2_b, _, _, page2_b = read_rows(d)
+        assert hdr2_b == 7 and (page2_b != page2_a or page2_b[0][2].startswith("B"))
 
-        # 1 click CW from Page 2 snaps straight to Page 3 (cursor = 5): original Page 2 items (incl. 0x0D BPM)
+        # 1 click CW from Page 2 snaps straight to Page 3 (mode 0x0b, cursor = 5, 128.0 bpm)
         _udp(d, "0x03:1:0:rot")
-        time.sleep(0.8)
-        mode3, cur3, _, page3 = read_rows(d)
-        assert mode3 == 11 and cur3 == 5, (mode3, cur3, page3)
+        frame, _ = d.wait_line("mode=0x0b", "[128.0 bpm]", start=frame + 1, timeout=60)
+        mode3, hdr_mode3, cur3, _, page3 = read_rows(d)
+        assert mode3 == 11 and hdr_mode3 == 11 and cur3 == 5, (mode3, hdr_mode3, cur3, page3)
         assert any(attr == 0x0D and "128.0 bpm" in text for _, attr, text in page3), page3
 
-        # 1 click CCW from Page 3 snaps straight back to Page 2 (cursor = 2)
+        # 1 click CCW from Page 3 snaps straight back to Page 2 (mode 0x07, cursor = 2)
         _udp(d, "0x03:-1:0:rot")
-        time.sleep(0.8)
-        mode2b, cur2b, _, page2_back = read_rows(d)
-        assert mode2b == 11 and cur2b == 2, (mode2b, cur2b, page2_back)
+        frame, _ = d.wait_line("mode=0x07", "tag=11/12/13",
+                               "attr=00:00:00/00:00:00/00:00:00",
+                               start=frame + 1, timeout=60)
+        mode2b, hdr_mode2b, cur2b, _, page2_back = read_rows(d)
+        assert mode2b in (7, 11) and hdr_mode2b == 7 and cur2b == 2, (mode2b, hdr_mode2b, cur2b, page2_back)
         assert [(r, tag, attr) for r, (tag, attr, _) in enumerate(page2_back)] == [
             (0, 0x11, 0), (1, 0x12, 0), (2, 0x13, 0)], page2_back
