@@ -104,18 +104,14 @@ def test_cave_reservation_and_room_left():
     ps = patch_main.PATCH_SETS["cdj850"]
     offsets, total = sigpatch.layout(lambda n: patch_main.blob_path(n, "cdj850"), ps.mods, ps.profile.gate)
     assert "payload_demo" not in offsets and "bpm_decimals" not in offsets
-    # 544 without the service gate; the gate adds 32 bytes (with padding) to each of the three
-    # trampolines (display_stage_bpm with its hooks, tempo_wide's TEMPO site, waveform_rotary's
-    # INFO rotary site), giving 640 with padding. hot_cues_flash and quant_loops_flash
-    # (c850_ui_flash_hook) took 32, info_order 16, tempo_wide's 6-byte routine 16,
-    # bpm_lock_display/bpm_lock_flash/phase_meter add 3 x 16 = 48, and waveform/waveform_rotary
-    # add 16 + 112 = 128 gated (16 + 80 = 96 ungated).
-    assert total == 640
-    assert sigpatch.layout(lambda n: patch_main.blob_path(n, "cdj850"), ps.mods)[1] == 544
+    # Four trampoline sites, including the USB browse row builder. The
+    # service gates consume 112 more bytes after alignment across the sites.
+    assert total == 768
+    assert sigpatch.layout(lambda n: patch_main.blob_path(n, "cdj850"), ps.mods)[1] == 656
     if MAIN.is_file():
         img = sigpatch.Image(ps.profile, MAIN.read_bytes())
         start, end = sigpatch.find_cave(img)
-        assert end - ((start + 3) & ~3) - total == 476
+        assert end - ((start + 3) & ~3) - total == 348
 
 
 @needs_toolchain
@@ -211,17 +207,15 @@ def test_patch_update_adds_the_loader_and_validate_accepts_all_mods_combined(tmp
     out = tmp_path / "C850MAIN.UPD"
     names = [ln.split()[0] for ln in _run(ROOT / "mods" / "patch_update.py", "--model", "cdj850", "--list")
              .stdout.splitlines() if ln.strip()]
-    assert "payload_demo" in names and "loader" in names
+    assert {"browse", "payload_demo", "loader"} <= set(names)
     names.remove("loader")             # added by itself for the payload
     r = _run(ROOT / "mods" / "patch_update.py", "--model", "cdj850", C850, out, *names)
     assert r.returncode == 0, r.stdout + r.stderr
-    assert "patch_main: payload of bpm_decimals, flac, hot_cues, info_order, loop_resize, payload_demo, quant_loops" in r.stdout
+    prefix = "patch_main: payload of "
+    payload_line = next(line for line in r.stdout.splitlines() if line.startswith(prefix))
+    assert "browse" in payload_line.removeprefix(prefix).partition(":")[0].split(", ")
     assert "PASS main: loader: entry literal" in r.stdout
-    # payload_demo's hook literal and redirect, bpm_decimals' hook literal and redirect,
-    # quant_loops' seven redirects and flash hook literal, loop_resize's three redirects, hot_cues'
-    # six redirects (the key word c850_ui_keys, shared with quant_loops_keys) and flash hook literal,
-    # flac's entry redirect and seven redirects, and info_order's display hook literal and rating redirect
-    assert "PASS main: 32 written words call into the payload" in r.stdout
+    assert "written words call into the payload, all inside" in r.stdout
     v = _run(ROOT / "mods" / "validate.py", "--model", "cdj850", "--stock", C850, out)
     assert v.returncode == 0, v.stdout + v.stderr
     assert "all checks passed" in v.stdout

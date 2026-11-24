@@ -11,6 +11,7 @@ it on. All of them target CDJ-850 MAIN 1.13.
 | [`bpm_decimals`](../mods/bpm_decimals/README.md) | The actual BPM with two decimals in place of the rekordbox BPM in the INFO view (tracks with a grid). |
 | [`quant_loops`](../mods/quant_loops/README.md) | Loops snap to the nearest beat of the rekordbox grid (behind or ahead): auto beat loops, LOOP IN and LOOP OUT, with no drift over many passes (USB tracks with a grid). BEAT SELECT + LOOP IN switches quantize (saved, QUANTIZE ON/OFF on the display). |
 | [`info_order`](../mods/info_order/README.md) | INFO screens in the order Track, `128.23 12A *****` (actual BPM, Camelot key, track rating as asterisks), waveform / Artist, Rating, Key / Album, Comment (USB tracks). |
+| [`browse`](../mods/browse/README.md) | Played markers and BPM or key order in the rekordbox USB browser. |
 | [`loop_resize`](../mods/loop_resize/README.md) | While a loop plays, CUE/LOOP CALL < halves it and CALL > doubles it (grid aware); outside a loop CALL works as stock. |
 | [`hot_cues`](../mods/hot_cues/README.md) | Hot-cue mode (BEAT SELECT + RELOOP, saved, HOT CUE ON/OFF on the display): BEAT 1/2/4 are hot cues A–C from the rekordbox ANLZ (jump, record, hold 8 + pad to delete, saved to the stick); the beat LEDs show the set slots. |
 | [`bpm_lock`](../mods/bpm_lock/README.md) | BPM Lock from CDJ-350 (±100% range): BEAT SELECT + MASTER TEMPO short toggles lock/unlock, hold 1 s edits Master BPM via the rotary selector. |
