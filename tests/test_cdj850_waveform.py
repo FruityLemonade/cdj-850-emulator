@@ -331,27 +331,36 @@ def test_interpreter_playhead_setting_and_red_marker():
     base_packet[:3] = bytes([0x60, 1, 0x80])  # a genuine saved cue at column 0
     mem.write(TX_BASE + 16, base_packet)
     _call(p, mem, "waveform_center_marker")
-    assert _red_cols(mem.read(TX_BASE + 16, 16)) == [0, 33]
+    # Zoomed view clears stock memory cues and shows only the playhead marker.
+    assert _red_cols(mem.read(TX_BASE + 16, 16)) == [33]
 
     # Active loop in close zoom (step = 3, base = 312 - 33*3 = 213):
-    # frames [303..330) -> columns (303-213)//3 = 30 .. (329-213)//3 = 38.
+    # frames [303..330) -> columns (303-213)//3 = 30 .. (329-213)//3 = 38,
+    # with playhead column 33 left dark inside the lit loop span.
     mem.write(LOOP_ACTIVE, b"\x01")
     mem.put32(LOOP_IN_FRAME, 303)
     mem.put32(LOOP_OUT_FRAME, 330)
     mem.put32(TX_LAST, 0)
     mem.write(TX_BASE + 16, base_packet)
     _call(p, mem, "waveform_center_marker")
-    assert _red_cols(mem.read(TX_BASE + 16, 16)) == [0] + list(range(30, 39))
+    assert _red_cols(mem.read(TX_BASE + 16, 16)) == [c for c in range(30, 39) if c != 33]
 
     # Resized loop via LOOP_OUT_REQUEST updates the red loop span immediately:
-    # frames [303..345) -> columns 30..43.
+    # frames [303..345) -> columns 30..43, playhead column 33 dark.
     mem.put32(LOOP_OUT_REQUEST, 345)
     mem.put32(TX_LAST, 0)
     mem.write(TX_BASE + 16, base_packet)
     _call(p, mem, "waveform_center_marker")
-    assert _red_cols(mem.read(TX_BASE + 16, 16)) == [0] + list(range(30, 44))
+    assert _red_cols(mem.read(TX_BASE + 16, 16)) == [c for c in range(30, 44) if c != 33]
 
-    # Zoomed out to overview: 0x60 behaves like stock (no playhead or loop span added).
+    # Medium zoom also clears stock memory cues and leaves playhead dark in loop.
+    mem.put32(_sym(p, "waveform_zoom"), 1)
+    mem.put32(TX_LAST, 0)
+    mem.write(TX_BASE + 16, base_packet)
+    _call(p, mem, "waveform_center_marker")
+    assert _red_cols(mem.read(TX_BASE + 16, 16)) == [32, 34, 35]
+
+    # Zoomed out to overview: 0x60 behaves like stock (saved memory cue preserved).
     mem.put32(_sym(p, "waveform_zoom"), 2)
     mem.put32(TX_LAST, 0)
     mem.write(TX_BASE + 16, base_packet)
@@ -383,7 +392,7 @@ def test_interpreter_playhead_setting_and_red_marker():
     mem.put32(TX_LAST, 0)
     mem.write(TX_BASE + 16, base_packet)
     _call(p, mem, "waveform_center_marker")
-    assert _red_cols(mem.read(TX_BASE + 16, 16)) == [0, 50]
+    assert _red_cols(mem.read(TX_BASE + 16, 16)) == [50]
 
     # Press 2 -> LEFT (+0x21 = 0, +0x22 = 0x56)
     mem.put32(DISPLAY_MODE, 12)
@@ -401,6 +410,17 @@ def test_interpreter_playhead_setting_and_red_marker():
     mem.write(TX_BASE + 16, base_packet)
     _call(p, mem, "waveform_center_marker")
     assert _red_cols(mem.read(TX_BASE + 16, 16)) == [0]
+
+    # Active loop in LEFT mode: column 0 is toggled off inside the red loop bar.
+    mem.write(LOOP_ACTIVE, b"\x01")
+    mem.put32(LOOP_IN_FRAME, 303)
+    mem.put32(LOOP_OUT_FRAME, 330)
+    mem.put32(LOOP_OUT_REQUEST, 0)
+    mem.put32(TX_LAST, 0)
+    mem.write(TX_BASE + 16, base_packet)
+    _call(p, mem, "waveform_center_marker")
+    assert _red_cols(mem.read(TX_BASE + 16, 16)) == [1, 2, 3, 4, 5]
+    mem.write(LOOP_ACTIVE, b"\x00")
 
     # Press 3 -> back to LEFT 1/3 (+0x21 = 0, +0x22 = 0)
     mem.put32(DISPLAY_MODE, 12)
@@ -503,8 +523,10 @@ def test_live_waveform_zoom_and_info_order_coexistence(tmp_path):
             loop_active = d.rb(LOOP_ACTIVE)
             cue_packet = d.dump(TX_BASE + 16 * d.rw(TX_LAST), 16)
             d.q("cont")
-            if loop_active == 1 and cue_packet[0] == 0x60 and len(_red_cols(cue_packet)) >= 5:
-                break
+            if loop_active == 1 and cue_packet[0] == 0x60:
+                cols = _red_cols(cue_packet)
+                if len(cols) >= 5 and 33 not in cols:
+                    break
             assert time.monotonic() < deadline, (loop_active, cue_packet.hex())
             time.sleep(0.2)
         d.key("reloop")
