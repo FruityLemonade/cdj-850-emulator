@@ -1517,7 +1517,7 @@
         {
           "address": "0c064cf2",
           "type": "PRE",
-          "text": "Loads pool 0x0C064DDC and calls panel_tx_saved_cues (0x0C0664A8). While zoomed in, the waveform mod ORs the playhead column (33 for Left 1/3, 50 for Center) and any active loop's visible [loop-in..loop-out] span into bytes 2..14 of the new 0x60 packet at 0x0C9D07D0 + 16 * last-frame index without modifying saved cues. The SCIF1 interrupt adds the checksum later."
+          "text": "Loads pool 0x0C064DDC and calls panel_tx_saved_cues (0x0C0664A8). On close and medium zoom, the waveform mod clears bytes 2..14 of the new 0x60 packet at 0x0C9D07D0 + 16 * last-frame index, lights any active loop's visible [loop-in..loop-out] span, and XOR-toggles the playhead column (33 for Left 1/3, 50 for Center, 0 for Left) so it shows as one red tick normally or a dark/off mark inside the active loop bar. In overview mode 0x60 is left untouched. The SCIF1 interrupt adds the checksum later."
         },
         {
           "address": "0c064d10",
