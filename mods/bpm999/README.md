@@ -67,3 +67,15 @@ TEMPO): 180 -> 209, so the top of the fader is +16% in stock, not WIDE.
   `docs/cdj850-modding.md` section 4).
 - Pitched values in memory above 999 are read by a few non-display paths (player state
   machines). They were compared as signed 16-bit and are fine up to 1998, but not run.
+
+## CDJ-350 (MAIN 1.14)
+
+`cdj350/patch.py` makes the same grid change (`bpm999grid`, 0x0C06B866) and raises the two
+BPM LOCK bounds the CDJ-350 has: `bpm999range` (0x0C0C6064, the base tempo it accepts as
+master BPM instead of `Default 130`) and `bpm999lock` (0x0C0C61D0, the master BPM rotary
+edit). No display clamp: the CDJ-350's BPM box has three digits and a tenth, up to 999.9.
+
+    .venv/bin/python mods/patch_update.py --model cdj350 C350MAIN.UPD out.UPD bpm999
+
+Emulator: a 400 BPM grid shows `400.0` (stock `180.0`) and BPM LOCK edits from `400.0`.
+See `docs/cdj350.md`, "BPM above 180".

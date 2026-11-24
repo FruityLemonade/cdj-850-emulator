@@ -7,9 +7,9 @@ it on. All of them target CDJ-850 MAIN 1.13.
 | mod | what it does |
 |---|---|
 | [`tempo_wide`](../mods/tempo_wide/cdj850/patch.py) | WIDE tempo on USB: TEMPO cycles ±6 % → ±10 % → ±16 % → WIDE (±100 %) → ±6 %, and enables overflow-safe WIDE pitch scaling on USB. |
-| [`bpm999`](../mods/bpm999/README.md) | BPM up to 999: the beat-grid clamp goes from 180.0 to 999.0, and the pitched BPM shows up to 999. |
+| [`bpm999`](../mods/bpm999/README.md) | BPM up to 999: the beat-grid clamp goes from 180.0 to 999.0, and the pitched BPM shows up to 999. Also on the CDJ-350 (with BPM LOCK's master BPM). |
 | [`bpm_decimals`](../mods/bpm_decimals/README.md) | The actual BPM with two decimals in place of the rekordbox BPM in the INFO view (tracks with a grid). |
-| [`quant_loops`](../mods/quant_loops/README.md) | Loops snap to the nearest beat of the rekordbox grid (behind or ahead): auto beat loops, LOOP IN and LOOP OUT, with no drift over many passes (USB tracks with a grid). BEAT SELECT + LOOP IN switches quantize (saved, QUANTIZE ON/OFF on the display); UTILITY > QUANTIZE DRIFT switches the drift correction ON/OFF (saved). |
+| [`quant_loops`](../mods/quant_loops/README.md) | Loops snap to the nearest beat of the rekordbox grid (behind or ahead): auto beat loops, LOOP IN and LOOP OUT, with no drift over many passes (USB tracks with a grid). BEAT SELECT + LOOP IN switches quantize (saved, QUANTIZE ON/OFF on the display); UTILITY > QUANTIZE DRIFT switches the drift correction ON/OFF (saved). Also on the CDJ-350, where UTILITY has QUANTIZE and DRIFT FIX ON/OFF after `Ver`. |
 | [`info_order`](../mods/info_order/README.md) | INFO screens in the order Track, `128.23 12A *****` (actual BPM, Camelot key, track rating as asterisks), waveform / Artist, Rating, Key / Album, Comment (USB tracks). |
 | [`browse`](../mods/browse/README.md) | Played markers and BPM or key order in the rekordbox USB browser. |
 | [`loop_resize`](../mods/loop_resize/README.md) | While a loop plays, CUE/LOOP CALL < halves it and CALL > doubles it (grid aware); outside a loop CALL works as stock. |

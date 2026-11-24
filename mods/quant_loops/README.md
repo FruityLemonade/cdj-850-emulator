@@ -197,3 +197,10 @@ before the refresh ran; loop 308..448 as without the delay. 1/2 beat at frame 11
 4. Drift correction: it moves the out by one frame on about every other pass through the
    stock BEAT resize path. Whether a real deck plays that wrap gaplessly (the same question as
    for a BEAT resize) is not checked on hardware.
+
+## CDJ-350 (MAIN 1.14)
+
+`cdj350/` ports the snapping and the drift correction (see `docs/cdj350.md`,
+"Quantized loops"). The CDJ-350 has no BEAT SELECT, so the switches are in UTILITY: hold
+DISPLAY/UTILITY, turn past `Ver` to `QUANTIZE   ON` and `DRIFT FIX  ON`, and push to switch.
+Both are saved with the deck's settings and are on on a fresh deck.
