@@ -607,8 +607,8 @@ import make_test_stick as stick
 import collection_xml
 VAR = {"QVAR": [(0.0, 120.00), (16.0, 133.33)]}
 _orig_track_xml = collection_xml.track_xml
-def track_xml(track_id, path, tags, audio, notes, tempo=None, key="", marks=()):
-    x = _orig_track_xml(track_id, path, tags, audio, notes, tempo=tempo, key=key, marks=marks)
+def track_xml(track_id, path, tags, audio, notes, tempo=None, key="", marks=(), **kw):
+    x = _orig_track_xml(track_id, path, tags, audio, notes, tempo=tempo, key=key, marks=marks, **kw)
     if tags["title"] in VAR:
         lines = "".join('      <TEMPO Inizio="%.3f" Bpm="%.2f" Metro="4/4" Battito="1"/>\n' % (t, b)
                         for t, b in VAR[tags["title"]])
@@ -751,7 +751,7 @@ def drive(stick, flash=None, syms=None):
         if port:
             g = tr.Gdb(port)
             g._send("c")
-        d.wait_line("mode=0x0a", "[Q128]", timeout=300)
+        d.wait_line("mode=0x0a", "[Q", timeout=300)
         if port:
             assert g.poke32(drift_on, 0) == "OK"
         for k in range(3):

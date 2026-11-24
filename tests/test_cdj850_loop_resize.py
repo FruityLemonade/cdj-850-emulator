@@ -620,6 +620,7 @@ raise SystemExit(stick.main(['--spec', str(sp), '--out', out_dir + '/wav-stick',
 
 TITLES = ("Q128", "Q12796", "QVAR", "NOGRID")
 PLAY_FRAME, STATE_USB, D1C0 = 0x0C7F647C, 0x0CE6D25F, 0x0CE6D1C0
+TICK_MS = 0x0CE49F54            # u32 +1 per firmware 1 ms tick (guest time)
 LED_B7, LED_B6 = 0x0C9D0AEB, 0x0C9D0AEA
 MEMCUE_LIST, CUE_FRAME = 0x0CE649D4, 0x0CE6D158
 SYMS = ("count", "ignored", "passed", "last_old", "last_new", "last_q", "last_mode", "deferred", "ticks",
@@ -872,6 +873,7 @@ def drive(stick, flash=None, syms=None, stock=False, tracks=TITLES, log=None):
                         for _ in range(16):
                             before = sym(d, "ignored")
                             seen = [sym(d, n) for n in ("count", "ignored", "deferred")]
+                            pressed = d.rw(TICK_MS)
                             d.key(key)
                             # a loop of a frame or two slows the emulator down a lot: wait until
                             # the press has been handled
@@ -879,6 +881,11 @@ def drive(stick, flash=None, syms=None, stock=False, tracks=TITLES, log=None):
                             while [sym(d, n) for n in ("count", "ignored", "deferred")] == seen and \
                                     time.monotonic() < end:
                                 time.sleep(0.2)
+                            # the key is held for 200 guest ms: on a busy host guest time runs
+                            # slower than the wall clock, and a press sent before the release
+                            # merges into the held key (no new edge, the press is lost)
+                            while d.rw(TICK_MS) - pressed < 400 and time.monotonic() < end:
+                                time.sleep(0.1)
                             time.sleep(0.3)
                             v = snap(d)
                             t["limits"][k].append({x: v[x] for x in ("in", "req", "lr_last_new", "lr_last_q",
