@@ -14,13 +14,13 @@ On INFO Page 1 (top cursor position, Row 1 highlighted):
 
 Hold **MENU/UTILITY**, turn the selector past **VERSION No.** to **WAVE PLAYHEAD**, then press the selector to cycle positions:
 
-- **LEFT 1/3** (default) places the playhead at 1/3 of the width (column 33, zero-based), marked by a red dot on the memory-cue strip.
-- **CENTER** places the playhead at the center (column 50), marked by a red dot on the memory-cue strip.
+- **LEFT 1/3** (default) places the playhead at 1/3 of the width (column 33, zero-based).
+- **CENTER** places the playhead at the center (column 50).
 - **LEFT** starts the waveform at the playhead (column 0) and uses the whole window for upcoming audio.
 
-In zoomed view (close or medium), any active loop's visible `[loop-in..loop-out]` span is also lit on the 100-bit red memory-cue strip (`0x60`), while the green progress bar stays stock. In overview mode both strips behave like stock.
+In close and medium zoom, stock memory cues are hidden on the 100-bit red memory-cue strip (`0x60`) and a single red tick marks the playhead; during an active loop, the visible `[loop-in..loop-out]` span is lit as a red bar with the playhead shown as a dark/off mark within it. The green progress bar stays stock. In overview mode both strips behave like stock.
 
-With `quant_loops` built in, `QUANTIZE DRIFT` follows as the next item (the shared `c850_ui` UTILITY list). The deck saves the choice with its UTILITY settings. If the HISTORY name is longer than 29 characters, the choice lasts until power-off because the name occupies the shared mod settings bytes (`+0x21..+0x22`).
+With `quant_loops` built in, `QUANTIZE DRIFT` follows as the next item (the shared `c850_ui` UTILITY list). The deck saves the choice with its UTILITY settings. With a rekordbox stick in, the choice is also saved on the stick (`/PIONEER/MODSET.DAT`, `waveform_usb_settings`) and comes back on any deck with this build. Without a stick, if the HISTORY name is longer than 29 characters, the choice lasts until power-off because the name occupies the shared mod settings bytes (`+0x21..+0x22`).
 
 ## How It Works
 

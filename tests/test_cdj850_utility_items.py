@@ -35,9 +35,10 @@ LEVEL, CURSOR, TIMEOUT = 0x0C1E108C, 0x0C1E108D, 0x0C1E1078
 LOG = 0x0DDFE000
 QUANT = ["quant_loops", "quant_loops_auto_send", "quant_loops_auto_send2", "quant_loops_auto_keep",
          "quant_loops_loop_in", "quant_loops_loop_out", "quant_loops_loop_out2", "quant_loops_keys",
-         "quant_loops_flash", "quant_loops_drift", "quant_loops_utility_scroll", "quant_loops_utility_select"]
+         "quant_loops_flash", "quant_loops_drift", "quant_loops_utility_scroll", "quant_loops_utility_select",
+         "quant_loops_usb_settings"]
 WAVE = ["waveform", "waveform_rotary", "waveform_utility_scroll", "waveform_utility_select",
-        "waveform_center_marker"]
+        "waveform_center_marker", "waveform_usb_settings"]
 
 needs_toolchain = pytest.mark.skipif(not payloadbuild.have_toolchain(), reason="sh-elf toolchain not installed")
 needs_main = pytest.mark.skipif(not MAIN.is_file(), reason="extract/cdj850/main_unpacked.bin is not present")

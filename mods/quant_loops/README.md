@@ -71,6 +71,11 @@ characters occupies that byte: the choice then lasts until power-off. The list i
 `c850_ui` UTILITY list (`c850_ui_utility_scroll` / `_select`, the same pool words and routines
 as `waveform`'s); `c850_ui_flash_hook` draws the rows.
 
+**Settings on the stick (prototype).** `quant_loops_usb_settings` reads `/PIONEER/MODSET.DAT`
+when a rekordbox stick mounts; while it is in, every on-deck switch (QUANTIZE, QUANTIZE DRIFT,
+and the other mods' flags) is also written there, so the settings travel with the stick to any
+deck with this build. See `docs/cdj850-modding.md` section 4b.6.
+
 ## Use
     .venv/bin/python mods/patch_update.py --model cdj850 C850MAIN.UPD C850MAIN_MOD.UPD quant_loops
 Switch: `CDJ_MAIN_QUANT_LOOPS=1` (and its eleven sibling `CDJ_MAIN_QUANT_LOOPS_*` knobs in
