@@ -12,13 +12,23 @@ Default off. Adds a hot-cue mode to the beat-loop buttons, backed by the rekordb
 | hold BEAT 8, press 1 / 2 / 4 | delete the slot and write the ANLZ | stock |
 | beat LEDs 1 / 2 / 4 | lit = set, blinking = empty; 8 lit | stock |
 
-- **Jump.** The jump goes through the stock CALL path (`cue_call_prev_next`) with the hot cue as
-  the selection, exactly as a memory cue would be called. Playing (or a playing loop) stays
-  playing: after the jump the payload gives the state-6 handler PLAY presses until the deck plays
-  (in the emulator two presses, the first comes while the cue is still being prepared; the deck
-  played from the cue about 0.9 s (point) to 1.3-2 s (loop) wall time after the pad press there,
-  under -icount; not measured on a deck).
-  Paused or cued stays cued at the hot cue. Jumping leaves a playing loop, as CDJ hot cues do.
+- **Jump.** Two ways, the fast one first:
+  - **Instant (in the ring).** Playing (not in a loop), a point hot cue whose audio is still in
+    the PCM ring (up to ~13 s already played, or the ~15 s read ahead with WAV) is reached by
+    moving the IRQ7 feeder's read pointer and play sector there from playertask, with interrupts
+    masked for the two stores: no CALL, no ring restart, no wait. The ring run between the play
+    position and the cue is checked in the sector table first (every 16th sector and the cue's).
+    The main CUE point stays where it was. `hot_cues_instants` counts these,
+    `hot_cues_instant_misses` the point jumps that were too far and took the CALL path;
+    payload word `hot_cues_instant` (1) = 0 turns it off.
+  - **CALL (everything else).** Loop slots, a deck that is paused, cued or looping, and cues
+    outside the ring go through the stock CALL path (`cue_call_prev_next`) with the hot cue as
+    the selection, exactly as a memory cue would be called. Playing (or a playing loop) stays
+    playing: after the jump the payload gives the state-6 handler PLAY presses until the deck
+    plays. Paused or cued stays cued at the hot cue. Jumping leaves a playing loop, as CDJ hot
+    cues do. A hot-cue CALL **prefills 180 sectors (2.4 s of audio) instead of the stock 400
+    (5.33 s)** before PLAY is taken (`hot_cues_prefill`, payload word, 0 = stock, smaller
+    values are raised to 180), see *Prefill* below.
 - **Loops.** A loop slot (rekordbox type 2) is armed like a memory loop; when the deck was playing
   it plays the loop. Recording into an empty slot while a loop plays stores that loop (the out in
   effect, also after a BEAT or `loop_resize` resize); otherwise a point at the play position.
@@ -37,6 +47,20 @@ Default off. Adds a hot-cue mode to the beat-loop buttons, backed by the rekordb
   time = frames × 2, loop end = out × 2 + 1), as stock MEMORY writes them. A delete empties the
   slot before the section write; every hot_cues write also counts the extra PCPT entries the
   writer appends (hot cues past C) into the PCOB header, which the stock setter does not.
+- **Prefill.** After a CALL the audio task asks the reader for 400 sectors from ring slot 120
+  (`FUN_0C008C8A(4, .., 400, 120, ..)` at `0x0C0F534E`, through pool `0x0C0F54D8`, read only
+  there) and the state-6 handler takes PLAY once they are in. `hot_cues_prefill` redirects that
+  pool word to `hot_cues_ring_request`, which gives a smaller count when a hot-cue CALL armed it
+  (2 s window); the reader's end slot, done flag and timeout follow from the count, the stock
+  read of the 120 sectors before the cue and the ready report follow as after 400, and stock
+  streaming refills ahead after the cue is ready. **The count must stay above about 150:** the
+  audio task sets the play sector and starts that second read only once ~150 sectors are in
+  (emulator: 160, 180, 200, 250, 300 became ready; 75 and 140 left the deck cued for good, PLAY
+  ignored), so the payload never asks for fewer than 180. The pool word lies inside the boot-critical
+  closure (the audio task): it is in `players/cdj850.GATED_BOOT_POOLS`, so it goes through the
+  service-mode gate and `validate.py` checks that the gate jumps to stock `FUN_0C008C8A` while
+  the deck is in a power-on update mode (or has not read the power-on keys yet). No instruction
+  is changed, and USB recovery runs the stock request.
 - **Fallback.** Without a loaded USB track whose ANLZ is in the ANLZ cache (CD, no ANLZ file,
   not a DB track) the BEAT buttons are stock in hot-cue mode too; the mode only changes the LEDs
   and buttons where it can act.
@@ -52,12 +76,12 @@ Default off. Adds a hot-cue mode to the beat-loop buttons, backed by the rekordb
 
 ## Use
     .venv/bin/python mods/patch_update.py --model cdj850 C850MAIN.UPD C850MAIN_MOD.UPD hot_cues
-Switches: `CDJ_MAIN_HOT_CUES=1` (and `_TICK`, `_SELECT`, `_SELECT2`, `_LEDS`, `_ANLZ`; the row
-`hot_cues` brings all six). Payload word `hot_cues_on` (1) turns every key stock at run time.
+Switches: `CDJ_MAIN_HOT_CUES=1` (and `_TICK`, `_SELECT`, `_SELECT2`, `_LEDS`, `_ANLZ`, `_FLASH`,
+`_PREFILL`; the row `hot_cues` brings them all). Payload word `hot_cues_on` (1) turns every key stock at run time.
 Composes with every mod on the branch (`tests/test_cdj850_hot_cues.py` builds and runs them all).
 
 ## Patch
-Six pool-word redirects, no hook, no cave bytes; payload `cdj850/payload/hot_cues.c` (about 3.7 KB).
+Seven pool-word redirects and the shared display hook, no cave bytes; payload `cdj850/payload/hot_cues.c` (about 3.7 KB).
 
 | Patch | Pool word (stock value) | Read at | Payload |
 |---|---|---|---|
@@ -67,17 +91,20 @@ Six pool-word redirects, no hook, no cave bytes; payload `cdj850/payload/hot_cue
 | `hot_cues_select2` | `0x0C0D3CC8` (`cue_select_from_list`) | `0x0C0D3B94` (the USB branch the emulator takes) | same |
 | `hot_cues_leds` | `0x0C0ED244` (`twai_flg`) | `0x0C0ED1B0`, the playertask loop's wait | `hot_cues_wait`: LED inputs faked while playertask waits |
 | `hot_cues_anlz` | `0x0C0C195C` (`FUN_0C0C5960`) | `0x0C0C17CE`, in the hot-cue setter | `hot_cues_anlz_write`: delete, PCOB count |
+| `hot_cues_prefill` | `0x0C0F54D8` (`FUN_0C008C8A`) | `0x0C0F534C`, the audio task's cue prefill (boot-critical closure, gated) | `hot_cues_ring_request`: a short prefill after a hot-cue CALL |
 
-Every word and its reader are outside the boot-critical closure (`mods/bootcrit.py`). See
+Every word and its reader except `hot_cues_prefill`'s are outside the boot-critical closure
+(`mods/bootcrit.py`); that one is a gated boot pool (above). See
 `docs/cdj850-modding.md` section 4b.11.
 
 ## Open hardware questions
 - Only the emulator was used. The jump-to-play latency, gaplessness and the LED look on a real
   panel are not verified.
-- **Jump latency on a deck.** A jump is a stock CALL: the firmware buffers 400 sectors (5.33 s of
-  audio) at the cue before it takes PLAY (docs section 4b.11, "cue prefill"), so on a deck it takes
-  as long as a memory cue CALL (seconds). The constant is boot-critical audio-task code and is
-  left as it is.
+- **Jump latency on a deck.** An instant jump is as fast as a loop wrap. A CALL jump waits for
+  the 180-sector prefill (docs section 4b.11, "cue prefill"): 45% of the stock wait, not
+  measured on a deck. The ~150-sector threshold was found in the emulator; that a deck has the
+  same threshold (it is a count in the firmware, not a timing, as far as the probes show) is
+  not checked.
 - **LEDs** (no free hook: `display_stage_navigation_leds` is boot-critical). The LED stage's inputs
   (`0x0CE6D154` fraction mode, `0x0C1E1088` beats) hold the pattern only while playertask waits in
   its loop and their real values while it runs (playertask, priority 2, is the only other reader;

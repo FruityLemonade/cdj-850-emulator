@@ -2340,7 +2340,7 @@
         {
           "address": "0c0f533e",
           "type": "PRE",
-          "text": "USB cue prefill (CALL of a memory cue, a hot_cues jump; state 6 with 0x0CE6D26A = 0xFF): mov #100,r14; shll2 r14 = 400 sectors (5.33 s of audio), requested at 0x0C0F534E as FUN_0C008C8A(4, *0x0C7F6494, .., 0x0C7F673E, 400, 120, ..): fill ring slots from 120. r14 + 100 = 500 goes to the reader timeout 0x0C7F6648 (0x0C0F535A..0x0C0F5362), which the reader counts down (0x0C0F1258). Emulator (WAV stick, stock): write index 120 -> 520, ready 100 ms of guest time after the CALL. On a deck, reading and decoding these 5.33 s is the several-second CALL/hot-cue delay. Inside the boot-critical closure (0x0C0F494C..0x0C0F63F0), so no mod changes it [static + emu]."
+          "text": "USB cue prefill (CALL of a memory cue, a hot_cues jump; state 6 with 0x0CE6D26A = 0xFF): mov #100,r14; shll2 r14 = 400 sectors (5.33 s of audio), requested at 0x0C0F534E as FUN_0C008C8A(4, *0x0C7F6494, .., 0x0C7F673E, 400, 120, ..): fill ring slots from 120. r14 + 100 = 500 goes to the reader timeout 0x0C7F6648 (0x0C0F535A..0x0C0F5362), which the reader counts down (0x0C0F1258). Emulator (WAV stick, stock): write index 120 -> 520, ready 100 ms of guest time after the CALL. On a deck, reading and decoding these 5.33 s is the several-second CALL/hot-cue delay. Inside the boot-critical closure (0x0C0F494C..0x0C0F63F0); not patched. The request reads FUN_0C008C8A through pool 0x0C0F54D8 (only reader 0x0C0F534C), which hot_cues_prefill redirects through the service-mode gate (GATED_BOOT_POOLS) to give a hot-cue CALL a shorter count [static + emu]."
         },
         {
           "address": "0c0f5500",
@@ -2571,6 +2571,26 @@
           "address": "0c0efb84",
           "type": "PRE",
           "text": "Pool word -> FUN_0C08F186 (AUTO STANDBY mode), loaded only at 0x0C0EFAEE in auto_standby_activity_reset (outside boot-critical closure). Mod auto_standby redirects it to auto_standby_activity, which also clears the mod's USB idle count."
+        },
+        {
+          "address": "0c008c8a",
+          "type": "PLATE",
+          "text": "Ring read request (audio module): FUN_0C008C8A(kind, p2, max, *pos, count, start_slot, p7). Stores the request in RAM: struct 0x0C7F6538 (+0x11 kind, +0x12 p2, +0x14 track_length_slot(max), +0x16..+0x1A pos, +0x1C count, +0x1E start, +0x20 p7); u16 0x0C7F6694 = start; u16 0x0C7F668C = end slot = FUN_0C008294(start, count) (ring index mod 0x960 = 2400); u8 0x0C7F65FE = 1; u16 0x0C7F6648 = 500 (reader timeout); u8 0x0C7F663D = 0 (read-done flag). For the cue prefill (kind 4, count 400, start 120) the end slot is 520. Readers of the end slot 0x0C7F668C include 0x0C003EE0/EFA, FUN_0C0106EE, FUN_0C010B3C, 0x0C01338C, player_tick_usb_playback (0x0C0F6E84, 0x0C0F73DE) and 0x0C0F662E: the count sets the end slot, so hot_cues_prefill shortens the cue prefill by passing a smaller count (gated pool 0x0C0F54D8) [static]."
+        },
+        {
+          "address": "0c0f534c",
+          "type": "PRE",
+          "text": "Cue prefill call: mov.l @(0x0C0F54D8),r2; jsr @r2 = FUN_0C008C8A(4, .., 400, 120, r14). The only reader of pool 0x0C0F54D8; redirected by hot_cues_prefill through the service-mode gate (players/cdj850.GATED_BOOT_POOLS) [static]."
+        },
+        {
+          "address": "0c00866e",
+          "type": "PLATE",
+          "text": "Ring behind count: play sector 0x0C7F645C - behind start u16 0x0C7F6460 (mod 2400; state 4 uses its own play sector + 1). Written to 0x0C7F6688 by the IRQ7 forward path, which moves the behind start up when more than 1000 sectors lie behind [static]."
+        },
+        {
+          "address": "0c008634",
+          "type": "PLATE",
+          "text": "Ring ahead count: write sector 0x0C7F645E - play sector 0x0C7F645C (mod 2400; state 4 uses its own play sector + 1), stored to 0x0C7F6686. Derived from the indices, so an in-ring seek that writes the play sector keeps it consistent [static]."
         }
       ],
       "labels": [
