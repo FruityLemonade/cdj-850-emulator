@@ -894,6 +894,14 @@
           "name": "anlz_save"
         },
         {
+          "address": "0c0c688a",
+          "name": "irq_save_mask"
+        },
+        {
+          "address": "0c0c6894",
+          "name": "irq_restore_sr"
+        },
+        {
           "address": "0c0c8afa",
           "name": "tslp_tsk"
         },
@@ -1805,12 +1813,12 @@
         {
           "address": "0c0766b8",
           "type": "EOL",
-          "text": "Loads pool 0x0C076764 (0x0C015258), its only reader in irq7_dspdreq_isr, early in the ISR before the loop paths. Lead for a per-request hook outside loops (slip mode, docs/cdj850-slip-design.md); call path not traced yet. [static]"
+          "text": "Loads pool 0x0C076764 (0x0C015258); only inside the 0x0C7F66C8 == 2 branch of irq7_dspdreq_isr (not USB playback). [static]"
         },
         {
           "address": "0c0766c8",
           "type": "EOL",
-          "text": "Loads pool 0x0C076768 (0x0C005BB6), early in irq7_dspdreq_isr. Second lead for a per-request hook outside loops (slip mode, docs/cdj850-slip-design.md); call path not traced yet. [static]"
+          "text": "Loads pool 0x0C076768 (dsp_stream_stop 0x0C005BB6); only inside the 0x0C7F66C8 == 2 branch of irq7_dspdreq_isr (not USB playback). [static]"
         },
         {
           "address": "0c07715e",
@@ -2001,6 +2009,16 @@
           "address": "0c0c5960",
           "type": "PLATE",
           "text": "anlz_write_section(file, ctx, 3, buf): rewrites the ANLZ file from the hot-cue tag on (pool 0x0C0C195C, read only at 0x0C0C17CE)."
+        },
+        {
+          "address": "0c0c688a",
+          "type": "PLATE",
+          "text": "Sets SR.IMASK = 15 (0xF0) and returns the previous SR value. Used by slip mode (mods/loop_roll) around c850_ring_jump() from playertask. [static + emu]"
+        },
+        {
+          "address": "0c0c6894",
+          "type": "PLATE",
+          "text": "Restores SR from r4 (paired with 0x0C0C688A). [static + emu]"
         },
         {
           "address": "0c0c68fc",
@@ -2809,6 +2827,10 @@
         {
           "address": "0c7f6648",
           "name": "audio_read_timeout"
+        },
+        {
+          "address": "0c7f666c",
+          "name": "audio_reverse_dir"
         },
         {
           "address": "0c7f6674",
