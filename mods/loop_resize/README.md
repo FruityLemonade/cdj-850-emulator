@@ -38,12 +38,14 @@ after a BEAT resize stores the old loop. With this mod MEMORY stores the loop th
     .venv/bin/python mods/patch_update.py --model cdj850 C850MAIN.UPD C850MAIN_MOD.UPD loop_resize
 Switch: `CDJ_MAIN_LOOP_RESIZE=1` (and `_TICK`, `_MEMORY`; one row, `loop_resize` brings all three). Payload word `loop_resize_on` (1) turns it off at run time.
 Composes with every mod on the branch (with `quant_loops` loops start on the grid, so the
-resized lengths are exact grid beats, and its drift correction keeps a resized loop on the grid
-pass after pass: a resize starts its count over).
+resized lengths are exact grid beats; its block loops then wrap the resized loop to the 84-sample
+block, so it stays on the grid pass after pass: a resize starts the passes over from the in, and
+the grid frames this mod computes are the stock out frames of those block loops,
+`quant_loops_q_out`).
 
 The state-4 tick is shared with `quant_loops`: both redirect pool word `0x0C0D7B98` to
 `c850_loop_tick` (`mods/payload/include/c850.h`), which runs this mod's `loop_resize_state4`, then
-`quant_loops_drift_tick`, then the stock handler; each mod ships the same weak definition in
+`quant_loops_loop_tick`, then the stock handler; each mod ships the same weak definition in
 `cdj850/payload/loop_tick.c`.
 
 ## Patch
@@ -54,7 +56,7 @@ Three pool-word redirects, no hook, no cave bytes; payload `cdj850/payload/loop_
 | Patch | Pool word (stock value) | Read at | Payload |
 |---|---|---|---|
 | `loop_resize` | `0x0C0D9994` (`cue_call_prev_next` `0x0C0D3B1A`) | `0x0C0D98AC` (▶, r4 = 1), `0x0C0D98EA` (◀, r4 = 0) | `loop_resize_call`: resize in state 4, else tail-call stock |
-| `loop_resize_tick` | `0x0C0D7B98` (`keys_state4_looping` `0x0C0E0F34`) | `0x0C0D79A6` | the shared state-4 tick `c850_loop_tick` (`c850.h`, also `quant_loops`' drift correction) → `loop_resize_state4`: follow which out is in effect, send a waiting halving; then stock |
+| `loop_resize_tick` | `0x0C0D7B98` (`keys_state4_looping` `0x0C0E0F34`) | `0x0C0D79A6` | the shared state-4 tick `c850_loop_tick` (`c850.h`, also `quant_loops`' block-loop tick) → `loop_resize_state4`: follow which out is in effect, send a waiting halving; then stock |
 | `loop_resize_memory` | `0x0C0D9714` (`memory_button` `0x0C0D4172`) | `0x0C0D9664` | `loop_resize_memory_button`: the out record holds the effective out during MEMORY |
 
 Every word, its readers and the routines called are outside the boot-critical closure

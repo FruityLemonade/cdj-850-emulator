@@ -1369,7 +1369,7 @@
         {
           "address": "0c0158d4",
           "type": "PLATE",
-          "text": "isr_loop_out_reached(play_sector, out_frame, 0): loop-out test of irq7_dspdreq_isr, called only through ISR pool words 0x0C07730C (forward path) and 0x0C076C74 (reverse path). When it returns true the ISR wraps in the ring with no reread: pcm_play_sector = loop-in record ring sector (u16 0x0C7F64A8), pcm_read_ptr 0x0C7F6470 = ring base + sector*0x930 (reverse: + 0x92C), unless loop_in_reread_needed asks for a ring restart. Hook point for an in-ring jump (slip / loop-roll exit): a pool redirect here, behind the service gate, runs in ISR context once per 84-frame block. [static]"
+          "text": "isr_loop_out_reached(play_sector, out_frame, 0): loop-out test of irq7_dspdreq_isr, called only through ISR pool words 0x0C07730C (forward path) and 0x0C076C74 (reverse path). Forward (0x0C015A74, mode byte 0x0C7F66C8 == 1): true when ring_sector_to_frame(play_sector) > out_frame (same track), so a stock loop plays its out frame's sector and wraps on entering the next; at frame == out it stores play_sector + 1 in 0x0C7F6784 (read only by the loop-segment remap 0x0C015D8E). When it returns true the ISR wraps in the ring with no reread: pcm_play_sector = loop-in record ring sector (u16 0x0C7F64A8), pcm_read_ptr 0x0C7F6470 = ring base + sector*0x930 (reverse: + 0x92C), unless loop_in_reread_needed asks for a ring restart. Mods: the forward word goes to the shared dispatcher c850_loop_out_isr (loop_roll_out_hook, quant_loops_out_hook = block-precise loop wraps, then this test), service-gated, ISR context once per 84-sample block. [static + emu]"
         },
         {
           "address": "0c019006",
@@ -1404,7 +1404,7 @@
         {
           "address": "0c02caf4",
           "type": "PLATE",
-          "text": "Browse reply loop over 0x114-byte client cache entries. The entry ID is u32 at +0, the type is u16 at +4, and the UTF-16 title starts at +0x14. The call at 0x0C02CB04 passes the title to the display reply appender. The browse mod replaces only this call\u2019s title pointer."
+          "text": "Browse reply loop over 0x114-byte client cache entries. The entry ID is u32 at +0, the type is u16 at +4, and the UTF-16 title starts at +0x14. The call at 0x0C02CB04 passes the title to the display reply appender. The browse mod replaces only this call’s title pointer."
         },
         {
           "address": "0c038642",
@@ -1799,7 +1799,7 @@
         {
           "address": "0c07715e",
           "type": "EOL",
-          "text": "Loads pool 0x0C07730C (isr_loop_out_reached): the forward path's loop-out test, once per block while a loop plays. loop_roll redirects the word (service-gated) to count blocks for the roll's shadow playhead and land there on release. [static + emu]"
+          "text": "Loads pool 0x0C07730C (isr_loop_out_reached): the forward path's loop-out test, once per block while a loop plays; pcm_read_ptr already names the next block. loop_roll and quant_loops redirect the word (service-gated) to the shared dispatcher c850_loop_out_isr: the roll's shadow count and landing, then quant_loops' block-precise loop wrap (84-sample blocks from the grid), then stock. [static + emu]"
         },
         {
           "address": "0c077570",
@@ -2510,6 +2510,26 @@
           "address": "0c9d0b14",
           "type": "PRE",
           "text": "TX 0x80 byte 11: bits 0..4 header status code (display_stage_header_status), bits 5..7 per-row flags for rows 1..3 (display_set_row_flag)."
+        },
+        {
+          "address": "0c015a74",
+          "type": "PRE",
+          "text": "isr_loop_out_reached forward test: frame = ring_sector_to_frame(sector); if frame == out: 0x0C7F6784 = sector + 1; return frame(sector) > out. [static]"
+        },
+        {
+          "address": "0c0770d0",
+          "type": "PRE",
+          "text": "irq7_dspdreq_isr: the out frame later passed to isr_loop_out_reached (stack +0x10) is *0x0C7F64B0, the applied out record. [static]"
+        },
+        {
+          "address": "0c0e606e",
+          "type": "EOL",
+          "text": "Loads pool 0x0C0E62CC (audio_send_cmd), read only in this state-4 resize sender of auto_beat_loop_set (11 readers 0x0C0E606E..0x0C0E623A): audio_send_cmd(6, 0, *D1C0, 1, ...) after FUN_0C00A4CC wrote the request 0x0C7F64DC. quant_loops_resize redirects it (service-gated) so a resize (BEAT n in a loop, loop_resize) gets the block loop of the new length. Outside the boot-critical closure. [static + emu]"
+        },
+        {
+          "address": "0c0e602e",
+          "type": "EOL",
+          "text": "Loads pool 0x0C0E62BC (FUN_0C00A4CC; also read at 0x0C0E61B4): the state-4 resize sender calls FUN_0C00A4CC(*D1C0, 0), which writes the out request 0x0C7F64DC (the feeder loops to it) and re-plans the ring; the cmd 6 resize send (pool 0x0C0E62CC) follows only when it returns 1. In the emulator a BEAT 1 resize left the request at the stock frame with no send through 0x0C0E62CC. quant_loops_resize_req redirects the word (service-gated). Outside the boot-critical closure. [static + emu]"
         }
       ],
       "labels": [
@@ -3288,6 +3308,10 @@
         {
           "address": "0c0bb804",
           "name": "db_finalize_left_buffer_pool"
+        },
+        {
+          "address": "0c7f6784",
+          "name": "loop_out_next_sector"
         }
       ]
     }
