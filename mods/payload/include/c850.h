@@ -97,7 +97,7 @@ static inline s32 c850_effective_pitch(void)
 #define C850_DB_RECORDS         0x0C9D44D4u
 #define C850_DB_RECORD_SIZE     0x864u
 #define C850_DB_RECORD_ID(rec)  C850_U32((rec) + 0x10)
-#define C850_DB_RECORD_DRIVE(rec) C850_U16((rec) + 0x16)
+#define C850_DB_RECORD_TRACK_COUNT(rec) C850_U16((rec) + 0x16)  /* tracks in the list it loaded from [emu] */
 #define C850_DB_RECORD_TITLE(rec) ((rec) + 0x38u)
 #define C850_DB_USB_DRIVE       3u
 #define C850_DB_LOAD_SORT_MENU  0x0C0750D8u

@@ -1786,7 +1786,7 @@
         {
           "address": "0c073f7c",
           "type": "PLATE",
-          "text": "db_record_of_track(track): the DB record of a loaded track in db_track_records (3 slots of 0x864 bytes at 0x0C9D44D4: +0 == 3 in use, +0x14 s16 track number), only on USB (active source 2, 0x0C1E109C == 2). Record: +0x18 BPM valid (1), +0x1C BPM x 100, +0x38 title, +0xB8 artist, +0x138 album, +0x428 genre, +0x4A8 comment, +0x5A8 rating, +0x630 label, +0x730 key text, +0x851 INFO item count, +0x852.. item codes [static + emu]. Looks up a loaded record by display track number. A valid DB record has the rekordbox content ID at +0x10, the display track number at +0x14 and the drive at +0x16 (3 = USB)."
+          "text": "db_record_of_track(track): the DB record of a loaded track in db_track_records (3 slots of 0x864 bytes at 0x0C9D44D4: +0 == 3 in use, +0x14 s16 track number), only on USB (active source 2, 0x0C1E109C == 2). Record: +0x18 BPM valid (1), +0x1C BPM x 100, +0x38 title, +0xB8 artist, +0x138 album, +0x428 genre, +0x4A8 comment, +0x5A8 rating, +0x630 label, +0x730 key text, +0x851 INFO item count, +0x852.. item codes [static + emu]. Looks up a loaded record by display track number. A valid DB record has the rekordbox content ID at +0x10, the display track number at +0x14 and at +0x16 the track count of the list it was loaded from (not a drive) [emu]."
         },
         {
           "address": "0c074804",

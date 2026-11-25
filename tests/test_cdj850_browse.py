@@ -55,7 +55,7 @@ def test_played_threshold_pause_track_identity_and_remount():
     mem.write(0x0CE6D0FD, b"\x01")            # BROWSE
     mem.put32(0x0CE6C940, 0x80000)            # 1x DSP speed
     mem.put32(RECORD + 0x10, 1)
-    mem.write(RECORD + 0x16, b"\0\3")        # USB database drive
+    mem.write(RECORD + 0x16, b"\0\2")        # loaded from a two-track list
     mem.write(RECORD + 0x38, b"SAME\0")
     mem.write(MATRIX, b"\x25\x5a\0\0\x04SAME")
     mem.put32(ROW, 1)

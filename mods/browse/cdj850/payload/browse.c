@@ -116,9 +116,10 @@ void browse_playback_tick(u32 *regs, u32 *sp)
         previous_id = 0;
         return;
     }
+    /* db_record_of_track only returns records of the USB source. Record
+     * +0x16 is the size of the list the track was loaded from, not a drive. */
     record = c850_db_record_of_track(C850_INFO_TRACK);
-    id = record && C850_DB_RECORD_DRIVE(record) == C850_DB_USB_DRIVE
-         ? C850_DB_RECORD_ID(record) : 0;
+    id = record ? C850_DB_RECORD_ID(record) : 0;
     if (id && id == previous_id && elapsed < PLAYED_MS) {
         slot = history_slot(id);
         if (slot && slot->elapsed < PLAYED_MS) {
