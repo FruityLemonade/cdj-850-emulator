@@ -70,10 +70,15 @@ def ms_to_frames(ms):
 class Grid:
     """The grid window (entries (beat_in_bar, bpm100, ms) of window 0) and the base BPM word."""
 
-    def __init__(self, entries, base=None, total=None):
+    def __init__(self, entries, base=None, total=None, blocks=False):
+        """blocks: quant_loops is built, so grid outs are its block loops' stock out frames."""
         self.e = entries
         self.total = len(entries) if total is None else total
         self.base = (entries[0][1] + 5) // 10 if base is None else base
+        self.quant = None
+        if blocks:
+            import test_cdj850_quant_loops as tq
+            self.quant = tq.Grid(entries, total=self.total, base=self.base)
 
     @property
     def n(self):
@@ -107,11 +112,18 @@ class Grid:
         i = self.at_or_before(loop_in)
         if i is None or not self.ok(i):
             return None
-        s = next((s for s in range(16) if ms_to_frames(self.grid_ms(i, s)) == loop_in), 16)
+        # quant_loops' block loops: the frame of the in block; older loops: the rounded frame
+        s = next((s for s in range(16) if ((self.grid_ms(i, s) * 21 + 20) // 40) // 7 == loop_in), None)
+        if s is None:
+            s = next((s for s in range(16) if ms_to_frames(self.grid_ms(i, s)) == loop_in), 16)
         return i, s
 
     def out(self, loop_in, q):
-        """in + the grid duration rounded once (the first pass within half a frame of it)."""
+        """in + the grid duration rounded once (the first pass within half a frame of it); with
+        quant_loops, its block loop's out frame (quant_loops_q_out) when it has one."""
+        f = self.quant.q_out(loop_in, q) if self.quant else 0
+        if f:
+            return f
         i, s = self.anchor(loop_in)
         b = s if s < 16 else 0
         return loop_in + ms_to_frames(self.grid_ms(i, b + q) - self.grid_ms(i, b))
@@ -227,7 +239,7 @@ ALL_MODS = ["autostandby", "bpm999", "bpm999grid", "bpm999range", "bpm_probe", "
             "payload_demo", "payload_demo_redirect", "tempowide", "tempowidemath1", "tempowidemath2",
             "bpm_decimals", "bpm_decimals_grid", "quant_loops", "quant_loops_auto_send",
             "quant_loops_auto_send2", "quant_loops_auto_keep", "quant_loops_loop_in", "quant_loops_loop_out",
-            "quant_loops_loop_out2"]
+            "quant_loops_loop_out2", "quant_loops_tick", "quant_loops_blocks"]
 
 
 @needs_main
@@ -653,14 +665,6 @@ def _free_port():
     return port
 
 
-def _drift_gdb(syms):
-    """(gdb port, address of quant_loops_drift_on) when the payload has the drift correction:
-    this test checks exact out frames, so it runs with the correction off (it moves the out of
-    every pass by up to a frame; tests/test_cdj850_loop_drift.py covers it)."""
-    a = payloadbuild.lookup(syms, "quant_loops_drift_on") if syms else None
-    return (_free_port(), a) if a else (None, None)
-
-
 def drive(stick, flash=None, syms=None, stock=False, tracks=TITLES, log=None):
     """Boot, play each track of `tracks` and run the scenarios; returns {title: {scenario: values}}.
     stock=True presses the BEAT button of the same length instead of CALL in the press sequence
@@ -799,17 +803,10 @@ def drive(stick, flash=None, syms=None, stock=False, tracks=TITLES, log=None):
     # the playlist lists NOGRID, QVAR, Q12796, Q128: load the first, or rotate to Q128 alone
     script = tr.LOAD_SCRIPT if tracks != ("Q128",) else \
         "6000:usb:200,7600:rot+2,9000:enter:200,10600:rot+3,12000:enter:200"
-    port, drift_on = _drift_gdb(syms)
-    with tr.Deck(stick, flash=flash, script=script, log=log, gdb_port=port) as d:
-        if port:
-            g = tr.Gdb(port)
-            g._send("c")
+    with tr.Deck(stick, flash=flash, script=script, log=log) as d:
         start = 0
         while not all(x in res for x in tracks):
             i, line = d.wait_line("mode=0x0a", timeout=300, start=start)
-            if port:
-                assert g.poke32(drift_on, 0) == "OK"
-                port = None
             start = i + 1
             m = re.search(r"attr=\S+ \[([^\]]*)\]", line)
             title = m.group(1) if m else ""
@@ -915,14 +912,14 @@ def drive(stick, flash=None, syms=None, stock=False, tracks=TITLES, log=None):
         ({"_restarts": res["_restarts"]} if "_restarts" in res else {})
 
 
-def check_track(title, t):
-    """Assertions for one track's results (shared by the live tests)."""
+def check_track(title, t, blocks=False):
+    """Assertions for one track's results (shared by the live tests); blocks: quant_loops built."""
     a = t["auto4"]
     assert a["state"] == 4 and a["active"] == 1, (title, a)
     entries = [tuple(e) for e in t["grid"]["entries"]]
     g = None
     if title != "NOGRID":
-        g = Grid(entries, base=a["base"], total=t["grid"]["count"])
+        g = Grid(entries, base=a["base"], total=t["grid"]["count"], blocks=blocks)
         assert g.anchor(a["in"]) is not None, (title, a)        # the grid gate holds
     out = a["req"]
     assert a["watch"]["min"] >= a["in"] and a["watch"]["max"] <= out, (title, a)
@@ -949,11 +946,12 @@ def check_track(title, t):
     return out
 
 
-def check_extras(title, t):
+def check_extras(title, t, blocks=False):
     g = None
     if title != "NOGRID":
         a = t["auto4"]
-        g = Grid([tuple(e) for e in t["grid"]["entries"]], base=a["base"], total=t["grid"]["count"])
+        g = Grid([tuple(e) for e in t["grid"]["entries"]], base=a["base"], total=t["grid"]["count"],
+                 blocks=blocks)
     # the memory loop: armed by CALL (state 6), PLAY loops it, CALL < halves it
     mc, mp, m = t["memloop_cued"], t["memloop_play"], t["memloop"]
     assert mc["state"] == 6 and mc["active"] == 1 and mp["state"] == 4, (title, mc, mp)
@@ -1020,19 +1018,19 @@ def test_live_loop_resize_all_tracks(tmp_path):
 @needs_toolchain
 @pytest.mark.skipif(not FLASH.is_file(), reason="extract/cdj850/flash_cdj850.bin is not present")
 def test_live_with_every_branch_mod(tmp_path):
-    """With quant_loops (loops on the grid) and every other mod: exact grid frames."""
+    """With quant_loops (block loops on the grid) and every other mod: the block loops' frames."""
     res = _live(tmp_path, ALL_MODS + MODS, ["bpm_decimals", "loop_resize", "payload_demo", "quant_loops"],
                 TITLES)
     assert set(res) == set(TITLES)
     for title, t in res.items():
-        out = check_track(title, t)
-        check_extras(title, t)
+        out = check_track(title, t, blocks=True)
+        check_extras(title, t, blocks=True)
         if title != "NOGRID":
             a = t["auto4"]
-            g = Grid([tuple(e) for e in t["grid"]["entries"]], base=a["base"], total=t["grid"]["count"])
-            i = g.at_or_before(a["in"])
-            assert g.f(i) == a["in"], (title, a)               # quant_loops put the in on a beat
-            # 4 -> 2 -> 1 -> 2 -> 4 -> 8 beats: the grid frames of beat i + n
-            assert [v["want"] for v in t["seq"]] == [g.f(i + 2), g.f(i + 1), g.f(i + 2), g.f(i + 4),
-                                                     g.f(i + 8)], (title, t["seq"])
-            assert out == g.f(i + 8)
+            g = Grid([tuple(e) for e in t["grid"]["entries"]], base=a["base"], total=t["grid"]["count"],
+                     blocks=True).quant
+            assert any(g.pt_in(i, 0) == a["in"] for i in range(g.n)), (title, a)   # the in on a beat
+            # 4 -> 2 -> 1 -> 2 -> 4 -> 8 beats: the stock outs of the block loops from that beat
+            assert [v["want"] for v in t["seq"]] == [g.q_out(a["in"], q) for q in (32, 16, 32, 64, 128)], \
+                (title, t["seq"])
+            assert out == g.q_out(a["in"], 128)

@@ -11,8 +11,8 @@ c850_ui_set_flags rewrites it as well as the flash record.
   without the file keeps the flash flags; a valid file overrides them; a change rewrites the file
   ("w+", 16 bytes) and the flash record; with a 30-character HISTORY name the file still saves; a
   bad file is ignored;
-* live (QEMU, writable stick): QUANTIZE DRIFT OFF in UTILITY writes MODSET.DAT; a deck with fresh
-  flash and the same stick shows QUANTIZE DRIFT OFF (read from the stick at mount).
+* live (QEMU, writable stick): WAVE PLAYHEAD CENTER in UTILITY writes MODSET.DAT; a deck with fresh
+  flash and the same stick shows WAVE PLAYHEAD CENTER (read from the stick at mount).
 """
 import shutil
 import struct
@@ -292,20 +292,20 @@ def test_live_settings_travel_with_the_stick(tmp_path):
     (tmp_path / "flash2.bin").write_bytes(fresh)
     assert _stick_file(stick, "/PIONEER/MODSET.DAT") is None
 
-    script = "6000:usb:200,14000:menu:1700,17000:rot+8,18500:enter:200"
+    script = "6000:usb:200,14000:menu:1700,17000:rot+9,18500:enter:200"
     with tr.Deck(stick, flash=tmp_path / "flash1.bin", script=script, writable=True) as d:
         written = d.usb
-        d.wait_line("[QUANTIZE DRIFT]", "[ON]", timeout=120)
-        d.wait_line("[QUANTIZE DRIFT]", "[OFF]", timeout=60)
+        d.wait_line("[WAVE PLAYHEAD]", "[LEFT 1/3]", timeout=120)
+        d.wait_line("[WAVE PLAYHEAD]", "[CENTER]", timeout=60)
         d.wait_line("input release enter", timeout=60)
         time.sleep(1)
         assert (d.rw(sym("loads")), d.rw(sym("saves")), d.rw(sym("errors"))) == (0, 1, 0)
-        assert d.rb(SETTINGS + 0x21) == 0x52
+        assert d.rb(SETTINGS + 0x21) == 0x51
     carried = tmp_path / "carried.img"
     shutil.copyfile(written, carried)
-    assert _stick_file(carried, "/PIONEER/MODSET.DAT") == _file(DRIFT_OFF)
+    assert _stick_file(carried, "/PIONEER/MODSET.DAT") == _file(WAVE_CENTER)
 
-    # another deck (fresh flash: drift on) with that stick: the setting comes from the stick
-    with tr.Deck(carried, flash=tmp_path / "flash2.bin", script="6000:usb:200,14000:menu:1700,17000:rot+8") as d:
-        d.wait_line("[QUANTIZE DRIFT]", "[OFF]", timeout=120)
+    # another deck (fresh flash: left 1/3) with that stick: the setting comes from the stick
+    with tr.Deck(carried, flash=tmp_path / "flash2.bin", script="6000:usb:200,14000:menu:1700,17000:rot+9") as d:
+        d.wait_line("[WAVE PLAYHEAD]", "[CENTER]", timeout=120)
         assert d.rw(sym("loads")) == 1 and d.rb(SETTINGS + 0x21) == 0

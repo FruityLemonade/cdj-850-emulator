@@ -63,7 +63,7 @@ boot-critical closure (mods/bootcrit.py; tests/test_cdj850_quant_loops.py).
 """
 from sigpatch import Anchor, Mod, PoolRedirect
 
-PAYLOAD_COMMON = ('c850_ui',)
+PAYLOAD_COMMON = ('c850_ui', 'c850_loop_out')
 
 # Tail of display_stage_bpm, as in mods/bpm999/cdj850/patch.py.
 BPM_SITE = dict(
@@ -156,9 +156,16 @@ MODS = {
     # 0x0C0D79A6: mov.l @(0x0C0D7B98),r3; jmp @r3; lds.l @r15+,pr (state 4 ->
     # keys_state4_looping), the four handlers after it, and the jsr/n of the default.
     # The same word and symbol as loop_resize_tick (the shared tick, c850.h).
-    'quant_loops_drift': _redirect(
-        'quant loops: loop drift correction (per-pass out on the grid length, state-4 tick)',
+    'quant_loops_tick': _redirect(
+        'quant loops: which loop the block path owns (memory, hot-cue, RELOOP loops; state-4 tick)',
         [0xD37C, 0x432B, 0x4F26, 0xD37B, 0x432B, 0x4F26, 0xD37B, 0x432B, 0x4F26, 0xD37A, 0x432B,
          0x4F26, 0xD37A, 0x432B, 0x4F26, 0xD379, 0x434B], 0,
         0x0C0E0F34, 'c850_loop_tick'),
+    # 0x0C07715A: mov.w @r7,r4; mov #0,r6; mov.l @(0x0C07730C),r13; jsr @r13;
+    # mov.l @(16,r15),r5; extu.b r0,r14 (irq7_dspdreq_isr, the forward loop-out test).
+    # The same word and symbol as loop_roll (the shared dispatcher, c850_loop_out.c).
+    'quant_loops_blocks': _redirect(
+        'quant loops: block-precise loop wraps on the grid (IRQ7 loop-out test)',
+        [0x6471, 0xE600, 0xDD6B, 0x4D0B, 0x55F4, 0x6E0C], 2,
+        0x0C0158D4, 'c850_loop_out_isr'),
 }
