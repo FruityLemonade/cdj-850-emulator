@@ -5,12 +5,13 @@ Default off. Adds a hot-cue mode to the beat-loop buttons, backed by the rekordb
 
 | On the deck | Hot-cue mode on | Hot-cue mode off |
 |---|---|---|
-| hold BEAT SELECT, press RELOOP | toggles the mode (saved to flash, survives a restart); the display shows `HOT CUE ON` / `HOT CUE OFF` for 1.5 s | same |
+| UTILITY > `HOT CUES` | `ON` (default, saved to USB): enables hot cues | `OFF`: disables hot cues and `BEAT SELECT + RELOOP` |
+| hold BEAT SELECT, press RELOOP | arms/disarms hot-cue mode in RAM (not saved, zero flash/USB writes); displays `HOT CUE ON` / `HOT CUE OFF` for 1.5 s | same (when UTILITY `HOT CUES` is `ON`) |
 | BEAT SELECT alone / RELOOP alone | stock (fraction mode / RELOOP-EXIT) | stock |
-| BEAT 1 / 2 / 4, slot set | jump to hot cue A / B / C | stock beat loops |
+| BEAT 1 / 2 / 4, slot set | jump to hot cue A / B / C and auto-play (even from paused or cued state) | stock beat loops |
 | BEAT 1 / 2 / 4, slot empty | record the position into the slot (the nearest beat with quantize on, below) and write the ANLZ | stock |
 | hold BEAT 8, press 1 / 2 / 4 | delete the slot and write the ANLZ | stock |
-| beat LEDs 1 / 2 / 4 | lit = set, blinking = empty; 8 lit | stock |
+| beat LEDs 1 / 2 / 4 | lit = set, blinking = empty; BEAT 8 blinks while active | stock |
 
 - **Jump.** Two ways, the fast one first:
   - **Instant (in the ring).** Playing (not in a loop), a point hot cue whose audio is still in
@@ -21,11 +22,11 @@ Default off. Adds a hot-cue mode to the beat-loop buttons, backed by the rekordb
     The main CUE point stays where it was. `hot_cues_instants` counts these,
     `hot_cues_instant_misses` the point jumps that were too far and took the CALL path;
     payload word `hot_cues_instant` (1) = 0 turns it off.
-  - **CALL (everything else).** Loop slots, a deck that is paused, cued or looping, and cues
+  - **CALL (everything else).** Loop slots, a deck that is looping, and cues
     outside the ring go through the stock CALL path (`cue_call_prev_next`) with the hot cue as
-    the selection, exactly as a memory cue would be called. Playing (or a playing loop) stays
-    playing: after the jump the payload gives the state-6 handler PLAY presses until the deck
-    plays. Paused or cued stays cued at the hot cue. Jumping leaves a playing loop, as CDJ hot
+    the selection, exactly as a memory cue would be called. Playing, paused, and cued decks all
+    auto-play: after the jump the payload gives the state-6 handler PLAY presses until the deck
+    plays. Jumping leaves a playing loop, as CDJ hot
     cues do. A hot-cue CALL **prefills 180 sectors (2.4 s of audio) instead of the stock 400
     (5.33 s)** before PLAY is taken (`hot_cues_prefill`, payload word, 0 = stock, smaller
     values are raised to 180), see *Prefill* below.

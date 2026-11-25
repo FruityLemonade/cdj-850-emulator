@@ -4,10 +4,11 @@ Default off. Only on USB tracks whose beat grid gave the deck's tempo (rekordbox
 without a grid (BPM counter, CD, unanalysed file) every loop is exactly stock.
 
 ## Quantize on/off on the deck
-**Hold BEAT SELECT, press LOOP IN.** That switches quantize; the display shows `QUANTIZE ON` or
-`QUANTIZE OFF` for 1.5 s (in the playing view on the title line, in the browser/INFO views as a
-single middle line), then the rows come back. The setting is saved in flash and survives a
-restart; a fresh deck (or a factory reset / HISTORY name change) starts with quantize **on**.
+**UTILITY > `QUANTIZE`** (`ON`/`OFF`, saved to flash / USB) enables or disables quantize persistently.
+**Hold BEAT SELECT, press LOOP IN.** While UTILITY `QUANTIZE` is `ON`, that temporarily arms or
+disarms quantize in RAM only (zero flash/USB writes mid-playback; starts armed on a fresh boot),
+showing `QUANTIZE ON` or `QUANTIZE OFF` for 1.5 s. When UTILITY `QUANTIZE` is `OFF`, quantize stays
+off and the `BEAT SELECT` combo cannot turn it on.
 
 - Quantize off: every loop path below is stock, and `loop_resize` resizes in frames instead of
   on the grid.
@@ -64,15 +65,15 @@ Interaction with stock features (checked in the emulator, see the test):
 - LOOP OUT pressed past the snapped out (nearest beat behind the playhead): the loop closes at
   once and plays from in, as stock does for its own out.
 
-## Quantize value in UTILITY
-**Hold MENU/UTILITY, turn past VERSION No. to `QUANTIZE`, press the selector** to step
-`1 BEAT` (default) → `1/2 BEAT` → `1/4 BEAT`. It sets the grid step of every quantized action:
+## Quantize items in UTILITY
+**Hold MENU/UTILITY, turn past VERSION No.:**
+- **`QUANTIZE`** (`ON` default / `OFF`, saved): enables or disables quantize persistently.
+- **`QUANTIZE SIZE`** (`1 BEAT` default → `1/2 BEAT` → `1/4 BEAT`, saved; hidden when `QUANTIZE` is `OFF`): sets the grid step of every quantized action:
 LOOP IN, LOOP OUT, the in of an auto beat loop (whole-beat loops start on the nearest point and
 are N beats of grid time long from there), a new `hot_cues` point cue, and the `loop_roll`
-release. Fraction loops (BEAT SELECT) keep snapping to multiples of their own length. Quantize
-on/off stays on BEAT SELECT + LOOP IN (the `QUANTIZE ON/OFF` UTILITY item of earlier builds is
-gone). The value is kept in the stick's `MODSET.DAT` (bits 16..17 of the flags word) and in RAM
-without a stick, like `STANDBY TIME`.
+release. Fraction loops (BEAT SELECT) keep snapping to multiples of their own length. `BEAT SELECT + LOOP IN`
+arms/disarms quantize in RAM during a performance without wearing out USB drives or flash. The UTILITY
+values persist in `/PIONEER/MODSET.DAT` and flash/RAM.
 
 ## UTILITY QUANTIZE DRIFT is gone
 Earlier builds corrected loop drift a frame at a time (`quant_loops_drift`, UTILITY

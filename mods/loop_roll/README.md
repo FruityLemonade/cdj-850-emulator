@@ -2,21 +2,22 @@
 
 Default off. **Prototype**: emulator-tested only, never run on a deck.
 
-| On the deck | Slip mode on | Slip mode off (default after power-on) |
+| On the deck | Slip mode armed | Slip mode disarmed (default after power-on) |
 |---|---|---|
-| hold BEAT SELECT, press LOOP OUT | toggles slip mode (not saved); the display shows `SLIP ON` / `SLIP OFF` for 1.5 s | same |
+| UTILITY > `SLIP MODE` | `ON` (default, saved to USB): enables slip mode | `OFF`: disables slip mode, `BEAT SELECT + LOOP OUT`, and momentary `REV` hold |
+| hold BEAT SELECT, press LOOP OUT | arms/disarms slip mode in RAM (not saved, zero flash/USB writes); `VINYL` jog indicator flashes while active; displays `SLIP ON` / `SLIP OFF` for 1.5 s | same (when UTILITY `SLIP MODE` is `ON`) |
 | hold BEAT 1 / 2 / 4 / 8 while playing | the stock auto beat loop plays while the button is held (with `quant_loops`: on the grid, wrapping to the block); another beat button while held resizes it | stock beat loop |
 | release every beat button | playback lands where it would be had the loop never played, and the loop is left | stock: the loop keeps playing |
-| press REV (reverse) while playing, then REV again | track reverses while held/latched; on returning to forward playback, jumps to the shadow playhead | stock reverse |
+| hold REV >= 1.5 s while playing | slips during reverse and jumps to the shadow on release | momentary slip-reverse while held (>= 1.5 s), then exits reverse and jumps to the shadow on release (VINYL indicator flashes) |
+| short press REV (< 1.5 s) while playing | track reverses while held/latched; on returning to forward playback, jumps to the shadow playhead | normal non-slip reverse |
 | touch jog top in VINYL mode (scratch / backspin), then release | platter scratches or spins back; once the release ramp ends, playback jumps to the shadow playhead | stock VINYL scratch |
 | pause with PLAY/PAUSE, then press PLAY | deck pauses; on PLAY (and after any VINYL ramp), playback jumps to the shadow playhead | stock pause |
-| release / return with quantize on (and `quant_loops`, a rekordbox grid) | playback waits until the next quantize point of the shadow (UTILITY `QUANTIZE`: 1, 1/2 or 1/4 beat) and lands there; a point at most 10 blocks (19 ms) behind counts as reached and lands at once; resuming a roll/gesture before it lands keeps slipping | same |
+| release / return with quantize on (and `quant_loops`, a rekordbox grid) | playback waits until the next quantize point of the shadow (UTILITY `QUANTIZE SIZE`: 1, 1/2 or 1/4 beat) and lands there; a point at most 10 blocks (19 ms) behind counts as reached and lands at once; resuming a roll/gesture before it lands keeps slipping | same |
 
 BEAT SELECT alone still switches the 1/16–1/2 beat fractions, so rolls of 1/16 to 8 beats are
 possible. With `hot_cues` in hot-cue mode the beat buttons stay hot cues and nothing rolls (reverse,
-VINYL scratch, and pause still slip when slip mode is on).
-Slip mode has no UTILITY item (the `LOOP ROLL` item of earlier builds is gone, and its saved OFF
-bit is ignored): BEAT SELECT + LOOP OUT is the only switch.
+VINYL scratch, and pause still slip when slip mode is active).
+UTILITY > `SLIP MODE` enables/disables slip mode persistently (default `ON`, saved to `MODSET.DAT`); `BEAT SELECT + LOOP OUT` arms/disarms slip mode in RAM without flash or USB writes, flashing the jog `VINYL` indicator while active.
 
 ## How it works
 

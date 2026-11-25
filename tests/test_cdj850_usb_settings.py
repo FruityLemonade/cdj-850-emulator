@@ -256,6 +256,41 @@ def test_high_flag_bits_and_standby_index_roundtrip_on_usb(payload):
     assert _call(p, mem2, "c850_ui_standby_index") == 3
 
 
+@needs_toolchain
+def test_beat_select_combos_never_write_to_usb_or_flash():
+    p = payloadbuild.build(["quant_loops", "hot_cues", "loop_roll"], "cdj850")
+    mem = _mem(p, file=_file(0))
+    mem.add(0x0CE6CA00, bytes(0x40))
+    mem.add(0x0CE6D0E0, bytes(0x100))
+    mem.add(0x0CE49F50, bytes(8))
+    mem.add(0x0C1E1080, bytes(0x20))
+    _stub(mem, 0x0C0DD492, "rts\nmov #0,r0\n")
+    _call(p, mem, "c850_ui_usb_mount", CTX, 0)
+
+    def send_keys(k0):
+        mem.write(0x0CE6CA08, struct.pack(">HHH", k0, 0, 0))
+        _call(p, mem, "c850_ui_keys")
+
+    # BEAT SELECT + LOOP IN, RELOOP, LOOP OUT toggle RAM state with zero USB/flash writes
+    for combo in (0x1000, 0x0400, 0x0800):
+        send_keys(0x0040)
+        send_keys(0x0040 | combo)
+        send_keys(0)
+    assert _counter(p, mem, "saves") == 0
+    assert _calls(mem, 0) == 0
+    assert _call(p, mem, "c850_ui_quantize") == 0
+    assert _call(p, mem, "c850_ui_hot_cues_active") == 1
+
+    # Turning QUANTIZE or HOT CUES OFF in UTILITY saves to drive and prevents BEAT SELECT arming
+    _call(p, mem, "c850_ui_set_flag", 0x0800, 1)          # HOT CUES OFF
+    assert _counter(p, mem, "saves") == 1
+    _call(p, mem, "c850_ui_set_hot_cues_armed", 0)
+    send_keys(0x0040)
+    assert send_keys(0x0040 | 0x0400) is None
+    assert _call(p, mem, "c850_ui_hot_cues_active") == 0
+    assert _counter(p, mem, "saves") == 1
+
+
 # ---- live ----
 
 def _stick_file(image, path):
@@ -292,7 +327,7 @@ def test_live_settings_travel_with_the_stick(tmp_path):
     (tmp_path / "flash2.bin").write_bytes(fresh)
     assert _stick_file(stick, "/PIONEER/MODSET.DAT") is None
 
-    script = "6000:usb:200,14000:menu:1700,17000:rot+9,18500:enter:200"
+    script = "6000:usb:200,14000:menu:1700,17000:rot+10,18500:enter:200"
     with tr.Deck(stick, flash=tmp_path / "flash1.bin", script=script, writable=True) as d:
         written = d.usb
         d.wait_line("[WAVE PLAYHEAD]", "[LEFT 1/3]", timeout=120)
@@ -306,6 +341,6 @@ def test_live_settings_travel_with_the_stick(tmp_path):
     assert _stick_file(carried, "/PIONEER/MODSET.DAT") == _file(WAVE_CENTER)
 
     # another deck (fresh flash: left 1/3) with that stick: the setting comes from the stick
-    with tr.Deck(carried, flash=tmp_path / "flash2.bin", script="6000:usb:200,14000:menu:1700,17000:rot+9") as d:
+    with tr.Deck(carried, flash=tmp_path / "flash2.bin", script="6000:usb:200,14000:menu:1700,17000:rot+10") as d:
         d.wait_line("[WAVE PLAYHEAD]", "[CENTER]", timeout=120)
         assert d.rw(sym("loads")) == 1 and d.rb(SETTINGS + 0x21) == 0

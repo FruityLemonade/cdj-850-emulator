@@ -40,11 +40,9 @@ for scratch and reverse; making that a choice is cheap once the engine exists.
 
 ## Controls
 
-The BEAT SELECT combos are taken (RELOOP: hot cues, LOOP IN: quantize, LOOP OUT: roll mode).
-Recommendation: **turn roll mode into slip mode.** BEAT SELECT + LOOP OUT toggles `SLIP ON` /
-`SLIP OFF`; with slip on, beat buttons roll *and* scratch, reverse and pause slip. One mode,
-one switch, no new combo, and it matches how Pioneer's SLIP button behaves. The beat-button LEDs
-or a dot-matrix tag (`SLIP` in the title row, as `bpm_lock` shows `LOCK`) show the mode.
+- **UTILITY > `SLIP MODE`** (`ON`/`OFF`, saved): master enable/disable for slip mode (and `BEAT SELECT + LOOP OUT`). When set to `OFF`, slip mode and `BEAT SELECT + LOOP OUT` are disabled.
+- **`BEAT SELECT + LOOP OUT`**: arms or disarms slip mode in RAM (`SLIP ON` / `SLIP OFF`, zero flash/USB writes mid-playback; starts disarmed at boot). When active, the jog display's **`VINYL` indicator** (`S[1]`/`S[0xF]` bit `0x18`, via gated pool `0x0C063124`) blinks at 300 ms intervals.
+- **`REV` hold >= 1.5 s**: pressing and holding `REV` for 1.5 s starts momentary slip-reverse until released even when slip mode isn't armed (short `< 1.5 s` `REV` presses stay normal non-slip reverse unless slip mode is armed). With slip mode armed, all beat rolls, `REV`, `VINYL` scratch, and pause slip back to the shadow playhead.
 
 ## The shadow clock
 

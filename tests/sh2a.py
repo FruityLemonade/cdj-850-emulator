@@ -53,6 +53,7 @@ class Sh2a:
         self.mem = mem
         self.r = [0] * 16
         self.t = 0
+        self.sr = 0
         self.pr = self.RET
         self.mach = self.macl = 0
         self.steps = 0
@@ -244,6 +245,8 @@ class Sh2a:
                 r[n] = self.t ^ 1                               # movrt (SH-2A)
             elif op & 0xF0FF in (0x000A, 0x001A, 0x002A):       # sts mach/macl/pr,Rn
                 r[n] = (self.mach, self.macl, self.pr)[op >> 4 & 3]
+            elif op & 0xF0FF == 0x0002:                         # stc sr,Rn
+                r[n] = (self.sr & ~1) | self.t
             elif lo == 7:                                       # mul.l Rm,Rn
                 self.macl = r[n] * r[m] & MASK
             else:
@@ -341,6 +344,9 @@ class Sh2a:
             self.t = int(signed(v) >= 0)
         elif low == 0x15:                                       # cmp/pl Rn
             self.t = int(signed(v) > 0)
+        elif low == 0x0E:                                       # ldc Rm,sr
+            self.sr = v
+            self.t = v & 1
         elif low == 0x80 and op & 0xF00F == 0x4000:             # mulr R0,Rn
             r[n] = v * r[0] & MASK
         elif op & 0xF00F == 0x400C:                             # shad Rm,Rn

@@ -22,13 +22,11 @@ resize computes `out = in + (CA90 - in) / ((8 / beats) * (frac*15 + 1))`; the pa
 keep resizing from their own 8-beat reference). The beat-loop LED (`0x0C1E1088`) shows 1/2/4/8
 when the new length is that BEAT loop (1/16..1/2 in fraction mode), else none.
 
-As with a stock BEAT resize, the new out (`0x0C7F64DC`) takes effect in the current pass
-(doubling at once; a halving at once when the playhead is in the first half of the new loop).
-A new out behind the playhead would make the feeder jump back to in at once (phase lost), so a
-halving pressed later in the loop waits for the next pass: the loop plays on to the old out,
-wraps to in, and loops the new length from there. The old length is a multiple of the new one (to the frame: grid outs round to whole frames),
-so the loop stays in phase, with no runaway past the out and no jump. Presses while a halving
-waits stack (◀◀ = a quarter at the next pass). EXIT drops a waiting halving.
+As with a stock BEAT resize, the new out (`0x0C7F64DC`) takes effect in the current pass.
+Doubling (`CALL ▶`) and halving while the playhead is before the new out (`play_frame < new_out`)
+continue smoothly mid-playback without jumping back to Loop-In (wrapping `FUN_0C00A4CC` via
+`c850_resize_req`, CDJ-2000NXS2/3000 style). Halving when the playhead is already past the new out
+(`play_frame >= new_out`) wraps immediately back to Loop-In and plays the shorter loop cleanly.
 
 Stock keeps the old out in the out record (`0x0C7F64B0`) until EXIT/RELOOP, so stock MEMORY
 after a BEAT resize stores the old loop. With this mod MEMORY stores the loop that plays

@@ -63,6 +63,7 @@ BPM_STAGING, PITCH_STAGING = 0x0C9D0AE0, 0x0C9D0AE2
 STAGING_S18, STAGING_S19, STAGING_S1B = 0x0C9D0AF0, 0x0C9D0AF1, 0x0C9D0AF3
 BL_ACTIVE, BL_EDIT, BL_SET = 0x0CE649AC, 0x0CE649AD, 0x0CE649AE
 BL_MASTER, BL_PITCH = 0x0CE649B0, 0x0CE649BC
+BL_TIMER = 0x0C1E0C68
 ROWS, DISPLAY_MODE = 0x0C9D0B18, 0x0C9D0AF8
 BEAT_SELECT = 0x0040
 MASTER_TEMPO = 0x0100
@@ -148,6 +149,7 @@ def _mem(p):
     mem.add(0x0DDFE000, bytes(0x2000))
     mem.add(0x0CE49F50, bytes(8))
     mem.add(0x0CE649A0, bytes(0x40))
+    mem.add(0x0C1E0C60, bytes(0x10))
     mem.add(0x0CE6CA00, bytes(0x60))
     mem.add(0x0CE6D0E0, bytes(0x100))
     mem.add(0x0C9D0AD0, bytes(0x600))
@@ -290,13 +292,31 @@ def test_short_and_hold_combos_and_wide_range():
     assert mem.read(TEMPO_RANGE, 1)[0] == 2
     assert mem.read(PITCH_WIDE, 1)[0] == 0
 
-    # Hold BEAT SELECT + MASTER TEMPO >= 1000 ms -> Master BPM edit mode + flash
+    # Hold BEAT SELECT + MASTER TEMPO >= 1000 ms -> Master BPM edit mode + persistent dialogue
     _step_keys(p, mem, k0=BEAT_SELECT, t=1000)
     _step_keys(p, mem, k0=BEAT_SELECT, k1=MASTER_TEMPO, t=1050)
     assert mem.read(BL_EDIT, 1)[0] == 0
     _step_keys(p, mem, k0=BEAT_SELECT, k1=MASTER_TEMPO, t=2100)
     assert mem.read(BL_EDIT, 1)[0] == 1
     assert mem.u32(_sym(p, "bpm_lock_edits")) == 1
+    _call(p, mem, "c850_ui_flash_hook", 0, 0)
+    row0 = mem.read(ROWS, 0x20)
+    assert row0[5:5 + row0[4]] == b"MASTER 128.0"
+
+    # Past 1.5s flash timeout and 10s stock timer: dialogue stays visible and timer refreshed
+    mem.put32(BL_TIMER, 100)
+    _step_keys(p, mem, k0=0, k1=0, t=15000)
+    assert mem.u32(BL_TIMER) == 10000
+    _call(p, mem, "c850_ui_flash_hook", 0, 0)
+    row0 = mem.read(ROWS, 0x20)
+    assert row0[5:5 + row0[4]] == b"MASTER 128.0"
+
+    # Once BPM is selected (edit exits), dialogue clears immediately
+    mem.write(BL_EDIT, b"\x00")
+    _step_keys(p, mem, k0=0, k1=0, t=15020)
+    _call(p, mem, "c850_ui_flash_hook", 0, 0)
+    row0 = mem.read(ROWS, 0x20)
+    assert row0[4] == 0
 
 
 @needs_toolchain
@@ -384,8 +404,12 @@ def test_live_bpm_lock_wide_in_qemu(tmp_path):
         time.sleep(0.8)
         m1 = d.rw(BL_MASTER)
         assert m1 > 1280, m1
+        time.sleep(2.5)
+        assert d.rb(BL_EDIT) == 1          # edit dialogue stays open until confirmed/cancelled
         d.key("back")
-        time.sleep(0.8)
+        deadline = time.monotonic() + 10
+        while time.monotonic() < deadline and d.rb(BL_EDIT) != 0:
+            time.sleep(0.2)
         assert d.rb(BL_EDIT) == 0
 
         # Next track (80 BPM) -> short press BEAT SELECT + MASTER TEMPO -> +61.25% lock in WIDE!

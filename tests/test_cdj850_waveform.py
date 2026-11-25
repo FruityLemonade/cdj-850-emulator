@@ -38,7 +38,7 @@ BASE = 0x0C000000
 BPM_HOOK_SITE = 0x0C0642AA
 ROTARY_HOOK_SITE = 0x0C0E782E
 MODS = ["waveform", "waveform_rotary", "waveform_utility_scroll",
-        "waveform_utility_select", "waveform_center_marker"]
+        "waveform_utility_select", "waveform_center_marker", "waveform_cue_column"]
 
 DISPLAY_MODE = 0x0C9D0AF8
 ROWS = 0x0C9D0B18
@@ -99,7 +99,8 @@ def test_static_hooks_outside_boot_critical_closure():
     p = payloadbuild.build(combo, "cdj850")
     for pool, name in ((0x0C0E797C, "c850_ui_utility_scroll"),
                        (0x0C0E7F10, "c850_ui_utility_select"),
-                       (0x0C064DDC, "waveform_center_marker")):
+                       (0x0C064DDC, "waveform_center_marker"),
+                       (0x0C063128, "waveform_cue_column")):
         assert struct.unpack_from(">I", out, pool - BASE)[0] == _sym(p, "__gate_" + name)
     wf_hook = payloadbuild.lookup(p.symbols, "waveform_hook")
     rot_hook = payloadbuild.lookup(p.symbols, "waveform_rotary_hook")
@@ -135,6 +136,7 @@ def _mem(p):
     mem.add(0x0DDFF000, bytes(0x1000))
     mem.add(0x0C7F6450, bytes(0x100))
     mem.add(0x0C9D0AE0, bytes(0x800))
+    mem.add(0x0CE65840, bytes(0x20))
     mem.add(0x0CE65860, bytes(0x400))
     mem.add(0x0CE6D0E0, bytes(0x20))
     mem.add(0x0CE6D1E0, bytes(0x90))
@@ -428,6 +430,65 @@ def test_interpreter_playhead_setting_and_red_marker():
     assert mem.read(SETTINGS + 0x21, 2) == b"\x00\x00"
 
 
+@needs_toolchain
+def test_interpreter_cue_markers_hotcues_loop_in_and_bottom_cue_bar():
+    p = payloadbuild.build(MODS, "cdj850")
+    mem = _mem(p)
+    mem.add(0x0C1E1078, bytes(0x20))
+    mem.add(TX_BASE, bytes(TX_LAST - TX_BASE + 4))
+    mem.add(0x0CE649D0, bytes(0x400))                      # ANLZ_CTX + MEMCUE_LIST
+    mem.add(0x0CE65C0C, bytes(0x30))                       # JUMP_TARGET
+    mem.add(0x0CE6D140, bytes(0x20))                       # cue alt sel + CUE_FRAME
+    mem.write(0x0CE6D25A, b"\x01")                         # USB mode
+    mem.add(0x0C0664A8, bytes.fromhex("d102 e001 2102 000b 0009 0009 0c9d0ac0"))
+    mem.add(0x0C0642CC, bytes.fromhex("d102 e02a 2100 000b 0009 0009 0c9d0aef"))  # sets 0x0C9D0AEF = 42
+
+    mem.put32(TRACK_LEN, 1200)
+    mem.put32(PLAY_FRAME, 312)                             # LEFT 1/3 (col 33), step 3 -> base 213
+    mem.put32(DISPLAY_MODE, 10)
+    _call(p, mem, "waveform_hook", 0, 0)
+
+    # 1. Active cue off-screen -> bottom strip cleared to 0; on-screen -> zoomed column
+    mem.write(0x0CE6D0EC, b"\x01")                         # CUE_OR_LOOP_EXISTS = 1
+    mem.put32(LOOP_IN_FRAME, 50)                           # off-screen (< 213)
+    _call(p, mem, "waveform_cue_column")
+    assert mem.read(0x0C9D0AEF, 1)[0] == 0
+    mem.put32(LOOP_IN_FRAME, 303)                          # col (303-213)//3 + 1 = 31
+    _call(p, mem, "waveform_cue_column")
+    assert mem.read(0x0C9D0AEF, 1)[0] == 31
+
+    # 2. Overview zoom leaves stock 0x0C9D0AEF (42) untouched
+    mem.put32(_sym(p, "waveform_zoom"), 2)
+    _call(p, mem, "waveform_cue_column")
+    assert mem.read(0x0C9D0AEF, 1)[0] == 42
+    mem.put32(_sym(p, "waveform_zoom"), 0)
+
+    # 3. Top red strip: memory cue point (col 10 = frame 243), hot cue A loop (frames 255..270 -> cols 14..18),
+    #    and pending Loop-In marker (frame 360 -> col 49 when D0EE == 0 and D0F0 == 1)
+    mem.write(0x0CE65850, struct.pack(">H", 1))            # MEMCUE_COUNT = 1
+    mem.put32(0x0CE649D4, 0x1000)                          # point cue
+    mem.put32(0x0CE649D4 + 12, 243)                        # col 10
+    ctx = 0x0D000000
+    c = bytearray(0x1500)
+    struct.pack_into(">I", c, 0, 0xBFA14C7E)
+    struct.pack_into(">I", c, 0x1414, 0x9768A153)
+    struct.pack_into(">H", c, 0xF90 + 0x0E, 1)
+    c[0xF90 + 0x1C] = 2                                    # loop hot cue A
+    struct.pack_into(">HII", c, 0xF90 + 0x1E, 150, 255 * 2, 270 * 2)  # cols 14..18
+    mem.add(ctx, c)
+    mem.put32(0x0CE649D0, ctx)
+    mem.write(0x0CE6D0EE, b"\x00")
+    mem.write(0x0CE6D0F0, b"\x01")
+    mem.put32(LOOP_IN_FRAME, 360)                          # col 49
+
+    base_packet = bytearray(16)
+    base_packet[:2] = bytes([0x60, 1])
+    mem.put32(TX_LAST, 0)
+    mem.write(TX_BASE + 16, base_packet)
+    _call(p, mem, "waveform_center_marker")
+    assert _red_cols(mem.read(TX_BASE + 16, 16)) == [10, 14, 15, 16, 17, 18, 33, 49]
+
+
 # ---- live ----
 
 def _udp(deck, msg):
@@ -514,6 +575,9 @@ def test_live_waveform_zoom_and_info_order_coexistence(tmp_path):
         cue_packet = d.dump(TX_BASE + 16 * d.rw(TX_LAST), 16)
         d.q("cont")
         assert cue_packet[0] == 0x60 and cue_packet[6] & 0x40, cue_packet.hex()
+        d.q("stop")
+        assert d.rb(0x0C9D0AEF) == 0                     # off-screen active cue cleared on bottom bar
+        d.q("cont")
 
         # Start a 1-beat loop and verify the red strip lights a multi-column span.
         d.key("beat_1")
