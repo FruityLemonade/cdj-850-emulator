@@ -1428,7 +1428,7 @@
         {
           "address": "0c02caf4",
           "type": "PLATE",
-          "text": "Browse reply loop over 0x114-byte client cache entries. The entry ID is u32 at +0, the type is u16 at +4, and the UTF-16 title starts at +0x14. The call at 0x0C02CB04 passes the title to the display reply appender. The browse mod replaces only this call’s title pointer."
+          "text": "Browse reply loop over 0x114-byte client cache entries. The entry ID is u32 at +0, the type is u16 at +4, and the UTF-16 title starts at +0x14. The call at 0x0C02CB04 passes the title to the display reply appender. The browse mod replaces only this call\u2019s title pointer."
         },
         {
           "address": "0c038642",
@@ -2609,6 +2609,26 @@
           "address": "0c008634",
           "type": "PLATE",
           "text": "Ring ahead count: write sector 0x0C7F645E - play sector 0x0C7F645C (mod 2400; state 4 uses its own play sector + 1), stored to 0x0C7F6686. Derived from the indices, so an in-ring seek that writes the play sector keeps it consistent [static]."
+        },
+        {
+          "address": "0c00a4cc",
+          "type": "PLATE",
+          "text": "Request loop out frame (non-blocking audio cmd helper): resets feeder read sector to loop_in when loop_in + 1 < play_frame or 0x1e < *(u32 *)0x0C7F66F8 [static]. c850_resize_req suppresses this reset when play_frame < new_out for smooth 2X/first-half 1/2X resize."
+        },
+        {
+          "address": "0c062fe2",
+          "type": "EOL",
+          "text": "Loads display_stage_jog_flags via pool 0x0C063124 (gated boot pool for loop_roll VINYL blink) [static]."
+        },
+        {
+          "address": "0c062fe6",
+          "type": "EOL",
+          "text": "Loads display_stage_active_cue_column via pool 0x0C063128 (gated boot pool for waveform bottom cue bar) [static]."
+        },
+        {
+          "address": "0c0e62bc",
+          "type": "EOL",
+          "text": "Pool word (stock FUN_0C00A4CC, 0x0C0E602E/0x0C0E61B4): redirected by quant_loops_resize_req and loop_resize_req to c850_resize_req [static]."
         }
       ],
       "labels": [
@@ -3403,6 +3423,26 @@
         {
           "address": "0c7f6784",
           "name": "loop_out_next_sector"
+        },
+        {
+          "address": "0c063124",
+          "name": "display_stage_jog_flags_pool"
+        },
+        {
+          "address": "0c063128",
+          "name": "display_stage_active_cue_column_pool"
+        },
+        {
+          "address": "0c7f66f8",
+          "name": "loop_resize_wrap_counter"
+        },
+        {
+          "address": "0c9d0aef",
+          "name": "display_stage_active_cue_col"
+        },
+        {
+          "address": "0ce6d0f0",
+          "name": "cue_point_kind_flag"
         }
       ]
     }

@@ -73,12 +73,12 @@ def test_utility_words_shared_and_valid(names, folders):
 @needs_toolchain
 def test_item_table_has_the_linked_mods():
     for folders, want in (
-        (["quant_loops"], ["ql_q_utility_item"]),
+        (["quant_loops"], ["ql_on_utility_item", "ql_q_utility_item"]),
         (["waveform"], ["wf_mod_utility_item", "wf_utility_item"]),
-        (["hot_cues"], []),                               # hot-cue mode: BEAT SELECT + RELOOP only
-        (["loop_roll"], []),                              # roll mode: BEAT SELECT + LOOP OUT only
+        (["hot_cues"], ["hc_utility_item"]),
+        (["loop_roll"], ["lr_utility_item"]),
         (["auto_standby"], ["as_utility_item"]),
-        (["quant_loops", "waveform"], ["ql_q_utility_item", "wf_mod_utility_item", "wf_utility_item"]),
+        (["quant_loops", "waveform"], ["ql_on_utility_item", "ql_q_utility_item", "wf_mod_utility_item", "wf_utility_item"]),
     ):
         p = payloadbuild.build(folders, "cdj850")
         a, b = (payloadbuild.lookup(p.symbols, n) for n in ("c850_ui_items_start", "c850_ui_items_end"))
@@ -147,22 +147,27 @@ def test_quantize_alone_is_item_7():
     mem.write(CURSOR, b"\x06")                            # VERSION No.
     _call(p, mem, "c850_ui_utility_scroll", 1, 1)
     assert mem.read(CURSOR, 1) == b"\x07" and mem.u32(TIMEOUT) == 15000 and _calls(mem, 3) == 1
-    assert _rows(p, mem) == ("QUANTIZE", "1 BEAT")        # a fresh deck: 1 beat
+    assert _rows(p, mem) == ("QUANTIZE", "ON")
+    _call(p, mem, "c850_ui_utility_scroll", 1, 1)
+    assert mem.read(CURSOR, 1) == b"\x08" and _rows(p, mem) == ("QUANTIZE SIZE", "1 BEAT")
     _call(p, mem, "c850_ui_utility_scroll", 1, 3)         # the last item: clamps
-    assert mem.read(CURSOR, 1) == b"\x07"
+    assert mem.read(CURSOR, 1) == b"\x08"
 
-    # a press steps the quantize value 1 -> 1/2 -> 1/4 -> 1 beat (RAM/stick flags, no flash save)
+    # a press on QUANTIZE SIZE steps 1 -> 1/2 -> 1/4 -> 1 beat (RAM/stick flags, no flash save)
     for value, div in (("1/2 BEAT", 2), ("1/4 BEAT", 4), ("1 BEAT", 1)):
-        _call(p, mem, "c850_ui_utility_select", 3, 7)
-        assert _rows(p, mem) == ("QUANTIZE", value) and _call(p, mem, "c850_ui_quant_div") == div
+        _call(p, mem, "c850_ui_utility_select", 3, 8)
+        assert _rows(p, mem) == ("QUANTIZE SIZE", value) and _call(p, mem, "c850_ui_quant_div") == div
     assert _calls(mem, 0) == 0
 
-    # Quantize switched off (BEAT SELECT + LOOP IN: flags byte bit 0) keeps the item.
-    mem.write(CURSOR, b"\x06")
-    mem.write(SETTINGS + 0x22, b"\x53")
+    # Turning QUANTIZE OFF in UTILITY saves to flash/drive and hides QUANTIZE SIZE.
+    _call(p, mem, "c850_ui_utility_select", 3, 7)
+    mem.write(CURSOR, b"\x07")
+    assert _rows(p, mem) == ("QUANTIZE", "OFF")
+    assert _calls(mem, 0) == 1 and _call(p, mem, "c850_ui_quantize") == 0
     _call(p, mem, "c850_ui_utility_scroll", 1, 1)
-    assert mem.read(CURSOR, 1) == b"\x07" and _rows(p, mem) == ("QUANTIZE", "1 BEAT")
-    mem.write(SETTINGS + 0x22, b"\x00")
+    assert mem.read(CURSOR, 1) == b"\x07"                 # QUANTIZE SIZE hidden
+    _call(p, mem, "c850_ui_utility_select", 3, 7)         # back ON
+    assert _rows(p, mem) == ("QUANTIZE", "ON") and _call(p, mem, "c850_ui_quantize") == 1
 
     _call(p, mem, "c850_ui_utility_select", 3, 2)         # a stock item
     assert _calls(mem, 2) == 1 and mem.u32(LOG + 0x80) == 3 and mem.u32(LOG + 0x84) == 2
@@ -181,12 +186,14 @@ def test_quantize_before_the_waveform_items():
     mem = _mem(p)
     mem.write(CURSOR, b"\x06")
     _call(p, mem, "c850_ui_utility_scroll", 1, 1)
-    assert mem.read(CURSOR, 1) == b"\x07" and _rows(p, mem) == ("QUANTIZE", "1 BEAT")
+    assert mem.read(CURSOR, 1) == b"\x07" and _rows(p, mem) == ("QUANTIZE", "ON")
     _call(p, mem, "c850_ui_utility_scroll", 1, 1)
-    assert mem.read(CURSOR, 1) == b"\x08" and _rows(p, mem) == ("WAVEFORM", "ON")
+    assert mem.read(CURSOR, 1) == b"\x08" and _rows(p, mem) == ("QUANTIZE SIZE", "1 BEAT")
     _call(p, mem, "c850_ui_utility_scroll", 1, 1)
-    assert mem.read(CURSOR, 1) == b"\x09" and _rows(p, mem) == ("WAVE PLAYHEAD", "LEFT 1/3")
-    _call(p, mem, "c850_ui_utility_select", 3, 9)         # WAVE PLAYHEAD -> CENTER (+0x21 bit 0)
+    assert mem.read(CURSOR, 1) == b"\x09" and _rows(p, mem) == ("WAVEFORM", "ON")
+    _call(p, mem, "c850_ui_utility_scroll", 1, 1)
+    assert mem.read(CURSOR, 1) == b"\x0A" and _rows(p, mem) == ("WAVE PLAYHEAD", "LEFT 1/3")
+    _call(p, mem, "c850_ui_utility_select", 3, 10)        # WAVE PLAYHEAD -> CENTER (+0x21 bit 0)
     assert mem.read(SETTINGS + 0x21, 2) == b"\x51\x00"
     assert _rows(p, mem) == ("WAVE PLAYHEAD", "CENTER")
     mem.write(ROWS, bytes(3 * 0x105))
@@ -203,12 +210,15 @@ def test_all_experimental_utility_items_and_gating():
     mem = _mem(p)
     want = [
         ("STANDBY TIME", "20 MIN"),
-        ("QUANTIZE", "1 BEAT"),
+        ("QUANTIZE", "ON"),
+        ("QUANTIZE SIZE", "1 BEAT"),
         ("BPM DECIMALS", "ON"),
         ("BPM LOCK", "ON"),
         ("PHASE METER", "ON"),
         ("INFO ORDER", "ON"),
         ("BROWSE MODS", "ON"),
+        ("HOT CUES", "ON"),
+        ("SLIP MODE", "ON"),
         ("WAVEFORM", "ON"),
         ("WAVE PLAYHEAD", "LEFT 1/3"),
     ]
@@ -218,18 +228,19 @@ def test_all_experimental_utility_items_and_gating():
     _call(p, mem, "c850_ui_utility_scroll", 1, 5)         # nothing after WAVE PLAYHEAD
     assert mem.read(CURSOR, 1) == bytes([6 + len(want)])
 
-    # Toggle BPM DECIMALS (item 9) -> OFF
-    _call(p, mem, "c850_ui_utility_select", 3, 9)
-    mem.write(CURSOR, bytes([9]))
+    # Toggle BPM DECIMALS (item 10) -> OFF
+    _call(p, mem, "c850_ui_utility_select", 3, 10)
+    mem.write(CURSOR, bytes([10]))
     assert _rows(p, mem) == ("BPM DECIMALS", "OFF")
     assert _call(p, mem, "c850_ui_flag", 0x0040) == 1
 
-    # Hot-cue mode follows the flags byte (BEAT SELECT + RELOOP) alone: the retired HOT CUES OFF
-    # bit (0x0800, set by older builds' UTILITY item) no longer blocks it.
-    mem.write(SETTINGS + 0x22, b"\x58")
+    # Toggle HOT CUES (item 15) -> OFF disables hot_cues_mode even when armed in RAM
+    _call(p, mem, "c850_ui_set_hot_cues_armed", 1)
     assert _call(p, mem, "hot_cues_mode") == 1
-    _call(p, mem, "c850_ui_set_flags", 0x0800, 0x0800)
-    assert _call(p, mem, "hot_cues_mode") == 1
+    _call(p, mem, "c850_ui_utility_select", 3, 15)
+    mem.write(CURSOR, bytes([15]))
+    assert _rows(p, mem) == ("HOT CUES", "OFF")
+    assert _call(p, mem, "hot_cues_mode") == 0
 
 
 # ---- live ----
@@ -258,9 +269,10 @@ def test_live_quantize_value_in_utility(tmp_path):
     flash = tmp_path / "flash.bin"
     flash.write_bytes(patch_main.patch_flash(FLASH.read_bytes(), QUANT + WAVE, "cdj850"))
 
-    script = "3800:menu:1700,6500:rot+6,7500:rot+1,9500:enter:200"
+    script = "3800:menu:1700,6500:rot+6,7500:rot+1,8500:rot+1,9500:enter:200"
     with tr.Deck(stick, flash=flash, script=script, writable=True) as d:
         d.wait_line("[VERSION No.]", timeout=60)
-        d.wait_line("[QUANTIZE]", "[1 BEAT]", timeout=60)
-        d.wait_line("[QUANTIZE]", "[1/2 BEAT]", timeout=60)
+        d.wait_line("[QUANTIZE]", "[ON]", timeout=60)
+        d.wait_line("[QUANTIZE SIZE]", "[1 BEAT]", timeout=60)
+        d.wait_line("[QUANTIZE SIZE]", "[1/2 BEAT]", timeout=60)
         d.wait_line("input release enter", timeout=60)

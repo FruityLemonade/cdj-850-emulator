@@ -28,7 +28,8 @@ import payloadbuild  # noqa: E402
 MAIN = ROOT / "extract" / "cdj850" / "main_unpacked.bin"
 FLASH = ROOT / "extract" / "cdj850" / "flash_cdj850.bin"
 BASE = 0x0C000000
-MODS = ["loop_roll", "loop_roll_keys", "loop_roll_tick", "loop_roll_flash"]
+MODS = ["loop_roll", "loop_roll_keys", "loop_roll_tick", "loop_roll_flash", "loop_roll_jog",
+        "loop_roll_utility_scroll", "loop_roll_utility_select", "loop_roll_usb_settings"]
 ISR_POOL, ISR_STOCK, ISR_READER = 0x0C07730C, 0x0C0158D4, 0x0C07715E
 PLAY_FRAME, STATE_USB, LOOP_ACTIVE = 0x0C7F647C, 0x0CE6D25F, 0x0CE6D0ED
 LOOP_IN, OUT_REQ = 0x0C7F6498, 0x0C7F64DC
@@ -507,6 +508,80 @@ def test_slip_pause_and_cue_abort_and_miss():
     assert sym("loop_roll_slip_misses") == 1
 
 
+@needs_toolchain
+def test_slip_jog_vinyl_indicator_and_rev_hold_1500ms():
+    p, mem, call, keys, sym, _ = _roll_deck(div=1, quantize=False)
+    mem.add(0x0C9D0AD8, bytes(0x20))
+    mem.add(0x0C064D10, struct.pack(">6HI", 0xD102, 0xE018, 0x8011, 0x801F, 0x000B, 0xE000, 0x0C9D0AD8))
+    mem.write(0x0CE6D252, b"\x02")
+    mem.write(0x0CE6D25D + 2, b"\x03")
+    mem.write(0x0C7F645C, struct.pack(">hh", 200, 1200))
+    mem.put32(0x0C7F6470, 0x0C1E8E5C + 200 * 0x930)
+    call("c850_ui_tick")
+
+    # Slip off: VINYL indicator stays steady 0x18 across both 300ms halves
+    for t in (0, 300):
+        mem.put32(0x0CE49F54, t)
+        call("loop_roll_jog_flags")
+        assert mem.read(0x0C9D0AD9, 1)[0] == 0x18 and mem.read(0x0C9D0AE7, 1)[0] == 0x18
+
+    # Short REV tap (< 1.5 s) with slip disarmed: no slip started, stays in normal reverse
+    mem.put32(0x0CE49F54, 1000)
+    keys(0x8000, 0)                                      # REV down
+    mem.write(0x0C7F666C, b"\x01")                       # stock enters reverse
+    call("c850_ui_tick")
+    mem.put32(0x0CE49F54, 1400)                          # released after 400 ms
+    keys(0, 0)
+    call("c850_ui_tick")
+    assert sym("loop_roll_slip_starts") == 0
+    assert (mem.u16(0x0CE6CA08) & 0x8000) == 0           # no synthetic REV exit
+
+    # Long REV hold (>= 1.5 s) with slip disarmed: momentary slip-reverse!
+    mem.write(0x0C7F666C, b"\x00")
+    mem.put32(0x0CE49F54, 2000)
+    call("c850_ui_tick")
+    keys(0x8000, 0)                                      # REV down
+    mem.write(0x0C7F666C, b"\x01")
+    mem.put32(0x0C7F6470, 0x0C1E8E5C + 200 * 0x930 + 332)
+    call("c850_ui_tick")
+    for t in (2500, 3000, 3500):                          # held 1.5 s across ticks (dt <= SLIP_DT_MAX)
+        mem.put32(0x0CE49F54, t)
+        call("c850_ui_tick")
+    assert sym("loop_roll_slip_starts") == 1
+    # VINYL indicator blinks off/on while momentary slip-reverse is active
+    mem.put32(0x0CE49F54, 3600)                          # (3600/300)=12 (even) -> off
+    call("loop_roll_jog_flags")
+    assert mem.read(0x0C9D0AD9, 1)[0] == 0x00 and mem.read(0x0C9D0AE7, 1)[0] == 0x00
+    mem.put32(0x0CE49F54, 3900)                          # (3900/300)=13 (odd) -> on
+    call("loop_roll_jog_flags")
+    assert mem.read(0x0C9D0AD9, 1)[0] == 0x18 and mem.read(0x0C9D0AE7, 1)[0] == 0x18
+
+    # Release REV -> synthetic REV press edge injected to exit reverse, then lands on shadow
+    keys(0, 0)
+    call("c850_ui_tick")
+    assert (mem.u16(0x0CE6CA08) & 0x8000) == 0x8000      # synthetic REV edge
+    mem.write(0x0C7F666C, b"\x00")                       # stock exited reverse, forward aligned
+    mem.put32(0x0C7F6470, 0x0C1E8E5C + 180 * 0x930)
+    mem.write(0x0C7F645C, struct.pack(">hh", 180, 1200))
+    mem.put32(0x0CE49F54, 3920)
+    call("c850_ui_tick")
+    assert (mem.u16(0x0CE6CA08) & 0x8000) == 0           # cleared
+    assert sym("loop_roll_slip_jumps") == 1
+    want = 200 * 7 + (1920 * 21 * 10000) // 400000
+    assert sym("loop_roll_slip_last_target") == want
+
+    # Arm slip mode via BEAT SELECT + LOOP OUT: VINYL indicator blinks; UTILITY SLIP MODE OFF disables it
+    keys(0x0040, 0)
+    keys(0x0840, 0)
+    keys(0, 0)
+    mem.put32(0x0CE49F54, 4200)                          # (4200/300)=14 (even) -> off
+    call("loop_roll_jog_flags")
+    assert mem.read(0x0C9D0AD9, 1)[0] == 0x00
+    call("c850_ui_set_flag", 0x2000, 1)                  # UTILITY SLIP MODE OFF
+    call("loop_roll_jog_flags")
+    assert mem.read(0x0C9D0AD9, 1)[0] == 0x18
+
+
 # ---- live slip mode (reverse, scratch, pause) ----
 
 def drive_slip(stick, flash, syms):
@@ -565,12 +640,47 @@ def drive_slip(stick, flash, syms):
         while d.rw(PLAY_FRAME) < 600:
             time.sleep(0.05)
 
-        # Slip mode on: BEAT SELECT + LOOP OUT
+        # Disarmed: short REV tap stays normal reverse (no slip); 1.5s hold REV enters momentary slip-reverse
+        pre_short = ev(d)
+        d.key("rev", dur=200)
+        end_rev = time.monotonic() + 15
+        while time.monotonic() < end_rev and (d.rb(0x0C7F666C) != 1 or (d.rh(0x0CE6CA08) & 0x8000)):
+            time.sleep(0.05)
+        assert d.rb(0x0C7F666C) == 1
+        d.key("rev", dur=200)
+        end_rev = time.monotonic() + 15
+        while time.monotonic() < end_rev and (d.rb(0x0C7F666C) != 0 or (d.rh(0x0CE6CA08) & 0x8000)):
+            time.sleep(0.05)
+        assert d.rb(0x0C7F666C) == 0
+        res["rev_short_disarmed"] = {"pre": pre_short, "ev": ev(d)}
+
+        ensure_playing(d)
+        pre_1500 = ev(d)
+        d.hold("rev")
+        deadline = time.monotonic() + 45
+        while time.monotonic() < deadline and ev(d)["slip_starts"] == pre_1500["slip_starts"]:
+            time.sleep(0.05)
+        assert ev(d)["slip_starts"] > pre_1500["slip_starts"]
+        d.release("rev")
+        e_1500 = wait_jump(d, pre_1500)
+        time.sleep(0.5)
+        res["rev_hold_1500"] = {"pre": pre_1500, "ev": e_1500, "after": frames_for(d, 1.5),
+                                "state": d.rb(STATE_USB)}
+
+        # Slip mode on: BEAT SELECT + LOOP OUT; VINYL indicator blinks on jog display
         d.key("beat_select", dur=1200)
         time.sleep(0.15)
         d.key("loop_out", dur=300)
         time.sleep(1.5)
         res["toggle"] = ev(d)
+        if d.rb(0x0CE6D0DE) == 0:
+            d.key("vinyl", dur=200)
+            time.sleep(0.5)
+        vb, vb_end = set(), time.monotonic() + 1.5
+        while time.monotonic() < vb_end:
+            vb.add(d.rb(0x0C9D0AD9) & 0x18)
+            time.sleep(0.05)
+        res["vinyl_blink"] = sorted(vb)
 
         res["rev"] = gesture(d, lambda x: x.key("rev", dur=200), lambda x: x.key("rev", dur=200), 3.0)
         if d.rb(0x0CE6D0DE) == 0:
@@ -623,7 +733,10 @@ def test_live_slip_mode(tmp_path):
     syms = payloadbuild.build(["loop_roll"], "cdj850").symbols
     res = drive_slip(stick, flash, syms)
     print("slip_mode live:", json.dumps(res))
+    assert res["rev_short_disarmed"]["ev"]["slip_starts"] == res["rev_short_disarmed"]["pre"]["slip_starts"]
+    check_slip_gesture(res["rev_hold_1500"], 1)
     assert res["toggle"]["toggles"] == 1
+    assert res["vinyl_blink"] == [0, 0x18], res["vinyl_blink"]
     check_slip_gesture(res["rev"], 1)
     check_slip_gesture(res["scratch"], 2)
     check_slip_gesture(res["pause"], 3)

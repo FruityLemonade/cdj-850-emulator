@@ -447,6 +447,10 @@ def test_beat_resize_makes_the_block_loop(label, in_beat, beats, frac):
     mem, log = tq._entry_mem(p, entries, state=4)
     mem.add(0x0C7F64C0, bytes(0x40))                         # out request 0x0C7F64DC
     mem.add(0x0C7F6440, bytes(0x20))                         # play sector (track slot)
+    mem.add(0x0C7F6470, bytes(0x20))                         # PLAY_FRAME 0x0C7F647C
+    mem.add(0x0C7F66F0, bytes(0x10))                         # resize count 0x0C7F66F8
+    mem.add(0x0CE6D0E0, bytes(0x20))                         # LOOP_ACTIVE 0x0CE6D0ED
+    mem.write(0x0CE6D0ED, b"\x01")
     mem.add(TICK, bytes(4))
     b = g.point_loop(in_beat, 0, 64)
     fin = b[0] // 7

@@ -46,7 +46,7 @@ POOLS = [
                                   0x0C0E5F6E, 0x0C0E5F8C, 0x0C0E5FB0], "quant_loops_auto_send"),
     (0x0C0E5D08, AUDIO_SEND_CMD, [0x0C0E5B00, 0x0C0E5B20, 0x0C0E5B4C, 0x0C0E5CC8, 0x0C0E5CE2],
      "quant_loops_auto_send"),
-    (0x0C0E62BC, 0x0C00A4CC, [0x0C0E602E, 0x0C0E61B4], "quant_loops_resize_req"),
+    (0x0C0E62BC, 0x0C00A4CC, [0x0C0E602E, 0x0C0E61B4], "c850_resize_req"),
     (0x0C0E5FD0, 0x0C0059D2, [0x0C0E5DAA], "quant_loops_auto_keep"),
     (0x0C0E62CC, AUDIO_SEND_CMD, [0x0C0E606E, 0x0C0E608E, 0x0C0E60B4, 0x0C0E60DA, 0x0C0E6138, 0x0C0E6168,
                                   0x0C0E6186, 0x0C0E61A6, 0x0C0E61EC, 0x0C0E620A, 0x0C0E623A],

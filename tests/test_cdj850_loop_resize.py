@@ -34,13 +34,14 @@ MAIN = ROOT / "extract" / "cdj850" / "main_unpacked.bin"
 FLASH = ROOT / "extract" / "cdj850" / "flash_cdj850.bin"
 BAKEN = ROOT / "tools" / "baken" / "baken"
 BASE = 0x0C000000
-MODS = ["loop_resize", "loop_resize_tick", "loop_resize_memory"]
+MODS = ["loop_resize", "loop_resize_tick", "loop_resize_memory", "loop_resize_req"]
 POOL, STOCK, READERS = 0x0C0D9994, 0x0C0D3B1A, [0x0C0D98AC, 0x0C0D98EA]
-STATE4_KEYS, MEMORY_BUTTON = 0x0C0E0F34, 0x0C0D4172
+STATE4_KEYS, MEMORY_BUTTON, REQ_FN = 0x0C0E0F34, 0x0C0D4172, 0x0C00A4CC
 # (pool word, stock value, instructions that read it, payload symbol)
 POOLS = [(POOL, STOCK, READERS, "loop_resize_call"),
          (0x0C0D7B98, STATE4_KEYS, [0x0C0D79A6], "c850_loop_tick"),
-         (0x0C0D9714, MEMORY_BUTTON, [0x0C0D9664], "loop_resize_memory_button")]
+         (0x0C0D9714, MEMORY_BUTTON, [0x0C0D9664], "loop_resize_memory_button"),
+         (0x0C0E62BC, REQ_FN, [0x0C0E602E, 0x0C0E61B4], "c850_resize_req")]
 BEAT_HANDLER4 = 0x0C0E5390
 GRID_CTX = 0x0C9D24FC
 BASE_TENTHS = 0x0C9D23EC
@@ -248,7 +249,7 @@ def test_composes_with_the_branch_mods():
     names = ALL_MODS + MODS
     report = {}
     out = patch_main.patch(MAIN.read_bytes(), names, "cdj850", report)
-    assert all(report[n][0] == "applied" for n in names), report
+    assert all(report[n][0] in ("applied", "present") for n in names), report
     p = payloadbuild.build(["auto_standby", "bpm_decimals", "loop_resize", "payload_demo", "quant_loops"], "cdj850")
     for pool, _, _, symbol in POOLS:
         assert struct.unpack_from(">I", out, pool - BASE)[0] == payloadbuild.lookup(p.symbols, payloadbuild.gate_name(symbol))
@@ -517,41 +518,35 @@ def test_effective_out_follows_the_records():
 
 
 @needs_toolchain
-def test_halving_past_the_new_out_waits_for_the_next_pass():
+def test_smooth_resize_and_immediate_halving_past_out():
     p = _payload()
     mem = _mem(p, GRIDS["128 @0.35"])
     _stubs(mem)
     _entry(p, mem, 202, 343, pos=300)                        # 4-beat loop, playhead in beat 3
-    _press(p, mem, 0)                                         # 2 beats: out 272 is behind 300
-    assert mem.u32(LOG) == 0 and _sym(p, mem, "deferred") == 1
-    _press(p, mem, 0)                                         # again: 1 beat (237), still waiting
-    assert mem.u32(LOG) == 0 and _sym(p, mem, "last_new") == 237
-    for pos, sent in ((330, False), (342, False), (202 + 18, False), (202 + 17, True)):
-        mem.put32(PLAY_FRAME_ADDR, pos)
-        mem.write(LOG, bytes(16))
-        _call(p, mem, "c850_loop_tick")
-        log = [mem.u32(LOG + 4 * i) for i in range(2)]
-        # the stock state-4 handler always runs last (log 3); a send logs 2 first and is overwritten
-        assert log[0] == 3
-        assert (_sym(p, mem, "count") == 1) == sent, pos
-    assert _sym(p, mem, "last_new") == 237
-    # halving with the playhead in the first half of the new loop: at once
-    mem = _mem(p, GRIDS["128 @0.35"])
-    _stubs(mem)
-    _entry(p, mem, 202, 343, pos=230)
-    _press(p, mem, 0)
-    assert mem.u32(OUT_REQ) == 272 and _sym(p, mem, "deferred") == 0
-    # a pending halving is dropped when the loop is left
-    mem = _mem(p, GRIDS["128 @0.35"])
-    _stubs(mem)
-    _entry(p, mem, 202, 343, pos=300)
-    _press(p, mem, 0)
-    mem.write(PLAYER_STATE, bytes([3] * 4))
-    mem.put32(PLAY_FRAME_ADDR, 205)
-    _call(p, mem, "c850_loop_tick")
-    mem.write(PLAYER_STATE, bytes([4] * 4))
-    _call(p, mem, "c850_loop_tick")
-    assert _sym(p, mem, "count") == 0
+    _press(p, mem, 0)                                         # 2 beats: out 272 is behind 300 -> immediate
+    assert mem.u32(LOG) == 2 and mem.u32(OUT_REQ) == 272
+    assert _sym(p, mem, "deferred") == 0 and _sym(p, mem, "count") == 1
+
+    # c850_resize_req: doubling or first-half halving (play < new_out) masks PLAY_FRAME to loop_in
+    # so FUN_0C00A4CC does NOT reset playback to loop_in; halving past new_out leaves PLAY_FRAME
+    # untouched so FUN_0C00A4CC wraps immediately to loop_in.
+    mem.add(0x0C7F66F0, bytes(0x10))
+    mem.add(REQ_FN, struct.pack(">8H2I", 0xD003, 0x6102, 0xD003, 0x2012, 0x000B, 0xE000, 0x0009, 0x0009,
+                                PLAY_FRAME_ADDR, LOG + 0x20))
+    mem.put32(LOOP_IN, 202)
+    mem.put32(PLAY_FRAME_ADDR, 300)
+    assert _call(p, mem, "c850_resize_req", 483, 0) == 0     # 2X doubling (300 < 483): smooth!
+    assert mem.u32(LOG + 0x20) == 202                        # FUN_0C00A4CC saw play == loop_in
+    assert mem.u32(PLAY_FRAME_ADDR) == 300                   # restored after call
+
+    mem.put32(PLAY_FRAME_ADDR, 240)
+    assert _call(p, mem, "c850_resize_req", 272, 0) == 0     # 1/2X first-half (240 < 272): smooth!
+    assert mem.u32(LOG + 0x20) == 202
+    assert mem.u32(PLAY_FRAME_ADDR) == 240
+
+    mem.put32(PLAY_FRAME_ADDR, 300)
+    assert _call(p, mem, "c850_resize_req", 272, 0) == 0     # 1/2X past out (300 >= 272): wrap!
+    assert mem.u32(LOG + 0x20) == 300
 
 
 @needs_toolchain
@@ -780,8 +775,11 @@ def drive(stick, flash=None, syms=None, stock=False, tracks=TITLES, log=None):
 
     def exit_loop(d):
         if d.rb(STATE_USB) == 4:
+            pressed = d.rw(TICK_MS)
             d.key("reloop")
-            time.sleep(1.5)
+            end = time.monotonic() + 15
+            while (d.rb(STATE_USB) == 4 or d.rw(TICK_MS) - pressed < 400) and time.monotonic() < end:
+                time.sleep(0.05)
         return d.rb(STATE_USB)
 
     def memcues(d):
@@ -825,10 +823,15 @@ def drive(stick, flash=None, syms=None, stock=False, tracks=TITLES, log=None):
                 t["grid"] = grid(d)
                 t["auto4"]["watch"] = watch(d, 1.0, t["auto4"]["req"] - t["auto4"]["in"])
                 t["seq"] = [press(d, k) for k in (STOCK_SEQ if stock else SEQ)]
-                # B: MEMORY stores the resized loop, EXIT, RELOOP re-enters it
+                # B: MEMORY stored the resized loop, EXIT, RELOOP re-enters it
                 d.key("memory")
                 time.sleep(1.5)
                 t["memcues"] = memcues(d)
+                # exit near loop start so RELOOP stays safely before loop_out on slow hosts
+                half_pt = t["auto4"]["in"] + (t["seq"][-1]["req_after"] - t["auto4"]["in"]) // 2
+                end_ex = time.monotonic() + 20
+                while d.rw(PLAY_FRAME) > half_pt and time.monotonic() < end_ex:
+                    time.sleep(0.02)
                 t["exit_state"] = exit_loop(d)
                 d.key("reloop")
                 time.sleep(1.5)
@@ -848,9 +851,15 @@ def drive(stick, flash=None, syms=None, stock=False, tracks=TITLES, log=None):
                             break
                         d.key(k)
                         time.sleep(2.0)
+                    end = time.monotonic() + 15
+                    while (d.rw(PLAY_FRAME) != d.rw(CUE_FRAME) or d.rw(LOOP_IN) != d.rw(CUE_FRAME)) and \
+                            time.monotonic() < end:
+                        time.sleep(0.05)
                     t["memloop_cued"] = snap(d)
                     d.key("play")
-                    time.sleep(1.5)
+                    end = time.monotonic() + 10
+                    while d.rb(STATE_USB) != 4 and time.monotonic() < end:
+                        time.sleep(0.05)
                     t["memloop_play"] = snap(d)
                     t["memloop"] = press(d, "call_prev") if d.rb(STATE_USB) == 4 else None
                     exit_loop(d)
@@ -864,6 +873,22 @@ def drive(stick, flash=None, syms=None, stock=False, tracks=TITLES, log=None):
                         time.sleep(0.005)
                     t["past"] = press(d, "call_prev", settle=0.05)
                     t["past"]["loop"] = a
+                    # Doubling mid-playback in the 2nd half must continue forward without resetting to loop_in
+                    mid = a["in"] + (t["past"]["want"] - a["in"]) // 2
+                    end = time.monotonic() + 20
+                    while d.rw(PLAY_FRAME) < mid:
+                        assert time.monotonic() < end
+                        time.sleep(0.005)
+                    pre_ds = d.rw(PLAY_FRAME)
+                    d.key("call_next")
+                    ds_fr, ds_end = [], time.monotonic() + 4.0
+                    while time.monotonic() < ds_end:
+                        f_cur = d.rw(PLAY_FRAME)
+                        ds_fr.append(f_cur)
+                        if f_cur > t["past"]["want"] + 10:
+                            break
+                        time.sleep(0.02)
+                    t["double_smooth"] = {"pre": pre_ds, "old_out": t["past"]["want"], "frames": ds_fr}
                     # E: limits: halve until ignored, then double until ignored
                     t["limits"] = {"down": [], "up": []}
                     for k, key in (("down", "call_prev"), ("up", "call_next")):
@@ -958,15 +983,19 @@ def check_extras(title, t, blocks=False):
     want = new_out(g, mp["in"], mp["out"], mp["tracklen"], False)[0]
     assert m["want"] == want and m["req_after"] == want, (title, m)
     assert m["watch"]["min"] >= mp["in"] and m["watch"]["max"] <= want
-    # halving with the playhead past the new out: waits for the next pass, stays in phase
+    # halving with the playhead past the new out: wraps immediately to loop_in (no deferral)
     p, loop = t["past"], t["past"]["loop"]
     want = new_out(g, loop["in"], loop["req"], loop["tracklen"], False)[0]
-    assert p["pre"]["frame"] >= want and p["lr_deferred"] == p["pre"]["lr_deferred"] + 1, (title, p)
+    assert p["pre"]["frame"] >= want and p["lr_deferred"] == 0 and p["lr_count"] == p["pre"]["lr_count"] + 1, (title, p)
     f = p["follow"]
-    assert f["max"] <= loop["req"] and f["min"] >= loop["in"], (title, f)     # played on to the old out
-    assert f["max"] >= loop["req"] - 4, (title, f)                            # ... and reached it
+    assert f["min"] >= loop["in"], (title, f)
     assert all(loop["in"] <= x <= loop["in"] + 3 for x in f["wrap_to"]), (title, f)
     assert p["watch"]["max"] <= want and p["watch"]["min"] >= loop["in"], (title, p)
+    # doubling mid-playback continues smoothly past old_out without resetting to loop_in
+    ds = t["double_smooth"]
+    assert ds["frames"][0] >= ds["pre"] - 2, (title, ds)
+    assert all(b >= a for a, b in zip(ds["frames"], ds["frames"][1:])), (title, ds)
+    assert ds["frames"][-1] > ds["old_out"], (title, ds)
     # limits: 1/16 beat (1 frame) and 32 beats are the ends; the press past them is ignored
     down, up = t["limits"]["down"], t["limits"]["up"]
     assert down[-1]["lr_ignored"] == down[-2]["lr_ignored"] + 1

@@ -3,7 +3,7 @@
 Default off. Ports the CDJ-350's **BPM LOCK** and **Master BPM** workflow onto the CDJ-850 using the firmware's dormant BPM-lock engine (`FUN_0C0D1F14` and state block `0x0CE649AC`), extended from ±16% to **±100%**.
 
 ## Controls
-- **BEAT SELECT + MASTER TEMPO (hold >= 1 s):** Enter/update **Master BPM edit mode** (`MASTER <NNN.N>` flashes on the dot matrix). Turn the **rotary selector** to adjust Master BPM in 0.1 BPM steps (push + turn for 1.0 BPM steps, 60.0–199.9 BPM; or up to 999.0 with `bpm999`). Press **BACK** or push the rotary (or wait 10 s) to exit edit mode.
+- **BEAT SELECT + MASTER TEMPO (hold >= 1 s):** Enter/update **Master BPM edit mode** (`MASTER <NNN.N>` flashes continuously on the dot matrix). Turn the **rotary selector** to adjust Master BPM in 0.1 BPM steps (push + turn for 1.0 BPM steps, 60.0–199.9 BPM; or up to 999.0 with `bpm999`). The edit dialogue remains displayed until you press **ENTER/push the rotary** or **BACK** to confirm/exit (no timeout).
 - **BEAT SELECT + MASTER TEMPO (short press):** Lock/unlock playback tempo to the Master BPM (`BPM LOCK ON` / `BPM LOCK OFF`).
   - If the required pitch exceeds ±16%, the deck automatically switches to **WIDE** (±100%) so the DSP pitch math (`±100%`) and fader catch-up stay consistent.
   - Moving the tempo fader across the locked pitch unlocks back to fader control smoothly (stock catch-up in `FUN_0C0D1E84`).

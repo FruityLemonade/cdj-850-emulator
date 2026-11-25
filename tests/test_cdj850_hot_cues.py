@@ -327,6 +327,8 @@ def _mem(p, mode=0, avail=1, slots=(1, 2, 0), state=3, frac=0, d156=0, beats=0, 
 3:      .long   %#x
 4:      .long   %#x
 """ % (LOG + 0x100, BEATS, D154, LOG + 0x110))
+    if mode:
+        _call(p, mem, "c850_ui_set_hot_cues_armed", 1)
     return mem
 
 
@@ -361,16 +363,16 @@ def test_toggle_saves_the_mode_and_undoes_the_fraction_toggle():
     mem.write(D154, b"\x01")                                               # ... and toggles (latch)
     mem.write(D156, b"\x01")
     assert _keys(p, mem, k0=BEAT_SELECT | RELOOP) == (0, 0, 0)             # the combo is ours
-    assert _u8(mem, SETTINGS + 0x22) == 0x5A and mem.u32(_sym(p, "hot_cues_toggles")) == 1
+    assert _call(p, mem, "hot_cues_mode") == 1 and mem.u32(_sym(p, "hot_cues_toggles")) == 1
     assert mem.read(SETTINGS, 3) == b"\xC3\x02\x10"                           # flag bytes untouched
-    assert mem.u32(LOG) == 2 and mem.u32(LOG + 4) == SETTINGS and mem.u32(LOG + 28) == 1   # saved
+    assert mem.u32(LOG + 28) == 0                                          # RAM only: no flash save!
     assert (_u8(mem, D154), _u8(mem, D156)) == (0, 0)                      # fraction toggle undone
     assert _keys(p, mem, k0=BEAT_SELECT) == (0, 0, 0)                      # still held: hidden
     assert _keys(p, mem) == (0, 0, 0)
     # toggling back
     _keys(p, mem, k0=BEAT_SELECT)
     _keys(p, mem, k0=BEAT_SELECT | RELOOP)
-    assert _u8(mem, SETTINGS + 0x22) == 0 and mem.u32(LOG + 28) == 2
+    assert _call(p, mem, "hot_cues_mode") == 0 and mem.u32(LOG + 28) == 0
     _keys(p, mem)
     # RELOOP alone and BEAT SELECT alone stay stock
     assert _keys(p, mem, k0=RELOOP) == (RELOOP, 0, 0)
@@ -380,13 +382,14 @@ def test_toggle_saves_the_mode_and_undoes_the_fraction_toggle():
     # RELOOP held first, then BEAT SELECT: not the combo (stock order)
     _keys(p, mem, k0=RELOOP)
     assert _keys(p, mem, k0=RELOOP | BEAT_SELECT) == (RELOOP | BEAT_SELECT, 0, 0)
-    assert _u8(mem, SETTINGS + 0x22) == 0
+    assert _call(p, mem, "hot_cues_mode") == 0
     _keys(p, mem)
-    # a 31-character HISTORY name leaves no room: no toggle (the keys are still taken)
-    mem.write(SETTINGS + 3, b"H" * 31)
+    # Turning HOT CUES OFF in UTILITY disables the mod and blocks BEAT SELECT + RELOOP
+    _call(p, mem, "c850_ui_set_flag", 0x0800, 1)
+    assert mem.u32(LOG + 28) == 0                                          # high bit, no flash save
     _keys(p, mem, k0=BEAT_SELECT)
-    assert _keys(p, mem, k0=BEAT_SELECT | RELOOP) == (0, 0, 0)
-    assert _u8(mem, SETTINGS + 0x22) == 0 and mem.u32(LOG + 28) == 2
+    assert _keys(p, mem, k0=BEAT_SELECT | RELOOP) == (BEAT_SELECT | RELOOP, 0, 0)
+    assert _call(p, mem, "hot_cues_mode") == 0
 
 
 @needs_toolchain
@@ -418,7 +421,7 @@ def test_pads_are_hot_cues_only_in_mode_with_anlz():
     # a key held when the mode came on stays stock until released
     mem = _mem(p, mode=0)
     _keys(p, mem, k1=B4)
-    mem.write(SETTINGS + 0x22, b"\x5A")
+    _call(p, mem, "c850_ui_set_hot_cues_armed", 1)
     assert _keys(p, mem, k1=B4) == (0, B4, 0)
     assert mem.read(q, 3) == b"\x00\x00\x00"
 
@@ -483,8 +486,8 @@ def test_anlz_write_empties_the_slot_and_counts_the_cues(delete, extras):
 
 
 @needs_toolchain
-@pytest.mark.parametrize("mode, slots, want", [(1, (1, 2, 0), (4, 0)), (1, (0, 0, 0), (7, 0)),
-                                               (1, (1, 2, 3), (0, 0)), (0, (1, 0, 0), None)])
+@pytest.mark.parametrize("mode, slots, want", [(1, (1, 2, 0), (12, 0)), (1, (0, 0, 0), (15, 0)),
+                                               (1, (1, 2, 3), (8, 0)), (0, (1, 0, 0), None)])
 def test_leds_are_faked_only_while_playertask_waits(mode, slots, want):
     p = _payload()
     mem = _mem(p, mode=mode, slots=slots, frac=1, beats=4)
@@ -493,6 +496,51 @@ def test_leds_are_faked_only_while_playertask_waits(mode, slots, want):
     seen = (_u8(mem, LOG + 0x110), _u8(mem, LOG + 0x111))
     assert seen == (want or (4, 1))
     assert (_u8(mem, BEATS), _u8(mem, D154)) == (4, 1)                          # real values back
+
+
+@needs_toolchain
+@pytest.mark.parametrize("start_state", [5, 6])
+def test_paused_or_cued_hot_cue_auto_plays(start_state):
+    p = _payload()
+    mem = _mem(p, mode=1, slots=(1, 0, 0), state=start_state)
+    mem.add(0x0C7F6400, bytes(0x80))
+    mem.add(0x0CE49F50, bytes(8))
+    mem.put32(0x0C7F677C, 0xFFFFFFFF)
+    mem.write(0x0C7F645C, struct.pack(">hhh", 200, 500, 0))
+    mem.put32(0x0C7F6470, 0x0C1E8E5C + 200 * 0x930)
+    struct.pack_into(">HII", mem.find(CTX + 0xF90, 0x38)[0], mem.find(CTX + 0xF90, 0x38)[1] + 0x1E, 150, 200, 1)
+    _stub(mem, 0x0C0746BC, "mov.l 1f,r0\nrts\nnop\n.align 2\n1: .long 0x0DDFEF00\n")
+    _stub(mem, 0x0C0C3550, "mov.l 1f,r0\nrts\nnop\n.align 2\n1: .long 0x11111111\n")
+    _stub(mem, 0x0C0C359A, "mov.l 1f,r0\nrts\nnop\n.align 2\n1: .long 0x22222222\n")
+    _stub(mem, 0x0C0C12B2, """
+        mov #1,r0
+        mov.l r0,@r6
+        mov.w 1f,r0
+        mov.w r0,@(4,r6)
+        rts
+        mov #0,r0
+        .align 2
+    1:  .short 1
+        .short 0
+    """)                                                   # 1 hot-cue record for slot 1
+    _stub(mem, 0x0C00851E, "rts\nmov r4,r0")             # ring_sector_to_frame: identity
+    _stub(mem, 0x0C01DE1C, """
+        mov #0,r0
+        mov.l r0,@r5
+        mov #100,r0
+        mov.l r0,@(12,r5)
+        rts
+        mov #1,r0
+    """)                                                   # rec_to_entry -> point cue at frame 100
+    _stub(mem, 0x0C0D3B1A, "rts\nnop")
+    assert _keys(p, mem, k1=B1) == (0, 0, 0)
+    _call(p, mem, "hot_cues_tick")                         # trigger queued slot 1 in paused/cued state
+    assert mem.u32(_sym(p, "hot_cues_instants")) == 1
+    assert mem.u16(0x0C7F645C) == 100
+    assert _u8(mem, _sym(p, "hc_play")) > 0
+    _call(p, mem, "hot_cues_tick")
+    assert mem.u16(K0) & PLAY == PLAY
+    assert mem.u32(_sym(p, "hot_cues_plays")) == 1
 
 
 @needs_toolchain
@@ -730,7 +778,7 @@ def _drive_steps(tr, stick, flash, log, res, snap, frames, leds, ensure_playing,
         toggle(d)                                         # mode on; RELOOP must not re-enter the loop
         snap(d, "on")
         res["leds_on"] = leds(d)
-        wait_frame(d, d.rw(FRAME) + 150)
+        wait_frame(d, max(d.rw(FRAME) + 150, 281 + 160))
         d.key("beat_1")                                   # A while playing
         time.sleep(0.4)
         res["jump_a_frames"] = frames(d, 2.0)
@@ -770,12 +818,10 @@ def _drive_steps(tr, stick, flash, log, res, snap, frames, leds, ensure_playing,
         d.key("play")                                     # pause
         time.sleep(1.5)
         snap(d, "paused")
-        d.key("beat_4")                                   # C while paused: cued there
-        time.sleep(1.5)
-        res["paused_frames"] = frames(d, 1.5)
+        d.key("beat_4")                                   # C while paused: auto-plays from C
+        time.sleep(2.5)
+        res["paused_frames"] = frames(d, 2.0)
         snap(d, "jump_c_paused")
-        d.key("play")
-        time.sleep(1.5)
         toggle(d)                                         # mode off: BEAT 4 is stock again
         snap(d, "off")
         ensure_playing(d)
@@ -833,9 +879,9 @@ def test_live_hot_cues_with_every_branch_mod(tmp_path):
     assert r["leds_off"] == [0xF]
     assert r["stock_beat4"]["state"] == 4 and r["stock_beat4"]["beats"] == 4
     on = r["on"]
-    assert on["mode"] == 0x5A and on["toggles"] == 1 and on["set"] == l0["set"]        # flag bytes untouched
+    assert on["mode"] == 0 and on["toggles"] == 1 and on["set"] == l0["set"]            # RAM-only arming, zero flash write
     assert on["d154"] == 0 and on["state"] == 3                                          # no fraction, no RELOOP
-    assert r["leds_on"] == [0xB, 0xF]                                                    # C blinks
+    assert r["leds_on"] == [3, 0xF]                                                      # C and BEAT 8 blink (A+B lit)
     # A while playing, A (frame 281) about 400 frames behind, still in the ring: the instant jump, no CALL
     # and no PLAY press; the deck plays on from A
     ja = r["jump_a"]
@@ -855,7 +901,7 @@ def test_live_hot_cues_with_every_branch_mod(tmp_path):
     assert 600 <= pos <= 640 and c == min(beats, key=lambda f: (abs(f - pos), f)), (pos, c, beats[15:20])
     assert rc["snapped"] == (c != pos) and abs(c - pos) <= 18, rc                         # half a beat at 128
     assert rc["slots"][2] == (3, 1, 150, 2 * c, 1), rc
-    assert r["leds_c"] == [0xF]
+    assert r["leds_c"] == [7, 0xF]                                                       # BEAT 8 blinks while active
     # B: the loop plays
     jb = r["jump_b"]
     assert jb["state"] == 4 and jb["active"] == 1 and (jb["in"], jb["out"]) == (B, 1265), jb
@@ -867,16 +913,18 @@ def test_live_hot_cues_with_every_branch_mod(tmp_path):
     # delete A
     da = r["delete_a"]
     assert da["deletes"] == 1 and da["mask"] == 6 and da["slots"][0][0] == 0 and da["state"] == 4, da
-    assert r["leds_del"] == [0xE, 0xF]                                                   # A blinks
+    assert r["leds_del"] == [6, 0xF]                                                     # A and BEAT 8 blink
     # record A as the playing loop B
     ra = r["record_a_loop"]
     assert ra["records"] == 2 and ra["slots"][0] == (1, 2, 150, 2 * B, 2 * 1265 + 1), ra
     # jump to A (a loop) while playing: the loop plays
     jl = r["jump_a_loop"]
     assert jl["state"] == 4 and (jl["in"], jl["out"]) == (B, 1265), jl
-    # C while paused: cued at C, not playing
+    # C while paused: auto-plays from C immediately
     jc = r["jump_c_paused"]
-    assert r["paused"]["state"] == 5 and jc["state"] == 6 and jc["frame"] == c and set(r["paused_frames"]) == {c}, jc
+    assert r["paused"]["state"] == 5 and jc["state"] == 3, jc
+    fr, plays = _moved_from(r["paused_frames"], c, late=45)
+    assert plays and all(b - a in range(0, 6) for a, b in zip(fr, fr[1:])), fr
     # mode off: stock BEAT 4 loop, LEDs stock
     assert r["off"]["mode"] == 0 and r["off_beat4"]["state"] == 4 and r["off_beat4"]["beats"] == 4
     # GRID96 has no ANLZ: BEAT 4 is stock in hot-cue mode
@@ -887,7 +935,7 @@ def test_live_hot_cues_with_every_branch_mod(tmp_path):
     typ, cnt, length, cues = r["anlz"]
     assert (cnt, length) == (3, 3 * 0x38 + 0x18)
     assert cues == [(1, 2, 150, 2 * B, 2 * 1265 + 1), (2, 2, 1000, 15000, 16875), (3, 1, 150, 2 * c, 1)], cues
-    # reboot: the mode is still on and the cues come back from the stick
+    # reboot: cues come back from the stick, while hot-cue arming is RAM-only (off after reboot)
     rb = r["reboot"]
-    assert rb["mode"] == 0x5A and rb["avail"] == 1 and rb["mask"] == 7, rb
+    assert rb["mode"] == 0 and rb["avail"] == 1 and rb["mask"] == 7, rb
     assert r["leds_reboot"] == [0xF]
