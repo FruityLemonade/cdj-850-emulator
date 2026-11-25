@@ -126,6 +126,43 @@ ALL_MODS = ["autostandby", "bpm999", "bpm999grid", "bpm999range", "bpm_probe", "
 ALL_FOLDERS = ["auto_standby", "bpm_decimals", "hot_cues", "loop_resize", "payload_demo", "quant_loops"]
 
 
+# The cue prefill request of the audio task: its pool word is inside the boot-critical closure, so it
+# goes through the service-mode gate (players/cdj850.GATED_BOOT_POOLS) and validate.py checks the thunk.
+PREFILL = ["hot_cues_prefill"]
+PREFILL_POOL, PREFILL_OLD, PREFILL_READER = 0x0C0F54D8, 0x0C008C8A, 0x0C0F534C
+
+
+@needs_main
+@needs_toolchain
+def test_prefill_pool_is_a_gated_boot_pool():
+    import bootcrit
+    import validate
+    from players.cdj850 import GATED_BOOT_POOLS, MAIN_PROFILE
+    stock = MAIN.read_bytes()
+    report, spans = {}, {}
+    names = MODS + PREFILL + SHOW
+    out = patch_main.patch(stock, patch_main.with_loader(names, "cdj850"), "cdj850", report, spans)
+    assert all(report[n][0] == "applied" for n in MODS + PREFILL), report
+    o = PREFILL_POOL - BASE
+    assert struct.unpack_from(">I", stock, o)[0] == PREFILL_OLD
+    assert _pool_readers(stock, PREFILL_POOL) == [PREFILL_READER]
+    # the reader: mov.l @(..),r2; jsr @r2; mov r13,r6, after the pushes of 120 and 400 (0x0C0F533A..)
+    assert struct.unpack_from(">5H", stock, 0x0C0F533A - BASE) == (0xEE78, 0x2FE6, 0xEE64, 0x4E08, 0x2FE6)
+    assert struct.unpack_from(">3H", stock, PREFILL_READER - BASE) == (0xD262, 0x420B, 0x66D3)
+    closure = bootcrit.closure(stock, BASE, byteorder=">")
+    assert closure.hit(o, o + 4)                       # why it needs the gate
+    assert PREFILL_POOL in GATED_BOOT_POOLS
+    p = payloadbuild.build(["hot_cues"], "cdj850")
+    assert struct.unpack_from(">I", out, o)[0] == _sym(p, "__gate_hot_cues_ring_request")
+    rep = validate.Report()
+    validate.check_main_image(stock, out, MAIN_PROFILE, spans, rep, gated_boot_pools=GATED_BOOT_POOLS)
+    assert rep.exit_code == 0, rep.text()
+    # without the allowance the validator refuses it
+    rep = validate.Report()
+    validate.check_main_image(stock, out, MAIN_PROFILE, spans, rep, gated_boot_pools=GATED_BOOT_POOLS - {PREFILL_POOL})
+    assert rep.exit_code != 0
+
+
 @needs_main
 @needs_toolchain
 def test_composes_with_the_branch_mods():
@@ -559,7 +596,8 @@ subprocess.run([sys.executable, os.path.join(root, 'make_usb_image.py'), device,
 STATE_USB, FRAME, LOOP_IN, OUT_REC, ACTIVE = 0x0CE6D25F, 0x0C7F647C, 0x0C7F6498, 0x0C7F64B0, 0x0CE6D0ED
 LED7, MODE_BYTE = 0x0C9D0AEB, SETTINGS + 0x22
 EV = ["toggles", "jumps", "records", "deletes", "plays", "failed", "last_slot", "last_in", "last_out",
-      "last_result", "avail", "mask", "snapped", "last_pos"]
+      "last_result", "avail", "mask", "snapped", "last_pos", "instants", "instant_misses", "instant_from",
+      "instant_sector", "prefills", "prefill_last"]
 GRID_CTX = 0x0C9D24FC
 
 
@@ -668,6 +706,13 @@ def drive(stick, flash, syms, work):
         time.sleep(1.0)
 
     log = open(work / "qemu.log", "w")
+    try:
+        return _drive_steps(tr, stick, flash, log, res, snap, frames, leds, ensure_playing, wait_frame, toggle)
+    finally:
+        (work / "drive.json").write_text(json.dumps(res))       # what was seen, also when a step fails
+
+
+def _drive_steps(tr, stick, flash, log, res, snap, frames, leds, ensure_playing, wait_frame, toggle):
     with tr.Deck(stick, flash=flash, log=log, writable=True) as d:
         written = d.usb
         d.wait_line("mode=0x0a", "[GRID128]", timeout=300)
@@ -763,9 +808,10 @@ def drive(stick, flash, syms, work):
     return res
 
 
-def _moved_from(fr, start):
-    """The frames after the jump: the first sample at or after `start`, and the deck plays on from there."""
-    i = next(i for i, f in enumerate(fr) if start <= f <= start + 10)
+def _moved_from(fr, start, late=10):
+    """The frames after the jump: the first sample at or after `start` (at most `late` frames on),
+    and the deck plays on from there."""
+    i = next(i for i, f in enumerate(fr) if start <= f <= start + late)
     return fr[i:], fr[-1] > fr[i] + 5             # the emulator plays slower than wall time
 
 
@@ -776,7 +822,7 @@ def test_live_hot_cues_with_every_branch_mod(tmp_path):
         pytest.skip("QMP socket descriptor inheritance requires POSIX")
     stick = build_stick(tmp_path)
     flash = tmp_path / "flash.bin"
-    flash.write_bytes(patch_main.patch_flash(FLASH.read_bytes(), ALL_MODS + MODS + SHOW, "cdj850"))
+    flash.write_bytes(patch_main.patch_flash(FLASH.read_bytes(), ALL_MODS + MODS + (PREFILL if not os.environ.get("HC_LIVE_NO_PREFILL") else []) + SHOW, "cdj850"))
     syms = payloadbuild.build(ALL_FOLDERS, "cdj850").symbols
     r = drive(stick, flash, syms, tmp_path)
     print("hot_cues live:", json.dumps(r))
@@ -790,11 +836,15 @@ def test_live_hot_cues_with_every_branch_mod(tmp_path):
     assert on["mode"] == 0x5A and on["toggles"] == 1 and on["set"] == l0["set"]        # flag bytes untouched
     assert on["d154"] == 0 and on["state"] == 3                                          # no fraction, no RELOOP
     assert r["leds_on"] == [0xB, 0xF]                                                    # C blinks
-    # A while playing: plays on from A
+    # A while playing, A (frame 281) about 400 frames behind, still in the ring: the instant jump, no CALL
+    # and no PLAY press; the deck plays on from A
     ja = r["jump_a"]
-    assert ja["jumps"] == 1 and ja["last_in"] == A and ja["state"] == 3 and ja["plays"] >= 1, ja
-    _, plays = _moved_from(r["jump_a_frames"], A)
-    assert plays
+    assert ja["jumps"] == 1 and ja["last_in"] == A and ja["state"] == 3 and ja["plays"] == 0, ja
+    assert ja["instants"] == 1 and ja["instant_misses"] == 0 and ja["instant_from"] > A + 150, ja
+    # sampling starts 0.4 s after the press and an instant jump does not wait for a prefill, so the
+    # first sample is already up to ~30 frames past A (emulator speed)
+    fr, plays = _moved_from(r["jump_a_frames"], A, late=45)
+    assert fr[0] == r["jump_a_frames"][0] and plays and all(b - a in range(0, 6) for a, b in zip(fr, fr[1:])), fr    # no gap, no CALL restart
     # record C while playing (about frame 600), the deck plays on; quantize is on (fresh deck) and GRID128's
     # grid gave the tempo, so C is the beat nearest the play position (quant_loops_in_point)
     rc = r["record_c"]
@@ -809,6 +859,9 @@ def test_live_hot_cues_with_every_branch_mod(tmp_path):
     # B: the loop plays
     jb = r["jump_b"]
     assert jb["state"] == 4 and jb["active"] == 1 and (jb["in"], jb["out"]) == (B, 1265), jb
+    # a loop slot takes the CALL path, with the short prefill (180 of the stock 400 sectors)
+    if not os.environ.get("HC_LIVE_NO_PREFILL"):
+        assert jb["prefills"] == 1 and jb["prefill_last"] == 180, jb
     fr, plays = _moved_from(r["jump_b_frames"], B)
     assert plays and max(fr) <= 1265
     # delete A
