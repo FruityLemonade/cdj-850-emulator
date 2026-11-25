@@ -454,9 +454,22 @@ def test_beat_resize_makes_the_block_loop(label, in_beat, beats, frac):
     mem.put32(LOOP_IN, fin)
     mem.put32(tq.CA90, ca90)
     stock = fin + (ca90 - fin) // ((8 // beats) * (frac * 15 + 1))
-    tq._call(p, mem, "quant_loops_auto_send", 6, 0, stock, 1, stack=(0, 1, 0, 2))
     q = beats if frac else beats * 16
     want = g.q_out(fin, q)
+    # FUN_0C00A4CC(out, 0): writes the out request, 1 = the send follows
+    from test_cdj850_hot_cues import _stub
+    _stub(mem, 0x0C00A4CC, "mov.l 1f,r0\nmov.l r4,@r0\nrts\nmov #1,r0\n.align 2\n1: .long 0x0C7F64DC")
+    mem.put32(tq.D1C0, stock)
+    assert tq._call(p, mem, "quant_loops_resize_req", stock, 0) == 1
+    assert mem.u32(OUT_REQ) == want and mem.u32(tq.D1C0) == want
+    arms = mem.u32(payloadbuild.lookup(p.symbols, "quant_loops_blk_arms"))
+    tq._call(p, mem, "quant_loops_auto_send", 6, 0, mem.u32(tq.D1C0), 1, stack=(0, 1, 0, 2))
+    assert tq._log(mem, log)[:4] == [6, 0, want, 1]
+    assert mem.u32(payloadbuild.lookup(p.symbols, "quant_loops_blk_arms")) == arms   # armed once
+    # the send alone (a resize whose request came another way) arms it too
+    mem.put32(LOOP_IN, fin)
+    tq._call(p, mem, "quant_loops_set_block_loop", 0, 0, 0, 1)              # some other loop
+    tq._call(p, mem, "quant_loops_auto_send", 6, 0, stock, 1, stack=(0, 1, 0, 2))
     assert tq._log(mem, log)[:4] == [6, 0, want, 1]
     assert mem.u32(OUT_REQ) == want and mem.u32(tq.D1C0) == want
     sym = lambda n: mem.u32(payloadbuild.lookup(p.symbols, "quant_loops_" + n))

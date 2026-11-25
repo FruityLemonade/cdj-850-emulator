@@ -931,6 +931,20 @@ static __attribute__((noinline)) u32 ql_resize(u32 frame)
     return out;
 }
 
+/* Pool 0x0C0E62BC (FUN_0C00A4CC, read at 0x0C0E602E and 0x0C0E61B4) in the
+ * state-4 resize sender: FUN_0C00A4CC(out, 0) writes the out request
+ * 0x0C7F64DC (which the feeder loops to) and re-plans the ring; stock sends
+ * audio cmd 6 (pool 0x0C0E62CC) only when it returns 1, with *D1C0. The
+ * resize gets the block loop here, so the request and D1C0 carry its frame
+ * whether the send follows or not. */
+#define QL_REQUEST_OUT      C850_FN(0x0C00A4CC, int, (u32 out, int z))
+
+int quant_loops_resize_req(u32 frame, int z)
+{
+    frame = ql_resize(frame);
+    return QL_REQUEST_OUT(frame, z);
+}
+
 /* ---- redirect entry points ---- */
 
 /* Pending block loop of the auto loop being set (quant_loops_auto_in ->
@@ -1032,8 +1046,9 @@ void quant_loops_auto_send(int cmd, int flag, u32 frame, int resize, int a5, int
             if (ql_pend_blk)
                 qb_set(&ql_pend);
         }
-    } else if ((cmd & 0xFF) == 6 && (resize & 0xFF) == 1) {
-        frame = ql_resize(frame);
+    } else if ((cmd & 0xFF) == 6 && (resize & 0xFF) == 1 &&
+               !(qb_armed && frame == qb_out_frame && C850_LOOP_IN_FRAME == qb_in_frame)) {
+        frame = ql_resize(frame);    /* (quant_loops_resize_req has armed it already) */
     }
     c850_audio_send_cmd(cmd, flag, frame, resize, a5, a6, a7, src);
 }

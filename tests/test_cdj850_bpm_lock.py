@@ -110,7 +110,7 @@ def test_composes_with_all_cdj850_mods():
         "hot_cues_leds", "hot_cues_anlz", "hot_cues_flash",
         "quant_loops", "quant_loops_auto_send", "quant_loops_auto_send2", "quant_loops_auto_keep",
         "quant_loops_loop_in", "quant_loops_loop_out", "quant_loops_loop_out2",
-        "quant_loops_keys", "quant_loops_flash", "quant_loops_tick", "quant_loops_blocks", "quant_loops_resize",
+        "quant_loops_keys", "quant_loops_flash", "quant_loops_tick", "quant_loops_blocks", "quant_loops_resize", "quant_loops_resize_req",
         "loop_resize", "loop_resize_tick", "loop_resize_memory",
         "phase_meter",
     ] + MODS

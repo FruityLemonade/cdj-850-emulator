@@ -31,8 +31,10 @@ modding doc, the payload or a test; **[open]** needs the emulator or a deck.
   to apply a writer's records. The ISR checks state 4, loop active and the in record each block.
 - **Resizes:** the cmd 6 resize send comes from the state-4 resize sender after
   `FUN_0C00A4CC`, through pool `0x0C0E62CC` (not the new-loop words): redirected as
-  `quant_loops_resize` to `quant_loops_auto_send`. The emulator showed it: before that redirect
-  BEAT 1 in a loop sent the stock frame. q is `loop_resize`'s (`quant_loops_resize_hint`), else the r = 8/b
+  `quant_loops_resize` to `quant_loops_auto_send`. That send follows only when
+  `FUN_0C00A4CC(out, 0)` (which writes the out request itself) returns 1; in the emulator a BEAT 1
+  resize wrote the stock frame with no send. So its pool word `0x0C0E62BC` is redirected too
+  (`quant_loops_resize_req`): the request and D1C0 carry the block loop's frame either way. q is `loop_resize`'s (`quant_loops_resize_hint`), else the r = 8/b
   (x16 in fraction mode) for which the stock division `(CA90 - in) / r` gives exactly the sent
   frame (across a tempo change the grid length is not CA90/r), else the search. `loop_resize` takes its grid frames from `quant_loops_q_out`.
   A halving past the new out needs no deferral any more (the overshoot keeps the phase), but

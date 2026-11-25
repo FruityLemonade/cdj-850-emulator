@@ -37,7 +37,7 @@ BAKEN = ROOT / "tools" / "baken" / "baken"
 BASE = 0x0C000000
 MODS = ["quant_loops", "quant_loops_auto_send", "quant_loops_auto_send2", "quant_loops_auto_keep",
         "quant_loops_loop_in", "quant_loops_loop_out", "quant_loops_loop_out2", "quant_loops_tick",
-        "quant_loops_blocks", "quant_loops_resize"]
+        "quant_loops_blocks", "quant_loops_resize", "quant_loops_resize_req"]
 AUDIO_SEND_CMD = 0x0C0D7464
 # (pool word, stock value, instructions that read it, payload symbol)
 POOLS = [
@@ -46,6 +46,7 @@ POOLS = [
                                   0x0C0E5F6E, 0x0C0E5F8C, 0x0C0E5FB0], "quant_loops_auto_send"),
     (0x0C0E5D08, AUDIO_SEND_CMD, [0x0C0E5B00, 0x0C0E5B20, 0x0C0E5B4C, 0x0C0E5CC8, 0x0C0E5CE2],
      "quant_loops_auto_send"),
+    (0x0C0E62BC, 0x0C00A4CC, [0x0C0E602E, 0x0C0E61B4], "quant_loops_resize_req"),
     (0x0C0E5FD0, 0x0C0059D2, [0x0C0E5DAA], "quant_loops_auto_keep"),
     (0x0C0E62CC, AUDIO_SEND_CMD, [0x0C0E606E, 0x0C0E608E, 0x0C0E60B4, 0x0C0E60DA, 0x0C0E6138, 0x0C0E6168,
                                   0x0C0E6186, 0x0C0E61A6, 0x0C0E61EC, 0x0C0E620A, 0x0C0E623A],
@@ -330,7 +331,7 @@ def test_static_pool_words_outside_the_boot_critical_closure():
     for lo, hi in ((0x0C0E5590, 0x0C0E630C), (0x0C0DEB50, 0x0C0E0F34)):
         diff = [a for a in range(lo, hi) if stock[a - BASE] != out[a - BASE]]
         assert all(any(pool <= a < pool + 4 for pool, *_ in POOLS) for a in diff), [hex(a) for a in diff]
-    assert len([a for a in range(0x0C0D0000, 0x0C0F0000) if stock[a - BASE] != out[a - BASE]]) <= 36   # nine words
+    assert len([a for a in range(0x0C0D0000, 0x0C0F0000) if stock[a - BASE] != out[a - BASE]]) <= 40   # ten words
 
 
 @needs_main

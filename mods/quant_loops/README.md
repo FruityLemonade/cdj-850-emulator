@@ -89,13 +89,13 @@ deck with this build. See `docs/cdj850-modding.md` section 4b.6.
 
 ## Use
     .venv/bin/python mods/patch_update.py --model cdj850 C850MAIN.UPD C850MAIN_MOD.UPD quant_loops
-Switch: `CDJ_MAIN_QUANT_LOOPS=1` (and its thirteen sibling `CDJ_MAIN_QUANT_LOOPS_*` knobs in
-`mod.conf`, all one row: `quant_loops` on the command line brings all fourteen patches). The payload
+Switch: `CDJ_MAIN_QUANT_LOOPS=1` (and its fourteen sibling `CDJ_MAIN_QUANT_LOOPS_*` knobs in
+`mod.conf`, all one row: `quant_loops` on the command line brings all fifteen patches). The payload
 word `quant_loops_on` (1 = the mod may snap) and the on-deck switch above are both checked first by
 every routine, the block loops included.
 
 ## How
-Thirteen pool-word redirects and one display hook into the shared payload
+Fourteen pool-word redirects and one display hook into the shared payload
 (`cdj850/payload/quant_loops.c`, `loop_tick.c`, and the shared `payload/common/c850_ui.c` and
 `c850_loop_out.c`), no cave bytes but one 8-byte trampoline slot. Each word and every
 instruction that reads it is outside the boot-critical closure (`mods/bootcrit.py`); the IRQ7
@@ -109,6 +109,7 @@ it and the generated service gate returns to stock. See `docs/cdj850-modding.md`
 | `quant_loops_auto_send` | `0x0C0E5FC8` (`audio_send_cmd`) | auto_beat_loop_set only | `quant_loops_auto_send`: grid out into the new loop's cmd 6 |
 | `quant_loops_auto_send2` | `0x0C0E5D08` (`audio_send_cmd`) | auto_beat_loop_set only | same, cued path |
 | `quant_loops_resize` | `0x0C0E62CC` (`audio_send_cmd`) | the state-4 resize sender only | `quant_loops_auto_send`: a resize (cmd 6, resize flag) gets the block loop of the new length |
+| `quant_loops_resize_req` | `0x0C0E62BC` (`FUN_0C00A4CC`) | `0x0C0E602E`, `0x0C0E61B4` | `quant_loops_resize_req`: the out request a resize writes (the send follows only when it returns 1) gets the block loop's frame |
 | `quant_loops_auto_keep` | `0x0C0E5FD0` (`FUN_0C0059D2`) | `0x0C0E5DAA` | keep the snapped in sector (stock refreshes it right after the send) |
 | `quant_loops_loop_in` | `0x0C0DFA80` (`FUN_0C0059D2`) | `0x0C0DF95E` | `quant_loops_loop_in`: in sector to the nearest beat |
 | `quant_loops_loop_out` | `0x0C0E0090` (`audio_send_cmd`) | LOOP OUT code only | `quant_loops_loop_out`: out sector of cmd 1/mode 3 |

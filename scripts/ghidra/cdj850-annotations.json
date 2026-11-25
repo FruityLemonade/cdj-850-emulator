@@ -2525,6 +2525,11 @@
           "address": "0c0e606e",
           "type": "EOL",
           "text": "Loads pool 0x0C0E62CC (audio_send_cmd), read only in this state-4 resize sender of auto_beat_loop_set (11 readers 0x0C0E606E..0x0C0E623A): audio_send_cmd(6, 0, *D1C0, 1, ...) after FUN_0C00A4CC wrote the request 0x0C7F64DC. quant_loops_resize redirects it (service-gated) so a resize (BEAT n in a loop, loop_resize) gets the block loop of the new length. Outside the boot-critical closure. [static + emu]"
+        },
+        {
+          "address": "0c0e602e",
+          "type": "EOL",
+          "text": "Loads pool 0x0C0E62BC (FUN_0C00A4CC; also read at 0x0C0E61B4): the state-4 resize sender calls FUN_0C00A4CC(*D1C0, 0), which writes the out request 0x0C7F64DC (the feeder loops to it) and re-plans the ring; the cmd 6 resize send (pool 0x0C0E62CC) follows only when it returns 1. In the emulator a BEAT 1 resize left the request at the stock frame with no send through 0x0C0E62CC. quant_loops_resize_req redirects the word (service-gated). Outside the boot-critical closure. [static + emu]"
         }
       ],
       "labels": [

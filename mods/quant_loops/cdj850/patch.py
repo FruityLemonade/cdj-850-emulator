@@ -21,6 +21,9 @@ docs/cdj850-modding.md has the trace.
 * quant_loops_resize: pool 0x0C0E62CC (audio_send_cmd), read only in the state-4
   resize sender of auto_beat_loop_set (0x0C0E606E .. 0x0C0E623A): the resize (cmd 6,
   resize flag; BEAT n in a loop, loop_resize) gets the block loop of the new length.
+* quant_loops_resize_req: pool 0x0C0E62BC (FUN_0C00A4CC), read only at 0x0C0E602E and
+  0x0C0E61B4 in the same sender: the out request 0x0C7F64DC a resize writes (the send
+  follows only when it returns 1), so the block frame is requested either way.
 * quant_loops_auto_keep: pool 0x0C0E5FD0 (FUN_0C0059D2), read only at
   0x0C0E5DAA, right after those sends: stock refreshes the in sector word
   0x0C7F6468 there before the audio task reads it for the queued cmd 6; with
@@ -110,6 +113,13 @@ MODS = {
         'quant loops: a resize inside a loop gets the block loop of the new length',
         [0xE406, 0xDD93, 0x66D2, 0xD397, 0x430B, 0xE701, 0xA0E5], 3,
         AUDIO_SEND_CMD, 'quant_loops_auto_send'),
+    # 0x0C0E6026: mov #3,r6; mov #0,r5; mov.b r6,@r1; mov.l @(D1C0),r6; mov.l @(0x0C0E62BC),r2;
+    # jsr @r2; mov.l @r6,r4; extu.b r0,r0 (the state-4 resize sender: FUN_0C00A4CC(out, 0)
+    # writes the out request; the cmd 6 send above follows only when it returns 1)
+    'quant_loops_resize_req': _redirect(
+        'quant loops: a resize inside a loop requests the block loop of the new length',
+        [0xE603, 0xE500, 0x2160, 0xD6A2, 0xD2A3, 0x420B, 0x6462, 0x600C], 4,
+        0x0C00A4CC, 'quant_loops_resize_req'),
     # 0x0C0E5DA6: cmp/eq #6,r0; bt; mov.l @(0x0C0E5FD0),r4; jsr/n @r4; mov.l @(0x0C7F6468),r14;
     # mov.l @(FUN_0C00586C),r5; jsr @r5; mov.w @r14,r4
     'quant_loops_auto_keep': _redirect(
