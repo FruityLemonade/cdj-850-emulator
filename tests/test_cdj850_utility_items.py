@@ -1,6 +1,7 @@
 # SPDX-License-Identifier: GPL-2.0-or-later
-"""The UTILITY items after VERSION No. (c850_ui.c) on the CDJ-850 MAIN 1.13: WAVE PLAYHEAD (waveform)
-and QUANTIZE DRIFT ON/OFF (quant_loops).
+"""The UTILITY items after VERSION No. (c850_ui.c) on the CDJ-850 MAIN 1.13: WAVE PLAYHEAD (waveform),
+QUANTIZE (the quantize value 1 / 1/2 / 1/4 beat) and QUANTIZE DRIFT ON/OFF (quant_loops). Quantize
+on/off, hot-cue mode and roll mode are BEAT SELECT combos and have no UTILITY item.
 
 * static: quant_loops and waveform redirect the same two UTILITY pool words to the same routines
   (the second is 'applied', shared), either mod alone brings them, the image passes the validator;
@@ -74,7 +75,8 @@ def test_item_table_has_the_linked_mods():
     for folders, want in (
         (["quant_loops"], ["ql_q_utility_item", "ql_utility_item"]),
         (["waveform"], ["wf_mod_utility_item", "wf_utility_item"]),
-        (["hot_cues"], ["hc_utility_item"]),
+        (["hot_cues"], []),                               # hot-cue mode: BEAT SELECT + RELOOP only
+        (["loop_roll"], []),                              # roll mode: BEAT SELECT + LOOP OUT only
         (["auto_standby"], ["as_utility_item"]),
         (["quant_loops", "waveform"], ["ql_q_utility_item", "ql_utility_item",
                                         "wf_mod_utility_item", "wf_utility_item"]),
@@ -146,7 +148,7 @@ def test_quantize_drift_alone_is_item_7():
     mem.write(CURSOR, b"\x06")                            # VERSION No.
     _call(p, mem, "c850_ui_utility_scroll", 1, 1)
     assert mem.read(CURSOR, 1) == b"\x07" and mem.u32(TIMEOUT) == 15000 and _calls(mem, 3) == 1
-    assert _rows(p, mem) == ("QUANTIZE", "ON")
+    assert _rows(p, mem) == ("QUANTIZE", "1 BEAT")        # a fresh deck: 1 beat
     _call(p, mem, "c850_ui_utility_scroll", 1, 1)
     assert mem.read(CURSOR, 1) == b"\x08"
     assert _rows(p, mem) == ("QUANTIZE DRIFT", "ON")      # a fresh deck: correction on
@@ -160,15 +162,20 @@ def test_quantize_drift_alone_is_item_7():
     assert mem.read(SETTINGS + 0x21, 2) == b"\x00\x00" and _calls(mem, 0) == 2
     assert _rows(p, mem) == ("QUANTIZE DRIFT", "ON")
 
-    # Turning QUANTIZE OFF hides QUANTIZE DRIFT.
+    # QUANTIZE: a press steps the quantize value 1 -> 1/2 -> 1/4 -> 1 beat (RAM/stick flags, no
+    # flash save)
     _call(p, mem, "c850_ui_utility_scroll", 0, 1)
     assert mem.read(CURSOR, 1) == b"\x07"
-    _call(p, mem, "c850_ui_utility_select", 3, 7)
-    assert _rows(p, mem) == ("QUANTIZE", "OFF")
+    for value, div in (("1/2 BEAT", 2), ("1/4 BEAT", 4), ("1 BEAT", 1)):
+        _call(p, mem, "c850_ui_utility_select", 3, 7)
+        assert _rows(p, mem) == ("QUANTIZE", value) and _call(p, mem, "c850_ui_quant_div") == div
+    assert _calls(mem, 0) == 2
+
+    # Quantize switched off (BEAT SELECT + LOOP IN: flags byte bit 0) hides QUANTIZE DRIFT only.
+    mem.write(SETTINGS + 0x22, b"\x53")
     _call(p, mem, "c850_ui_utility_scroll", 1, 1)
-    assert mem.read(CURSOR, 1) == b"\x07"
-    _call(p, mem, "c850_ui_utility_select", 3, 7)
-    assert _rows(p, mem) == ("QUANTIZE", "ON")
+    assert mem.read(CURSOR, 1) == b"\x07" and _rows(p, mem) == ("QUANTIZE", "1 BEAT")
+    mem.write(SETTINGS + 0x22, b"\x00")
 
     _call(p, mem, "c850_ui_utility_select", 3, 2)         # a stock item
     assert _calls(mem, 2) == 1 and mem.u32(LOG + 0x80) == 3 and mem.u32(LOG + 0x84) == 2
@@ -187,7 +194,7 @@ def test_quantize_drift_after_wave_playhead():
     mem = _mem(p)
     mem.write(CURSOR, b"\x06")
     _call(p, mem, "c850_ui_utility_scroll", 1, 1)
-    assert mem.read(CURSOR, 1) == b"\x07" and _rows(p, mem) == ("QUANTIZE", "ON")
+    assert mem.read(CURSOR, 1) == b"\x07" and _rows(p, mem) == ("QUANTIZE", "1 BEAT")
     _call(p, mem, "c850_ui_utility_scroll", 1, 1)
     assert mem.read(CURSOR, 1) == b"\x08" and _rows(p, mem) == ("QUANTIZE DRIFT", "ON")
     _call(p, mem, "c850_ui_utility_scroll", 1, 1)
@@ -216,33 +223,34 @@ def test_all_experimental_utility_items_and_gating():
     mem = _mem(p)
     want = [
         ("STANDBY TIME", "20 MIN"),
-        ("QUANTIZE", "ON"),
+        ("QUANTIZE", "1 BEAT"),
         ("QUANTIZE DRIFT", "ON"),
         ("BPM DECIMALS", "ON"),
         ("BPM LOCK", "ON"),
         ("PHASE METER", "ON"),
         ("INFO ORDER", "ON"),
         ("BROWSE MODS", "ON"),
-        ("HOT CUES", "ON"),
         ("WAVEFORM", "ON"),
         ("WAVE PLAYHEAD", "LEFT 1/3"),
-        ("LOOP ROLL", "ON"),
     ]
     for i, item in enumerate(want):
         mem.write(CURSOR, bytes([7 + i]))
         assert _rows(p, mem) == item
+    _call(p, mem, "c850_ui_utility_scroll", 1, 5)         # nothing after WAVE PLAYHEAD
+    assert mem.read(CURSOR, 1) == bytes([6 + len(want)])
 
-    # Toggle BPM DECIMALS (item 10) -> OFF, HOT CUES (item 15) -> OFF
+    # Toggle BPM DECIMALS (item 10) -> OFF
     _call(p, mem, "c850_ui_utility_select", 3, 10)
     mem.write(CURSOR, bytes([10]))
     assert _rows(p, mem) == ("BPM DECIMALS", "OFF")
     assert _call(p, mem, "c850_ui_flag", 0x0040) == 1
 
-    # Hot cues flag in flash does not enable hot_cues_mode() while HOT CUES is OFF in UTILITY.
+    # Hot-cue mode follows the flags byte (BEAT SELECT + RELOOP) alone: the retired HOT CUES OFF
+    # bit (0x0800, set by older builds' UTILITY item) no longer blocks it.
     mem.write(SETTINGS + 0x22, b"\x58")
     assert _call(p, mem, "hot_cues_mode") == 1
-    _call(p, mem, "c850_ui_utility_select", 3, 15)
-    assert _call(p, mem, "hot_cues_mode") == 0
+    _call(p, mem, "c850_ui_set_flags", 0x0800, 0x0800)
+    assert _call(p, mem, "hot_cues_mode") == 1
 
 
 @needs_toolchain
@@ -287,7 +295,7 @@ def test_live_quantize_drift_in_utility(tmp_path):
     script = "3800:menu:1700,6500:rot+6,7500:rot+1,8500:rot+1,9500:enter:200"
     with tr.Deck(stick, flash=flash, script=script, writable=True) as d:
         d.wait_line("[VERSION No.]", timeout=60)
-        d.wait_line("[QUANTIZE]", "[ON]", timeout=60)
+        d.wait_line("[QUANTIZE]", "[1 BEAT]", timeout=60)
         d.wait_line("[QUANTIZE DRIFT]", "[ON]", timeout=60)
         d.wait_line("[QUANTIZE DRIFT]", "[OFF]", timeout=60)
         d.wait_line("input release enter", timeout=60)

@@ -58,6 +58,25 @@ Interaction with stock features (checked in the emulator, see the test):
 - LOOP OUT pressed past the snapped out (nearest beat behind the playhead): the loop closes at
   once and plays from in, as stock does for its own out.
 
+## Quantize value in UTILITY
+**Hold MENU/UTILITY, turn past VERSION No. to `QUANTIZE`, press the selector** to step
+`1 BEAT` (default) → `1/2 BEAT` → `1/4 BEAT`. It sets the grid step of every quantized action:
+LOOP IN, LOOP OUT, the in of an auto beat loop (whole-beat loops start on the nearest point and
+are N beats of grid time long from there), a new `hot_cues` point cue, and the `loop_roll`
+release. Fraction loops (BEAT SELECT) keep snapping to multiples of their own length. Quantize
+on/off stays on BEAT SELECT + LOOP IN (the `QUANTIZE ON/OFF` UTILITY item of earlier builds is
+gone). The value is kept in the stick's `MODSET.DAT` (bits 16..17 of the flags word) and in RAM
+without a stick, like `STANDBY TIME`.
+
+## First pass within half a frame
+Every out the mod makes (auto loop, LOOP OUT, the drift correction's moves, and `loop_resize`)
+is `in + round(grid duration)` rather than the grid frame of the out. The in itself is rounded to
+a frame, so rounding the out separately could make the first pass up to a whole frame (13.3 ms)
+longer or shorter than the grid length, which is what is heard at the first wrap (and is all a
+short roll ever plays). Now the first pass is within half a frame, and the drift correction keeps
+every later wrap there. Example: 128.00 BPM, in on beat 5 (2694 ms = frame 202), LOOP OUT near
+beat 8 (4100 ms): the out is 202 + round(105.45) = 307, not the beat's frame 308.
+
 ## Drift correction on/off in UTILITY
 **Hold MENU/UTILITY, turn the selector past VERSION No. to `QUANTIZE DRIFT`** (after
 `WAVE PLAYHEAD` when `waveform` is built in), **press the selector** to switch `ON` / `OFF`.

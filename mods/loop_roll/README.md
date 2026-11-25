@@ -7,9 +7,12 @@ Default off. **Prototype**: emulator-tested only, never run on a deck.
 | hold BEAT SELECT, press LOOP OUT | toggles roll mode (not saved); the display shows `ROLL ON` / `ROLL OFF` for 1.5 s | same |
 | hold BEAT 1 / 2 / 4 / 8 while playing | the stock auto beat loop plays while the button is held (with `quant_loops`: on the grid, no drift); another beat button while held resizes it | stock beat loop |
 | release every beat button | playback lands where it would be had the loop never played, and the loop is left | stock: the loop keeps playing |
+| release with quantize on (and `quant_loops`, a rekordbox grid) | the roll plays on to the next quantize point of that position (UTILITY `QUANTIZE`: 1, 1/2 or 1/4 beat) and lands there; a point at most 10 blocks (19 ms) behind counts as reached and lands at once; a beat button pressed while it waits takes the release back (the roll goes on, resized by stock) | same |
 
 BEAT SELECT alone still switches the 1/16–1/2 beat fractions, so rolls of 1/16 to 8 beats are
 possible. With `hot_cues` in hot-cue mode the beat buttons stay hot cues and nothing rolls.
+Roll mode has no UTILITY item (the `LOOP ROLL` item of earlier builds is gone, and its saved OFF
+bit is ignored): BEAT SELECT + LOOP OUT is the only switch.
 
 ## How it works
 
@@ -24,6 +27,13 @@ possible. With `hot_cues` in hot-cue mode the beat buttons stay hot cues and not
   the PCM ring's sector table), clears the loop segments as a stock wrap does, and suppresses the
   stock wraps until playertask has given one RELOOP/EXIT press to leave the loop. There is no
   reread from the stick and no stop of the DSP stream. Landing precision is one block (1.9 ms).
+- **Quantized release.** At the release the key filter asks `quant_loops_roll_target` for the
+  first quantize point at or after the shadow position (blocks = grid ms × 525 / 1000) and the
+  ISR lands when its count reaches that block, so the landing is exactly on the point (block
+  precision). Without `quant_loops` a weak default says "no grid" and the landing is at once. The
+  stall guard (0.6 s without a counted block) only runs while the feeder stops counting, so a wait
+  of up to a beat at any tempo is fine. Evidence: `loop_roll_release_pos`, `loop_roll_quantized`,
+  `loop_roll_cancels`.
 - **Limit.** The landing needs the audio to still be in the ring: about 15 s ahead with WAV, less
   with slower decoders. Past it the roll ends with a stock EXIT (playback goes on from the loop)
   and `loop_roll_misses` counts it.

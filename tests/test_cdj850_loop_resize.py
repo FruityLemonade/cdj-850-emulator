@@ -111,10 +111,10 @@ class Grid:
         return i, s
 
     def out(self, loop_in, q):
+        """in + the grid duration rounded once (the first pass within half a frame of it)."""
         i, s = self.anchor(loop_in)
-        if s < 16:
-            return ms_to_frames(self.grid_ms(i, s + q))
-        return loop_in + ms_to_frames(self.grid_ms(i, q) - self.e[i][2])
+        b = s if s < 16 else 0
+        return loop_in + ms_to_frames(self.grid_ms(i, b + q) - self.grid_ms(i, b))
 
     def q_of(self, loop_in, out):
         """The q whose out is within a frame of `out` (the first such, as the payload's search)."""
@@ -237,7 +237,7 @@ def test_composes_with_the_branch_mods():
     report = {}
     out = patch_main.patch(MAIN.read_bytes(), names, "cdj850", report)
     assert all(report[n][0] == "applied" for n in names), report
-    p = payloadbuild.build(["bpm_decimals", "loop_resize", "payload_demo", "quant_loops"], "cdj850")
+    p = payloadbuild.build(["auto_standby", "bpm_decimals", "loop_resize", "payload_demo", "quant_loops"], "cdj850")
     for pool, _, _, symbol in POOLS:
         assert struct.unpack_from(">I", out, pool - BASE)[0] == payloadbuild.lookup(p.symbols, payloadbuild.gate_name(symbol))
 
@@ -400,9 +400,9 @@ def test_hand_computed_grid_frames():
     # the track ends inside the doubled loop: clamped to tracklen - 1, then ignored
     assert _new_out(p, mem, loop_in, 343, 400, 1) == (399, 0, 1)
     assert _new_out(p, mem, loop_in, 399, 400, 1)[0] is None
-    # an in on a 1/16 step (683 = step 11 of beat 18) with a stock 4-beat out (683 + 140): both
-    # 63/16 (822) and 64/16 (824) are a frame away; 4 beats wins (seen in the emulator)
-    assert g.anchor(683) == (18, 11) and (g.out(683, 63), g.out(683, 64)) == (822, 824)
+    # an in on a 1/16 step (683 = step 11 of beat 18) with a stock 4-beat out (683 + 140): 64/16
+    # (683 + round(140.625) = 824) is a frame away, 63/16 (683 + round(138.4) = 821) two: 4 beats
+    assert g.anchor(683) == (18, 11) and (g.out(683, 63), g.out(683, 64)) == (821, 824)
     assert _new_out(p, mem, 683, 823, 100000, 0) == (g.out(683, 32), 32, 1)
     # 127.96: beat 5 = 350 + 5 * 468.896... = 2694 ms (202); 4 beats: 4570 ms -> 343, 2: 3632 -> 272
     g2 = Grid(GRIDS["127.96 @0.35"])
@@ -989,7 +989,10 @@ def _live(tmp_path, names, folders, tracks):
     stick = build_stick(tmp_path)
     flash = tmp_path / "flash.bin"
     flash.write_bytes(patch_main.patch_flash(FLASH.read_bytes(), names, "cdj850"))
-    syms = payloadbuild.build(folders, "cdj850").symbols
+    # the folders the flash really carries (autostandby brings auto_standby's payload too)
+    built = patch_main.payload_folders(names, "cdj850")
+    assert set(folders) <= set(built), (folders, built)
+    syms = payloadbuild.build(built, "cdj850").symbols
     res = drive(stick, flash, syms, tracks=tracks)
     print("loop_resize live:", json.dumps(res))
     restarts = res.pop("_restarts", [])

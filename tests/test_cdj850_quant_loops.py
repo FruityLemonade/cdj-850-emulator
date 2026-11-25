@@ -126,56 +126,93 @@ class Grid:
         bpm100 = self.e[i][1] or 13000
         return self.e[i][2] + (k * 6000000 + bpm100 // 2) // bpm100
 
-    def auto_points(self, pos, beats, frac):
-        """The in is the grid point nearest the playhead, behind or ahead (ties to the earlier one)."""
-        if frac:
-            i = self.at_or_before(pos)
-            if i is None:
-                i = 0
-            if i == "away" or not self.ok(i):
-                return None
-            t_beat = self.e[i][2]
-            d = self.ms_after(i, 1) - t_beat
-            steps = 16 // beats                     # k == steps: the next beat
-            k = min(range(steps + 1), key=lambda k: (abs(ms_to_frames(t_beat + (k * beats * d + 8) // 16) - pos), k))
-            if k == steps:
-                if i + 1 >= self.n:
-                    return None
-                i += 1
-                t_beat = self.e[i][2]
-                d = self.ms_after(i, 1) - t_beat
-                k = 0
-            t_in = t_beat + (k * beats * d + 8) // 16
-            t_out = t_beat + ((k + 1) * beats * d + 8) // 16
-        else:
-            i = self.nearest(pos)
-            if i == "away" or not self.ok(i):
-                return None
-            t_beat = t_in = self.e[i][2]
-            t_out = self.ms_after(i, beats)
-        fin, fout = ms_to_frames(t_in), ms_to_frames(t_out)
-        fout = max(fout, fin + 1)
+    def grid_ms(self, i, p):
+        """Grid time of p sixteenths of a beat after beat i (quant_loops_grid_ms)."""
+        t0 = self.ms_after(i, p >> 4)
+        r = p & 15
+        return t0 if r == 0 else t0 + (r * (self.ms_after(i, (p >> 4) + 1) - t0) + 8) // 16
+
+    def pt(self, i, s):
+        return ms_to_frames(self.grid_ms(i, s))
+
+    def point_nearest(self, frame, step):
+        """Nearest point every `step` sixteenths (ties to the earlier one): (beat, step)."""
+        i = self.at_or_before(frame)
+        if i == "away":
+            return "away"
+        if i is None:
+            return 0, 0
+        if i + 1 >= self.n:
+            return i, 0
+        s = min(range(0, 17, step), key=lambda s: (abs(self.pt(i, s) - frame), s))
+        return (i + 1, 0) if s == 16 else (i, s)
+
+    def step_of(self, i, loop_in):
+        return next((s for s in range(16) if self.pt(i, s) == loop_in), 16)
+
+    def out_from(self, i, s, loop_in, q):
+        b = s if s < 16 else 0
+        return loop_in + ms_to_frames(self.grid_ms(i, b + q) - self.grid_ms(i, b))
+
+    def auto_points(self, pos, beats, frac, div=1):
+        """The in is the point nearest the playhead (every L for a fraction, else the quantize
+        value), behind or ahead (ties to the earlier one); outs are in + the rounded duration."""
+        if beats == 0 or beats > 16 or (frac and beats > 8):
+            return None
+        q = beats if frac else beats * 16
+        pn = self.point_nearest(pos, beats if frac else 16 // div)
+        if pn == "away" or not self.ok(pn[0]):
+            return None
+        i, s = pn
+        t_in, t_out = self.grid_ms(i, s), self.grid_ms(i, s + q)
+        fin = ms_to_frames(t_in)
+        fout = max(fin + ms_to_frames(t_out - t_in), fin + 1)
         if fout <= pos:
             return None                             # the playhead must be before the out
-        return fin, fout, ms_to_frames(t_in + self.ms_after(i, 8) - t_beat)
+        return fin, fout, fin + ms_to_frames(self.grid_ms(i, s + 128) - t_in)
 
-    def in_point(self, pos):
-        i = self.nearest(pos)
-        return pos if i == "away" or not self.ok(i) else self.f(i)
+    def in_point(self, pos, div=1):
+        pn = self.point_nearest(pos, 16 // div)
+        return pos if pn == "away" or not self.ok(pn[0]) else self.pt(*pn)
 
-    def out_point(self, loop_in, pos):
-        i = self.nearest(pos)
-        if i == "away" or not self.ok(i):
+    def out_point(self, loop_in, pos, div=1):
+        step = 16 // div
+        pn = self.point_nearest(pos, step)
+        if pn == "away" or not self.ok(pn[0]):
             return pos
-        if self.f(i) <= loop_in:
-            j = self.at_or_before(loop_in)
-            if j == "away":
+        i, s = pn
+        k = self.at_or_before(loop_in)
+        if k == "away":
+            return pos
+        k = 0 if k is None else k
+        if k >= self.n:
+            return pos
+        s = 0 if i < k else s + (i - k) * 16
+        if self.pt(k, s) <= loop_in:
+            s = 0
+            while s < 64 and self.pt(k, s) <= loop_in:
+                s += step
+            if s >= 64:
                 return pos
-            j = 0 if j is None else j + 1
-            if j >= self.n or self.f(j) <= loop_in:
-                return pos
-            i = j
-        return self.f(i)
+        sin = self.step_of(k, loop_in)
+        if sin < 16 and s > sin:
+            return self.out_from(k, sin, loop_in, s - sin)
+        return self.pt(k, s)
+
+    def roll_target(self, pos_block, late, div=1):
+        """quant_loops_roll_target: the first point at or after pos_block - late, in blocks."""
+        lim = max(pos_block - late, 0)
+        i = self.at_or_before(pos_block // 7)
+        if i == "away":
+            return None
+        i = 0 if i is None else i
+        if not self.ok(i):
+            return None
+        for s in range(0, 33, 16 // div):
+            b = (self.grid_ms(i, s) * 21 + 20) // 40
+            if b >= lim:
+                return b
+        return None
 
 
 def const_grid(bpm, first_ms, n):
@@ -369,19 +406,19 @@ def test_auto_points_on_the_interpreter():
     # 1/2 pressed at 231 (3/4 into the beat): steps 202, 220, 237 -> beat 6, out = 3397 ms
     assert g.auto_points(231, 8, 1) == (237, 255, 518)
     # 1/4 at 231: steps at 2694, 2811, 2929, 3046 ms (202, 211, 220, 228), beat 6 (237): in 228
-    assert g.auto_points(231, 4, 1) == (228, 237, 510)
+    assert g.auto_points(231, 4, 1) == (228, 237, 509)     # out8 = in + round(8 beats) = 228 + 281
     assert g.auto_points(205, 8, 1) == (202, 220, 483)      # early in the beat: from the beat
     assert g.auto_points(236, 1, 1) == (235, 237, 516)      # 1/16: 235 and 237 tie: the earlier one
     v = Grid(var_grid())
     assert v.auto_points(1140, 4, 0) == (1125, 1268, 1403)   # 15.0 s, 15.5, 16.0, 16.45 -> 16.9 s; 8: 18.7 s
-    assert v.auto_points(1150, 4, 0) == (1163, 1301, 1436)   # 15.5 s is nearer: .. 17.35 s
+    assert v.auto_points(1150, 4, 0) == (1163, 1302, 1437)   # 15.5 s is nearer: + 1850 ms (138.75 frames) = 139
     # no grid tempo: stock
     mem = _mem(p, GRIDS["128 @0.35"], base=1300)
     assert _points(p, mem, 231, 4, 0) is None
     mem = _mem(p, GRIDS["128 @0.35"], usb=0)
     assert _points(p, mem, 231, 4, 0) is None
     mem = _mem(p, GRIDS["128 @0.35"])
-    assert _points(p, mem, 10, 4, 0) == (26, 167, 308)       # lead-in: the first beat is nearest
+    assert _points(p, mem, 10, 4, 0) == (26, 167, 307)       # lead-in: the first beat is nearest (out8 26 + 281)
     # the window (1000 beats) ends before in + N, more beats follow: the grid tempo of the in beat
     e = const_grid(127.96, 350, 1200)
     g = Grid(e[:1000], total=1200)
@@ -422,7 +459,54 @@ def test_loop_in_out_points_on_the_interpreter():
                 assert got == g.out_point(loop_in, pos), (label, loop_in, pos, got)
     g = Grid(GRIDS["128 @0.35"])
     assert g.in_point(231) == 237 and g.in_point(215) == 202
-    assert g.out_point(202, 300) == 308 and g.out_point(202, 210) == 237   # nearest is in -> next beat
+    # the out is in + the rounded grid duration: beat 5 (2694 ms) to beat 8 (4100 ms) is 105.45
+    # frames, so 307 (the beat's own frame, 308, would make the first pass 0.55 frame long)
+    assert g.out_point(202, 300) == 307 and g.out_point(202, 210) == 237   # nearest is in -> next beat
+
+
+def _set_div(p, mem, div):
+    """UTILITY QUANTIZE: 1, 1/2 or 1/4 beat (c850_ui.h bits 16..17, RAM without a stick)."""
+    _call(p, mem, "c850_ui_set_flags", 0x30000, {1: 0, 2: 1, 4: 2}[div] << 16)
+    assert _call(p, mem, "c850_ui_quant_div") == div
+
+
+@needs_toolchain
+@pytest.mark.parametrize("div", [2, 4])
+def test_quantize_value_on_the_interpreter(div):
+    """The quantize value moves LOOP IN/OUT, the auto loop in and the roll target to 1/2 or 1/4 beats."""
+    p = _payload()
+    for label, entries in GRIDS.items():
+        g = Grid(entries)
+        mem = _mem(p, entries, base=(entries[0][1] + 5) // 10)
+        _set_div(p, mem, div)
+        top = g.f(len(entries) - 1) + 40
+        for pos in range(0, top, 13):
+            assert _call(p, mem, "quant_loops_in_point", pos) == g.in_point(pos, div), (label, pos)
+            for loop_in in (pos - 40, pos - 3):
+                if loop_in >= 0:
+                    got = _call(p, mem, "quant_loops_out_point", loop_in, pos)
+                    assert got == g.out_point(loop_in, pos, div), (label, div, loop_in, pos, got)
+            for beats in (1, 4):
+                assert _points(p, mem, pos, beats, 0) == g.auto_points(pos, beats, 0, div), (label, pos, beats)
+            blk = pos * 7 + 3
+            outp = 0x0DDFF800
+            ok = _call(p, mem, "quant_loops_roll_target", blk, 10, outp)
+            want = g.roll_target(blk, 10, div)
+            assert (mem.u32(outp) if ok else None) == want, (label, div, blk)
+    g = Grid(GRIDS["128 @0.35"])
+    # 1/4 beat at 128 BPM = 117.19 ms: 231 (3080 ms) is nearest 3045.3 ms (228), not beat 6 (237)
+    assert g.in_point(231, 4) == 228 and g.in_point(231, 2) == 237 and g.in_point(231) == 237
+    assert g.auto_points(231, 1, 0, 4) == (228, 263, 509)       # 1 beat from the 3/4 point
+
+
+@needs_toolchain
+def test_roll_target_reference():
+    g = Grid(GRIDS["128 @0.35"])
+    # beat 6 = 3162 ms = block 1660 (ms * 525 / 1000); released 40 blocks before: wait for it
+    assert g.roll_target(1620, 10) == 1660
+    assert g.roll_target(1665, 10) == 1660                      # 5 blocks past: counts as reached
+    assert g.roll_target(1672, 10) == (3631 * 21 + 20) // 40     # 12 past: the next beat (3631 ms)
+    assert g.roll_target(1672, 10, 4) == (3279 * 21 + 20) // 40  # 1/4 beat: 3162 + 469/4 ms
 
 
 # MAIN stand-ins for the entry points: ring sectors map to frames through SECTOR_TABLE
