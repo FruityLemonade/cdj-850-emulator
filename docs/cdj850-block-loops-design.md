@@ -29,9 +29,12 @@ modding doc, the payload or a test; **[open]** needs the emulator or a deck.
   holding a 1/16 step's block, else its rounded frame, else the frame's first block; q: the
   length whose out block lands in the out frame), and waits up to 50 cycles for the audio task
   to apply a writer's records. The ISR checks state 4, loop active and the in record each block.
-- **Resizes:** the cmd 6 resize send of `auto_beat_loop_set` goes through the mod already
-  (`quant_loops_auto_send`); q is `loop_resize`'s (`quant_loops_resize_hint`), else the stock
-  ratio to `CA90`, else the search. `loop_resize` takes its grid frames from `quant_loops_q_out`.
+- **Resizes:** the cmd 6 resize send comes from the state-4 resize sender after
+  `FUN_0C00A4CC`, through pool `0x0C0E62CC` (not the new-loop words): redirected as
+  `quant_loops_resize` to `quant_loops_auto_send`. The emulator showed it: before that redirect
+  BEAT 1 in a loop sent the stock frame. q is `loop_resize`'s (`quant_loops_resize_hint`), else the r = 8/b
+  (x16 in fraction mode) for which the stock division `(CA90 - in) / r` gives exactly the sent
+  frame (across a tempo change the grid length is not CA90/r), else the search. `loop_resize` takes its grid frames from `quant_loops_q_out`.
   A halving past the new out needs no deferral any more (the overshoot keeps the phase), but
   loop_resize's deferral is left in.
 - **Drift item:** gone entirely on the CDJ-850 (see the quant_loops README); the flag bit stays

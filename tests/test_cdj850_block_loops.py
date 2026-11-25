@@ -431,3 +431,35 @@ def test_live_block_loop_60s(tmp_path):
     # (30786 due), -9.5 ms over the run, the same in plain play. That is the feeder clock against
     # the tick, not the loop: bounded as a rate, reported in ms.
     assert abs(ms_blocks - ms_tick) / ms_tick < 0.0005, (ms_blocks, ms_tick)
+
+
+@needs_toolchain
+@pytest.mark.parametrize("label,in_beat,beats,frac", [("128 @0.35", 20, 1, 0), ("128 @0.35", 20, 2, 1),
+                                                       ("120->133.33", 30, 1, 0), ("120->133.33", 30, 2, 0)])
+def test_beat_resize_makes_the_block_loop(label, in_beat, beats, frac):
+    """BEAT n inside a loop: the stock resize sends in + (CA90 - in) / (8/n x (15 frac + 1)) with
+    the resize flag; the mod sends the block loop of n beats (n/16 in fraction mode) instead and
+    arms it. QVAR from beat 30: CA90 (8 beats) spans the tempo change at beat 32, so the stock
+    frame is not the grid length of the resized loop."""
+    p = payloadbuild.build(["quant_loops"], "cdj850")
+    entries = tq.GRIDS[label]
+    g = tq.Grid(entries)
+    mem, log = tq._entry_mem(p, entries, state=4)
+    mem.add(0x0C7F64C0, bytes(0x40))                         # out request 0x0C7F64DC
+    mem.add(0x0C7F6440, bytes(0x20))                         # play sector (track slot)
+    mem.add(TICK, bytes(4))
+    b = g.point_loop(in_beat, 0, 64)
+    fin = b[0] // 7
+    ca90 = g.out_frame(g.point_loop(in_beat, 0, 128))
+    mem.put32(LOOP_IN, fin)
+    mem.put32(tq.CA90, ca90)
+    stock = fin + (ca90 - fin) // ((8 // beats) * (frac * 15 + 1))
+    tq._call(p, mem, "quant_loops_auto_send", 6, 0, stock, 1, stack=(0, 1, 0, 2))
+    q = beats if frac else beats * 16
+    want = g.q_out(fin, q)
+    assert tq._log(mem, log)[:4] == [6, 0, want, 1]
+    assert mem.u32(OUT_REQ) == want and mem.u32(tq.D1C0) == want
+    sym = lambda n: mem.u32(payloadbuild.lookup(p.symbols, "quant_loops_" + n))
+    assert (sym("blk_in"), sym("blk_num"), sym("blk_den")) == (b[0],) + g.block_len(in_beat, 0, q)
+    if label.startswith("120"):
+        assert want != stock                                  # the grid length, not CA90 / 8

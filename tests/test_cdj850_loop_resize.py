@@ -239,7 +239,7 @@ ALL_MODS = ["autostandby", "bpm999", "bpm999grid", "bpm999range", "bpm_probe", "
             "payload_demo", "payload_demo_redirect", "tempowide", "tempowidemath1", "tempowidemath2",
             "bpm_decimals", "bpm_decimals_grid", "quant_loops", "quant_loops_auto_send",
             "quant_loops_auto_send2", "quant_loops_auto_keep", "quant_loops_loop_in", "quant_loops_loop_out",
-            "quant_loops_loop_out2", "quant_loops_tick", "quant_loops_blocks"]
+            "quant_loops_loop_out2", "quant_loops_tick", "quant_loops_blocks", "quant_loops_resize"]
 
 
 @needs_main

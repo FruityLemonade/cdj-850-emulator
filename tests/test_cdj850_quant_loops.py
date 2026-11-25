@@ -37,7 +37,7 @@ BAKEN = ROOT / "tools" / "baken" / "baken"
 BASE = 0x0C000000
 MODS = ["quant_loops", "quant_loops_auto_send", "quant_loops_auto_send2", "quant_loops_auto_keep",
         "quant_loops_loop_in", "quant_loops_loop_out", "quant_loops_loop_out2", "quant_loops_tick",
-        "quant_loops_blocks"]
+        "quant_loops_blocks", "quant_loops_resize"]
 AUDIO_SEND_CMD = 0x0C0D7464
 # (pool word, stock value, instructions that read it, payload symbol)
 POOLS = [
@@ -47,6 +47,9 @@ POOLS = [
     (0x0C0E5D08, AUDIO_SEND_CMD, [0x0C0E5B00, 0x0C0E5B20, 0x0C0E5B4C, 0x0C0E5CC8, 0x0C0E5CE2],
      "quant_loops_auto_send"),
     (0x0C0E5FD0, 0x0C0059D2, [0x0C0E5DAA], "quant_loops_auto_keep"),
+    (0x0C0E62CC, AUDIO_SEND_CMD, [0x0C0E606E, 0x0C0E608E, 0x0C0E60B4, 0x0C0E60DA, 0x0C0E6138, 0x0C0E6168,
+                                  0x0C0E6186, 0x0C0E61A6, 0x0C0E61EC, 0x0C0E620A, 0x0C0E623A],
+     "quant_loops_auto_send"),
     (0x0C0DFA80, 0x0C0059D2, [0x0C0DF95E], "quant_loops_loop_in"),
     (0x0C0E0090, AUDIO_SEND_CMD, [0x0C0DFE32, 0x0C0DFE5E, 0x0C0DFEB8, 0x0C0DFEC2, 0x0C0E0022,
                                   0x0C0E002C, 0x0C0E0076, 0x0C0E0080], "quant_loops_loop_out"),
@@ -327,7 +330,7 @@ def test_static_pool_words_outside_the_boot_critical_closure():
     for lo, hi in ((0x0C0E5590, 0x0C0E630C), (0x0C0DEB50, 0x0C0E0F34)):
         diff = [a for a in range(lo, hi) if stock[a - BASE] != out[a - BASE]]
         assert all(any(pool <= a < pool + 4 for pool, *_ in POOLS) for a in diff), [hex(a) for a in diff]
-    assert len([a for a in range(0x0C0D0000, 0x0C0F0000) if stock[a - BASE] != out[a - BASE]]) <= 32
+    assert len([a for a in range(0x0C0D0000, 0x0C0F0000) if stock[a - BASE] != out[a - BASE]]) <= 36   # nine words
 
 
 @needs_main
@@ -996,7 +999,7 @@ def expected(entries, count, v, name):
     g = Grid([tuple(e) for e in entries], total=count)
     g.ok = lambda i: True               # the base BPM word was the grid's (checked by q_refused/counters)
     if name == "manual":
-        loop_in = g.in_point(v["q_in_pos"])
+        loop_in = g.loop_in_point(v["q_in_pos"])          # LOOP IN: the frame of the in block
         return {"in": loop_in, "out": g.out_point(loop_in, v["q_last_pos"])}
     beats, frac = {"auto4": (4, 0), "auto1": (1, 0)}.get(name, (FRACTION.get(name), 1))
     fin, fout, f8 = g.auto_points(v["q_last_pos"], beats, frac)
@@ -1050,9 +1053,11 @@ def test_live_loops_on_the_grid(tmp_path):
         for name in ("frac8q", "frac4q"):                     # 3/4 into a beat: a step of it or the next beat
             v = t[name]
             b = g.at_or_before(v["q_last_pos"])
-            assert g.f(b) < v["in"] <= g.f(b + 1) and v["req"] <= g.f(b + 2), (bpm, name, v)
-        a4 = t["auto4"]                                       # beat 1 inside it: stock resize from CA90
-        assert a4["resize1_req"] == a4["in"] + (a4["ca90"] - a4["in"]) // 8, a4
+            # (outs are the first frame at or after the out block: up to a frame past the rounded beat)
+            assert g.f(b) < v["in"] <= g.f(b + 1) and v["req"] <= g.f(b + 2) + 1, (bpm, name, v)
+        a4 = t["auto4"]                                       # beat 1 inside it: the block loop of 1 beat
+        g.ok = lambda i: True
+        assert a4["resize1_req"] == g.q_out(a4["in"], 16), a4
     # the variable grid: the 4-beat loop pressed at ~15.15 s (15.0 s nearer than 15.5 s) spans the change at 16 s
     v = res[12000]["auto4"]
     assert (v["in"], v["req"]) == (1125, 1268), v           # 15.0 s .. 16.9 s (15.5, 16.0, 16.45)

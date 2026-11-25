@@ -910,13 +910,12 @@ static __attribute__((noinline)) u32 ql_resize(u32 frame)
     if (!ql_on() || C850_IS_USB_MODE != 1 || frame <= in || !ql_in_spec(in, b, &i, &p0))
         return frame;
     if (!q && ref > frame) {
-        r = (ref - in + (frame - in) / 2u) / (frame - in);
-        if (r && r <= 128u && !(r & (r - 1u))) {
-            q = 128u / r;
-            out = ql_out_blk_q(b, i, p0, q);       /* within a frame of the stock out */
-            if (out + 7u < frame * 7u || out > frame * 7u + 7u)
-                q = 0;
-        }
+        /* the stock division in + (CA90 - in) / r, r = 8/b (x16 in fraction mode):
+         * the r whose division gives exactly this frame (the grid length of
+         * those beats need not be 1/r of CA90's, across a tempo change) */
+        for (r = 1u; r <= 128u && !q; r <<= 1)
+            if ((ref - in) / r == frame - in)
+                q = 128u / r;
     }
     if (!q)
         q = quant_loops_find_q(b->in_blk, b->a0, i, p0, frame);
