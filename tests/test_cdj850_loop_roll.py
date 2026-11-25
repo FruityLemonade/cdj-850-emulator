@@ -33,7 +33,10 @@ ISR_POOL, ISR_STOCK, ISR_READER = 0x0C07730C, 0x0C0158D4, 0x0C07715E
 PLAY_FRAME, STATE_USB, LOOP_ACTIVE = 0x0C7F647C, 0x0CE6D25F, 0x0CE6D0ED
 LOOP_IN, OUT_REQ = 0x0C7F6498, 0x0C7F64DC
 SYMS = ("rolls", "isr_calls", "jumps", "misses", "aborts", "exits", "toggles", "start_pos",
-        "last_target", "last_from", "last_sector", "start_tick", "jump_tick")
+        "last_target", "last_from", "last_sector", "start_tick", "jump_tick",
+        "slip_starts", "slip_jumps", "slip_misses", "slip_aborts", "slip_quantized",
+        "slip_kind", "slip_start_pos", "slip_last_target", "slip_last_from",
+        "slip_start_tick", "slip_jump_tick", "slip_release_pos")
 
 needs_toolchain = pytest.mark.skipif(not payloadbuild.have_toolchain(), reason="sh-elf toolchain not installed")
 needs_main = pytest.mark.skipif(not MAIN.is_file(), reason="extract/cdj850/main_unpacked.bin is not present")
@@ -252,13 +255,20 @@ def _roll_deck(div=1, quantize=True):
     p = payloadbuild.build(["loop_roll", "quant_loops"], "cdj850")
     entries = tq.GRIDS["128 @0.35"]
     mem = tq._mem(p, entries, base=1280, flags=0 if quantize else 0x53)
-    mem.add(0x0CE6CA00, bytes(0x800))                    # K0..K2, loop active, UI lock, D154/D156
-    mem.add(0x0C7F6400, bytes(0x400))                    # feeder words (read ptr, sectors, segments)
+    mem.add(0x0CE6CA00, bytes(0x800))                    # K0..K2, loop active, UI lock, D154/D156, jog, speed_substate
+    mem.add(0x0CE649A0, bytes(0x30))                     # BPM Lock active / pitch
+    mem.add(0x0C7F6400, bytes(0x400))                    # feeder words (read ptr, sectors, segments, audio_state/rev)
     mem.add(0x0CE49F54, bytes(4))                        # 1 ms tick
+    mem.write(0x0C7F6627, b"\x03")                       # audio_task_state = 3 (playing)
+    mem.put32(0x0C7F650C, 10000)                         # track_length_frames
+    mem.write(0x0CE6D0DE, b"\x01")                       # jog_mode_vinyl = 1
     _stub(mem, 0x0C00851E, "rts\nmov r4,r0")             # ring_sector_to_frame: identity
     _stub(mem, 0x0C0158D4, "rts\nmov #0,r0")             # isr_loop_out_reached: no stock wrap
     _stub(mem, 0x0C015B18, "rts\nnop")                   # audio_clear_loop_segments
     _stub(mem, 0x0C0DD492, "rts\nmov #0,r0")             # the key word's stock function
+    _stub(mem, 0x0C0EB388, "rts\nnop")                   # stock state tick
+    _stub(mem, 0x0C0C688A, "rts\nmov #0,r0")             # irq_save_mask
+    _stub(mem, 0x0C0C6894, "rts\nnop")                   # irq_restore_sr
 
     def call(name, *args):
         cpu = Sh2a(mem)
@@ -343,3 +353,279 @@ def test_a_beat_press_while_waiting_takes_the_release_back():
     for _ in range(800):
         call("c850_loop_out_isr", cur, 0, 0)
     assert sym("loop_roll_jumps") == 1
+
+
+# ---- interpreter: slip mode (reverse, scratch, pause) ----
+
+def _slip_setup(div=1, quantize=False, cur=200, have=1100, pitch=0):
+    p, mem, call, keys, sym, g = _roll_deck(div=div, quantize=quantize)
+    mem.write(0x0CE6D252, b"\x02")
+    mem.write(0x0CE6D25D + 2, b"\x03")
+    mem.write(0x0CE6CA50, struct.pack(">h", pitch))
+    mem.write(0x0C7F645C, struct.pack(">hh", cur, cur + have))
+    mem.put32(0x0C7F6470, 0x0C1E8E5C + cur * 0x930)
+    keys(0x0040)                                         # BEAT SELECT + LOOP OUT: slip mode on
+    keys(0x0840)
+    keys()
+    call("c850_ui_tick")                                 # latch normal playback (slip_was_playing = 1)
+    return p, mem, call, keys, sym, g
+
+
+@needs_toolchain
+@pytest.mark.parametrize("pitch", [0, 600, -1000, 10000])
+def test_slip_shadow_clock_pitch(pitch):
+    p, mem, call, keys, sym, _ = _slip_setup(pitch=pitch)
+    cur = 200
+    tick_ms = 1000
+    mem.put32(0x0CE49F54, tick_ms)
+    mem.write(0x0C7F666C, b"\x01")                       # start reverse
+    mem.put32(0x0C7F6470, 0x0C1E8E5C + cur * 0x930 + 332)
+    call("c850_ui_tick")
+    assert sym("loop_roll_slip_starts") == 1
+    assert sym("loop_roll_slip_start_pos") == cur * 7
+    # Advance 4000 ms in 200 ms steps
+    for _ in range(20):
+        tick_ms += 200
+        mem.put32(0x0CE49F54, tick_ms)
+        call("c850_ui_tick")
+    mem.write(0x0C7F666C, b"\x00")                       # return to forward, aligned
+    mem.put32(0x0C7F6470, 0x0C1E8E5C + (cur - 150) * 0x930)
+    mem.write(0x0C7F645C, struct.pack(">hh", cur - 150, cur + 1100))
+    call("c850_ui_tick")
+    assert sym("loop_roll_slip_jumps") == 1
+    want = cur * 7 + (4000 * 21 * (10000 + pitch)) // 400000
+    assert sym("loop_roll_slip_last_target") == want
+
+
+@needs_toolchain
+@pytest.mark.parametrize("quantize", [False, True])
+def test_slip_reverse_waits_for_alignment_and_quantize(quantize):
+    p, mem, call, keys, sym, g = _slip_setup(div=1, quantize=quantize, cur=214)
+    tick_ms = 500
+    mem.put32(0x0CE49F54, tick_ms)
+    mem.write(0x0C7F666C, b"\x01")                       # reverse
+    mem.put32(0x0C7F6470, 0x0C1E8E5C + 214 * 0x930 + 332)
+    call("c850_ui_tick")
+    assert sym("loop_roll_slip_kind") == 1               # SLIP_REV
+
+    tick_ms += 400
+    mem.put32(0x0CE49F54, tick_ms)
+    mem.write(0x0C7F666C, b"\x00")                       # direction forward, but ptr still at +332
+    call("c850_ui_tick")
+    assert sym("loop_roll_slip_jumps") == 0              # must wait for 336-byte alignment
+
+    # Align pointer at sector 200
+    mem.write(0x0C7F645C, struct.pack(">hh", 200, 1200))
+    mem.put32(0x0C7F6470, 0x0C1E8E5C + 200 * 0x930)
+    tick_ms += 12
+    mem.put32(0x0CE49F54, tick_ms)
+    call("c850_ui_tick")
+    if not quantize:
+        assert sym("loop_roll_slip_jumps") == 1
+    else:
+        assert sym("loop_roll_slip_quantized") == 1
+        while sym("loop_roll_slip_jumps") == 0:
+            tick_ms += 12
+            mem.put32(0x0CE49F54, tick_ms)
+            call("c850_ui_tick")
+            assert tick_ms < 5000
+    target = sym("loop_roll_slip_last_target")
+    assert mem.u32(0x0C7F6470) == 0x0C1E8E5C + (target // 7) * 0x930 + (target % 7) * 0x150
+
+
+@needs_toolchain
+def test_slip_scratch_waits_for_release_ramp():
+    p, mem, call, keys, sym, _ = _slip_setup(cur=300)
+    tick_ms = 100
+    mem.put32(0x0CE49F54, tick_ms)
+    mem.write(0x0CE6D0F3, b"\x01")                       # jog_touched = 1
+    mem.write(0x0CE6CA9D, b"\x04")                       # speed_substate = 4
+    call("c850_ui_tick")
+    assert sym("loop_roll_slip_starts") == 1
+    assert sym("loop_roll_slip_kind") == 2               # SLIP_SCRATCH
+
+    tick_ms += 800
+    mem.put32(0x0CE49F54, tick_ms)
+    mem.write(0x0CE6D0F3, b"\x00")                       # released, still in ramp (substate == 4)
+    call("c850_ui_tick")
+    assert sym("loop_roll_slip_jumps") == 0
+
+    tick_ms += 150
+    mem.put32(0x0CE49F54, tick_ms)
+    mem.write(0x0CE6CA9D, b"\x00")                       # ramp finished
+    call("c850_ui_tick")
+    assert sym("loop_roll_slip_jumps") == 1
+    want = 300 * 7 + (950 * 21 * 10000) // 400000
+    assert sym("loop_roll_slip_last_target") == want
+
+
+@needs_toolchain
+def test_slip_pause_and_cue_abort_and_miss():
+    p, mem, call, keys, sym, _ = _slip_setup(cur=300, have=300)
+    tick_ms = 100
+    mem.put32(0x0CE49F54, tick_ms)
+    mem.write(0x0CE6D25D + 2, b"\x05")                   # paused (VINYL or CDJ)
+    mem.write(0x0C7F6627, b"\x04")                       # CDJ stutter
+    call("c850_ui_tick")
+    assert sym("loop_roll_slip_kind") == 3               # SLIP_PAUSE
+
+    # Resume while audio_state is still 4, then 3
+    tick_ms += 500
+    mem.put32(0x0CE49F54, tick_ms)
+    mem.write(0x0CE6D25D + 2, b"\x03")
+    call("c850_ui_tick")
+    assert sym("loop_roll_slip_jumps") == 0              # audio_state still 4
+    tick_ms += 20
+    mem.put32(0x0CE49F54, tick_ms)
+    mem.write(0x0C7F6627, b"\x03")
+    call("c850_ui_tick")
+    assert sym("loop_roll_slip_jumps") == 1
+
+    # CUE while paused aborts
+    tick_ms += 100
+    mem.put32(0x0CE49F54, tick_ms)
+    mem.write(0x0CE6D25D + 2, b"\x05")
+    call("c850_ui_tick")
+    assert sym("loop_roll_slip_starts") == 2
+    mem.write(0x0CE6D25D + 2, b"\x06")                   # CUE
+    call("c850_ui_tick")
+    assert sym("loop_roll_slip_aborts") == 1
+
+    # Ring miss (shadow past write index)
+    mem.write(0x0CE6D25D + 2, b"\x03")
+    call("c850_ui_tick")                                 # latch normal play
+    tick_ms += 100
+    mem.put32(0x0CE49F54, tick_ms)
+    mem.write(0x0CE6D25D + 2, b"\x05")
+    call("c850_ui_tick")
+    for _ in range(10):                                  # > 300 sectors ahead (6000 ms = 450 frames)
+        tick_ms += 600
+        mem.put32(0x0CE49F54, tick_ms)
+        call("c850_ui_tick")
+    mem.write(0x0CE6D25D + 2, b"\x03")
+    call("c850_ui_tick")
+    assert sym("loop_roll_slip_misses") == 1
+
+
+# ---- live slip mode (reverse, scratch, pause) ----
+
+def drive_slip(stick, flash, syms):
+    sys.path.insert(0, str(ROOT / "scripts" / "debug"))
+    import cdj850_trace as tr
+    script = "6000:usb:200,7600:rot+2,9000:enter:200,10600:rot+3,12000:enter:200"
+    res = {}
+
+    def sym(d, name):
+        return d.rw(payloadbuild.lookup(syms, "loop_roll_" + name))
+
+    def ev(d):
+        return {n: sym(d, n) for n in SYMS}
+
+    def ensure_playing(d):
+        for _ in range(6):
+            st = d.rb(STATE_USB)
+            if st == 3:
+                return
+            d.key("reloop" if st == 4 else "play")
+            time.sleep(2.0)
+        assert d.rb(STATE_USB) == 3
+
+    def frames_for(d, secs):
+        fr, end = [], time.monotonic() + secs
+        while time.monotonic() < end:
+            fr.append((d.rw(PLAY_FRAME), d.rb(STATE_USB)))
+            time.sleep(0.02)
+        return fr
+
+    def wait_jump(d, pre):
+        end = time.monotonic() + 60
+        while time.monotonic() < end:
+            e = ev(d)
+            if (e["slip_jumps"], e["slip_misses"], e["slip_aborts"]) != (
+                    pre["slip_jumps"], pre["slip_misses"], pre["slip_aborts"]):
+                return e
+            time.sleep(0.02)
+        raise AssertionError(("slip timeout", pre, ev(d)))
+
+    def gesture(d, start_fn, stop_fn, hold_s):
+        ensure_playing(d)
+        pre = ev(d)
+        start_fn(d)
+        time.sleep(hold_s)
+        stop_fn(d)
+        e = wait_jump(d, pre)
+        time.sleep(0.5)
+        after = frames_for(d, 1.5)
+        return {"pre": pre, "ev": e, "after": after, "state": d.rb(STATE_USB)}
+
+    with tr.Deck(stick, flash=flash, script=script) as d:
+        d.wait_line("mode=0x0a", "Q128", timeout=300)
+        time.sleep(1.5)
+        ensure_playing(d)
+        while d.rw(PLAY_FRAME) < 600:
+            time.sleep(0.05)
+
+        # Slip mode on: BEAT SELECT + LOOP OUT
+        d.key("beat_select", dur=1200)
+        time.sleep(0.15)
+        d.key("loop_out", dur=300)
+        time.sleep(1.5)
+        res["toggle"] = ev(d)
+
+        res["rev"] = gesture(d, lambda x: x.key("rev", dur=200), lambda x: x.key("rev", dur=200), 3.0)
+        if d.rb(0x0CE6D0DE) == 0:
+            d.key("vinyl", dur=200)
+            time.sleep(0.5)
+        res["scratch"] = gesture(d, lambda x: x.hold("jog_touch"), lambda x: x.release("jog_touch"), 3.0)
+        res["pause"] = gesture(d, lambda x: x.key("play", dur=200), lambda x: x.key("play", dur=200), 3.0)
+
+        # Slip mode off: pause no longer slips
+        d.key("beat_select", dur=1200)
+        time.sleep(0.15)
+        d.key("loop_out", dur=300)
+        time.sleep(1.5)
+        pre_off = ev(d)
+        d.key("play", dur=200)
+        time.sleep(2.0)
+        d.key("play", dur=200)
+        time.sleep(1.0)
+        res["off_pre"] = pre_off
+        res["off_ev"] = ev(d)
+    return res
+
+
+def check_slip_gesture(r, kind, frames_per_s=75.0):
+    e, pre = r["ev"], r["pre"]
+    assert e["slip_starts"] == pre["slip_starts"] + 1, r
+    assert e["slip_kind"] == kind, r
+    assert e["slip_jumps"] == pre["slip_jumps"] + 1 and e["slip_misses"] == pre["slip_misses"], r
+    assert e["slip_aborts"] == pre["slip_aborts"], r
+    assert e["slip_last_target"] > e["slip_start_pos"], e
+    ms = e["slip_jump_tick"] - e["slip_start_tick"]
+    assert ms > 500, e
+    moved_blocks = e["slip_last_target"] - e["slip_start_pos"]
+    want_blocks = ms * frames_per_s * 7.0 / 1000.0
+    assert abs(moved_blocks - want_blocks) <= 12.0, (moved_blocks, want_blocks, ms)
+    after = [f for f, st in r["after"] if st == 3]
+    assert r["state"] == 3 and after, r
+    target_frame = e["slip_last_target"] // 7
+    assert target_frame <= after[0] <= target_frame + 2 * 75, (target_frame, after[:3])
+    assert all(b >= a for a, b in zip(after, after[1:])), after
+
+
+@needs_toolchain
+@pytest.mark.skipif(not FLASH.is_file(), reason="extract/cdj850/flash_cdj850.bin is not present")
+def test_live_slip_mode(tmp_path):
+    import test_cdj850_loop_resize as lr
+    stick = lr.build_stick(tmp_path)
+    flash = tmp_path / "flash.bin"
+    flash.write_bytes(patch_main.patch_flash(FLASH.read_bytes(), MODS, "cdj850"))
+    syms = payloadbuild.build(["loop_roll"], "cdj850").symbols
+    res = drive_slip(stick, flash, syms)
+    print("slip_mode live:", json.dumps(res))
+    assert res["toggle"]["toggles"] == 1
+    check_slip_gesture(res["rev"], 1)
+    check_slip_gesture(res["scratch"], 2)
+    check_slip_gesture(res["pause"], 3)
+    assert res["off_ev"]["slip_starts"] == res["off_pre"]["slip_starts"]
+    assert res["off_ev"]["slip_jumps"] == res["off_pre"]["slip_jumps"]

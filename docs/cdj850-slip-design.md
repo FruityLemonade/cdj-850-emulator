@@ -1,9 +1,25 @@
-# CDJ-850 slip mode for scratch, backspin and reverse: design brainstorm
+# CDJ-850 slip mode for scratch, backspin, reverse and pause
 
-Status: **design only, nothing built.** Builds on `mods/loop_roll` (the shadow playhead and the
-in-ring landing, `docs/cdj850-modding.md` section 12b). Facts tagged **[known]** are in the
-modding doc or the payload headers; **[lead]** are first static findings that still need a trace;
-**[open]** are questions only the emulator (or a deck) can answer.
+Status: **implemented in `mods/loop_roll` (prototype, emulator-tested; never run on hardware).**
+Builds on `mods/loop_roll` (the shadow playhead and the in-ring landing, `docs/cdj850-modding.md`
+section 12b). Facts tagged **[known]** are in the modding doc or the payload headers; **[emu]** /
+**[static]** are the resolved trace results.
+
+### Resolved findings
+- **Audio direction & pointer alignment [static + emu]:** `u8 0x0C7F666C` (pool `0x0C076790`) is `0`
+  forward and `1` reverse. While reversing, `(pcm_read_ptr - base) % 0x150 == 332` (`0x14C`),
+  returning to `0` and `0x0C7F666C == 0` when forward play resumes.
+- **Ring fill during reverse / scratch / pause [emu]:** During reverse, `pcm_write_sector`
+  (`0x0C7F645E`) steps back by 100 sectors whenever ahead > 1000, keeping ~900–1000 sectors (~12 s)
+  ahead of the backward-moving read pointer (~6 s of forward slip range at 1×). During VINYL
+  scratch and pause, `pcm_write_sector` holds ~900–1066 sectors (~12–14 s) ahead.
+- **Release transitions [emu]:** On VINYL jog release, `speed_substate` (`0x0CE6CA9D`) stays `4`
+  across the release ramp (~100–200 ms) and returns to `0` once normal playback resumes. On CDJ
+  pause (`state 5`), `audio_task_state` (`0x0C7F6627`) is `4` (stutter) and returns to `3` on PLAY.
+- **Landing from playertask [static + emu]:** Pool leads `0x0C076764` (`0x0C015258`) and
+  `0x0C076768` (`0x0C005BB6`) are only inside the `0x0C7F66C8 == 2` branch of `irq7_dspdreq_isr`,
+  not USB playback. Instead, playertask lands using MAIN's `c850_irq_save` (`0x0C0C688A`,
+  `SR.IMASK = 15`) and `c850_irq_restore` (`0x0C0C6894`) around `c850_ring_jump()`.
 
 ## What slip should do
 
