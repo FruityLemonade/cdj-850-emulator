@@ -39,7 +39,7 @@ QUANT = ["quant_loops", "quant_loops_auto_send", "quant_loops_auto_send2", "quan
          "quant_loops_flash", "quant_loops_tick", "quant_loops_blocks", "quant_loops_resize", "quant_loops_resize_req", "quant_loops_utility_scroll", "quant_loops_utility_select",
          "quant_loops_usb_settings"]
 WAVE = ["waveform", "waveform_rotary", "waveform_utility_scroll", "waveform_utility_select",
-        "waveform_center_marker", "waveform_usb_settings"]
+        "waveform_center_marker", "waveform_tx_waveform", "waveform_usb_settings"]
 
 needs_toolchain = pytest.mark.skipif(not payloadbuild.have_toolchain(), reason="sh-elf toolchain not installed")
 needs_main = pytest.mark.skipif(not MAIN.is_file(), reason="extract/cdj850/main_unpacked.bin is not present")
