@@ -1098,6 +1098,10 @@
           "name": "player_enter_usb_source"
         },
         {
+          "address": "0c0ef7d6",
+          "name": "auto_standby_idle_gate"
+        },
+        {
           "address": "0c0ef844",
           "name": "auto_standby_seconds"
         },
@@ -1108,6 +1112,18 @@
         {
           "address": "0c0ef8ec",
           "name": "power_state_tick"
+        },
+        {
+          "address": "0c0efaba",
+          "name": "standby_signal"
+        },
+        {
+          "address": "0c0efaec",
+          "name": "auto_standby_activity_reset"
+        },
+        {
+          "address": "0c0efb10",
+          "name": "standby_set_state"
         },
         {
           "address": "0c0efb9a",
@@ -2304,7 +2320,7 @@
         {
           "address": "0c0ef998",
           "type": "PRE",
-          "text": "Pool word -> FUN_0C08F186 (UTILITY AUTO STANDBY mode, 0 = OFF, 1 = ON), loaded only at 0x0C0EF846 in auto_standby_seconds (outside boot-critical closure). Mod auto_standby redirects it to auto_standby_get_mode."
+          "text": "Pool word -> FUN_0C08F186 (UTILITY AUTO STANDBY mode, 0 = OFF, 1 = ON), loaded only at 0x0C0EF846 in auto_standby_seconds (outside boot-critical closure). Mod auto_standby redirects it to auto_standby_get_mode, which also runs the mod's own idle count on USB with a stick mounted (the stock gate never counts there)."
         },
         {
           "address": "0c0efb9a",
@@ -2530,6 +2546,31 @@
           "address": "0c0e602e",
           "type": "EOL",
           "text": "Loads pool 0x0C0E62BC (FUN_0C00A4CC; also read at 0x0C0E61B4): the state-4 resize sender calls FUN_0C00A4CC(*D1C0, 0), which writes the out request 0x0C7F64DC (the feeder loops to it) and re-plans the ring; the cmd 6 resize send (pool 0x0C0E62CC) follows only when it returns 1. In the emulator a BEAT 1 resize left the request at the stock frame with no send through 0x0C0E62CC. quant_loops_resize_req redirects the word (service-gated). Outside the boot-critical closure. [static + emu]"
+        },
+        {
+          "address": "0c0ef7d6",
+          "type": "PLATE",
+          "text": "Idle gate for auto_standby_seconds and auto_standby_activity_reset: true when source 0 has no disc (0x0CE6D25D == 0) or 0x0CE6D265 == 6, when source 2 (USB) has no stick mounted (0x0CE6D147 == 0), or when source 5 has 0x0CE6D150 == 0; false otherwise. [emu] With a stick mounted it is false in every USB player state (browse, playing, paused, cued), so stock 1.13 never auto-standbys from USB with a stick in."
+        },
+        {
+          "address": "0c0efaba",
+          "type": "PLATE",
+          "text": "Signals the power task: if the pool function at 0x0C0EFB74 returns 1 or standby_state < 2, set_flg(6, 0x10). Called after standby_set_state on the idle and request paths."
+        },
+        {
+          "address": "0c0efaec",
+          "type": "PLATE",
+          "text": "Key-activity reset of the idle countdown: when the AUTO STANDBY mode (FUN_0C08F186 through pool 0x0C0EFB84) is ON and auto_standby_idle_gate is true, clears the 6 bytes at standby_seconds. Called from FUN_0C0E637E / FUN_0C0E655C (button banks) and FUN_0C0D9E12 (tempo fader moved by more than 0x5F for 5 samples). [emu] Buttons (CUE, TIME), a rotary turn and a fader move reset the count; a jog move does not."
+        },
+        {
+          "address": "0c0efb10",
+          "type": "PLATE",
+          "text": "Sets standby_state (0x0C1E10AC) to the argument if it is 0..4, else returns -1. Called with 2 at the idle limit; the state machine then moves on to 4 (standby request, TX 0x02 byte 8 bit 0)."
+        },
+        {
+          "address": "0c0efb84",
+          "type": "PRE",
+          "text": "Pool word -> FUN_0C08F186 (AUTO STANDBY mode), loaded only at 0x0C0EFAEE in auto_standby_activity_reset (outside boot-critical closure). Mod auto_standby redirects it to auto_standby_activity, which also clears the mod's USB idle count."
         }
       ],
       "labels": [
@@ -3058,6 +3099,10 @@
           "name": "dsp_target_speed"
         },
         {
+          "address": "0ce6c988",
+          "name": "panel_jog_pos"
+        },
+        {
           "address": "0ce6ca08",
           "name": "keys_k0"
         },
@@ -3156,6 +3201,10 @@
         {
           "address": "0ce6d132",
           "name": "new_keys_flag"
+        },
+        {
+          "address": "0ce6d147",
+          "name": "usb_stick_mounted"
         },
         {
           "address": "0ce6d151",
