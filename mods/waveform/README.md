@@ -6,11 +6,12 @@ Streams a live 50 Hz zoomed/scrolling half-waveform into the existing 100×5 VFD
 
 On INFO Page 1 (top cursor position, Row 1 highlighted):
 
-- **Scroll counterclockwise (CCW)**: zoom out through three levels:
-  1. **Close** (default) shows a 4.0 s window (3 CD frames per column) with a slight contrast boost.
-  2. **Medium** shows a 16.0 s window (12 CD frames per column) with a stronger contrast boost.
-  3. **Overview**: whole-track 100-column stock overview
-- **Scroll clockwise (CW)**: zoom back in (`overview → medium → close`), then advance normally through INFO Page 1 Row 2 and Page 2+ (`info_order`, `phase_meter`, etc.).
+- **Scroll counterclockwise (CCW)**: zoom out through four levels:
+  1. **Close** (default) shows a 4.0 s window (3 CD frames per column).
+  2. **Mid** shows an 8.0 s window (6 CD frames per column).
+  3. **Medium** shows a 16.0 s window (12 CD frames per column).
+  4. **Overview**: whole-track 100-column stock overview.
+- **Scroll clockwise (CW)**: zoom back in (`overview → medium → mid → close`), then advance normally through INFO Page 1 Row 2 and Page 2+ (`info_order`, `phase_meter`, etc.).
 
 Hold **MENU/UTILITY**, turn the selector past **VERSION No.** to **WAVE PLAYHEAD**, then press the selector to cycle positions:
 
@@ -18,15 +19,23 @@ Hold **MENU/UTILITY**, turn the selector past **VERSION No.** to **WAVE PLAYHEAD
 - **CENTER** places the playhead at the center (column 50).
 - **LEFT** starts the waveform at the playhead (column 0) and uses the whole window for upcoming audio.
 
-In close and medium zoom, whole-track saved memory cues are cleared from the bottom cue column (`0x0C9D0AEF`, via `waveform_cue_column`) so only the zoomed active cue column is shown there, while the top 100-bit red strip (`0x60`) shows memory cues/loops, hot cues A–C, pending Loop-In red markers (until Loop-Out is set), active `[loop-in..loop-out]` bars, and a single red playhead tick (dark/off inside a loop bar). The green progress bar stays stock. In overview mode both strips behave like stock.
+In all zoomed views (close, mid, medium), whole-track saved memory cues are cleared from the bottom white/blue cue bar (`0x0C9D0AEF`, via `waveform_cue_column`) so the zoomed active cue / loop-in point is shown there, while the top 100-bit red strip (`0x60`, via `waveform_center_marker`) is used only for:
+
+- **Active `[loop-in..loop-out]` spans**.
+- **Beat markers** (1 column per beat from the loaded rekordbox beat grid at **close** and **mid** zoom): lit on the empty strip, and dark/inverted inside active loop spans.
+- **Playhead tick**: lit outside active loop spans, and dark/inverted inside active loop spans.
+
+The green progress bar stays stock. In overview mode both strips behave like stock.
 
 With `quant_loops` built in, `QUANTIZE` / `QUANTIZE SIZE` sit in the shared `c850_ui` UTILITY list. The deck saves the choice with its UTILITY settings. With a rekordbox stick in, the choice is also saved on the stick (`/PIONEER/MODSET.DAT`, `waveform_usb_settings`) and comes back on any deck with this build. Without a stick, if the HISTORY name is longer than 29 characters, the choice lasts until power-off because the name occupies the shared mod settings bytes (`+0x21..+0x22`).
 
 ## How It Works
 
-- **Data source**: Samples the 2400-sector (32 s) PCM ring buffer (`0x0C1E8E5C`) and caches each sector's level using Pioneer's 2 dB/step logarithmic table from `FUN_0C0D5590`. The analysis fallback uses the 400-column ANLZ `PWAV` buffer (`0x0CE65862`) or the 100-column overview (`0x0CE65B82`). Works on rekordbox USB, non-rekordbox USB, and Audio CD tracks.
-- Each column uses PCM whenever any of its sectors are buffered. Close zoom shows the peak, while medium zoom averages the available sector levels and reserves the top row for sustained loud audio. During a brief PCM dropout the display can hold the last detailed waveform for up to 250 ms while playback stays near the same position.
-- **Display hook** (`waveform_hook`): Hooks the shared `display_stage_bpm` tail (`0x0C0642AA`, outside the boot-critical closure) after `info_order` and `phase_meter`, writing 100 non-zero bytes (`1..15`) into `0x0C9D1199` and setting `0x0C9D1188 = 1` so `panel_tx_waveform` (`0x0C0662AE`) transmits `0x70..0x77` at up to 50 Hz.
+- **Data source**: Samples the 2400-sector (32 s) PCM ring buffer (`0x0C1E8E5C`), blending mean and peak amplitude per sector into a 1.5 dB/step logarithmic scale (`0..31`, `-46.5 dBFS` to `-3 dBFS`, `0` below the silence floor) so quiet transients remain legible above quiet sustain while loud peaks reserve the 5th dot row.
+- **Per-track adaptation**: Tracks the current track's PCM peak (guided by ANLZ `PWAV` when available, or sustained PCM activity with a conservative cap when absent) so quietly mastered tracks use the full 5-dot dynamic range without boosting quiet intros of loud tracks into looking loud.
+- **True silence (0 dots)**: `waveform_tx_waveform` (gated pool `0x0C064DD8` → `panel_tx_waveform` `0x0C0662AE`) transmits all 100 columns (`0..15`, mapped to `0..5` dots) verbatim when zoomed so silent gaps show `0` dots without truncating later columns. *(Overview falls back to stock `0x0C0662AE`.)*
+- **Fallback & aggregation**: Columns outside the PCM ring fall back to the 400-column ANLZ `PWAV` buffer (`0x0CE65862`) or 100-column overview (`0x0CE65B82`). Close zoom uses the peak sector level, mid zoom blends `2/3` max + `1/3` mean, and medium zoom blends `1/3` max + `2/3` mean. During a brief PCM dropout the display can hold the last detailed waveform for up to 250 ms while playback stays near the same position.
+- **Display hook** (`waveform_hook`): Hooks the shared `display_stage_bpm` tail (`0x0C0642AA`, outside the boot-critical closure) after `info_order` and `phase_meter`, writing 100 bytes (`0..15`) into `0x0C9D1199` and setting `0x0C9D1188 = 1` so `waveform_tx_waveform` transmits `0x70..0x77` at up to 50 Hz.
 - **Rotary hook** (`waveform_rotary_hook`): Hooks `0x0C0E782E` inside `FUN_0C0E655C` (INFO screen rotary branch, outside the boot-critical closure and after the BPM Lock edit check).
 
 ## Building
