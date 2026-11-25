@@ -256,6 +256,7 @@ def test_high_flag_bits_and_standby_index_roundtrip_on_usb(payload):
     assert _call(p, mem2, "c850_ui_standby_index") == 3
 
 
+@needs_toolchain
 def test_beat_select_combos_never_write_to_usb_or_flash():
     p = payloadbuild.build(["quant_loops", "hot_cues", "loop_roll"], "cdj850")
     mem = _mem(p, file=_file(0))
