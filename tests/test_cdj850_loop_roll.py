@@ -222,3 +222,107 @@ def test_live_loop_roll(tmp_path):
     s = res["stock"]
     assert s["ev"]["rolls"] == s["pre"]["rolls"] and s["ev"]["jumps"] == s["pre"]["jumps"]
     assert s["state"] == 4 and s["active"] == 1, s          # a stock loop keeps playing
+
+
+# ---- interpreter: the quantized release ----
+
+def _roll_deck(div=1, quantize=True):
+    """loop_roll + quant_loops on the SH-2A interpreter: the 128.00 grid from 0.35 s, ring sector s
+    holding frame s (stand-in ring_sector_to_frame), a stock loop-out test that never wraps."""
+    from sh2a import Sh2a
+    from test_cdj850_hot_cues import _stub
+    import test_cdj850_quant_loops as tq
+    p = payloadbuild.build(["loop_roll", "quant_loops"], "cdj850")
+    entries = tq.GRIDS["128 @0.35"]
+    mem = tq._mem(p, entries, base=1280, flags=0 if quantize else 0x53)
+    mem.add(0x0CE6CA00, bytes(0x800))                    # K0..K2, loop active, UI lock, D154/D156
+    mem.add(0x0C7F6400, bytes(0x400))                    # feeder words (read ptr, sectors, segments)
+    mem.add(0x0CE49F54, bytes(4))                        # 1 ms tick
+    _stub(mem, 0x0C00851E, "rts\nmov r4,r0")             # ring_sector_to_frame: identity
+    _stub(mem, 0x0C0158D4, "rts\nmov #0,r0")             # isr_loop_out_reached: no stock wrap
+    _stub(mem, 0x0C015B18, "rts\nnop")                   # audio_clear_loop_segments
+    _stub(mem, 0x0C0DD492, "rts\nmov #0,r0")             # the key word's stock function
+
+    def call(name, *args):
+        cpu = Sh2a(mem)
+        cpu.r[15] = 0x0DDFFF00
+        for i, a in enumerate(args):
+            cpu.r[4 + i] = a & 0xFFFFFFFF
+        cpu.run(payloadbuild.lookup(p.symbols, name), Sh2a.RET)
+        return cpu.r[0]
+
+    def keys(k0=0, k1=0):
+        mem.write(0x0CE6CA08, struct.pack(">HH", k0, k1))
+        call("c850_ui_keys")
+
+    def sym(name):
+        return mem.u32(payloadbuild.lookup(p.symbols, name))
+
+    if div != 1:
+        call("c850_ui_set_flags", 0x30000, {2: 1, 4: 2}[div] << 16)
+    return p, mem, call, keys, sym, tq.Grid(entries)
+
+
+@needs_toolchain
+@pytest.mark.parametrize("div,quantize", [(1, True), (4, True), (1, False)])
+def test_quantized_release_lands_on_the_next_point(div, quantize):
+    p, mem, call, keys, sym, g = _roll_deck(div, quantize)
+    keys(0x0040)                                         # BEAT SELECT + LOOP OUT: roll mode on
+    keys(0x0840)
+    keys()
+    assert sym("loop_roll_toggles") == 1
+    mem.write(0x0CE6D252 + 0, b"\x02")
+    mem.write(0x0CE6D25D + 2, b"\x03")                   # playing
+    keys(0, 0x0040)                                      # BEAT 4 down: a roll starts
+    assert sym("loop_roll_rolls") == 1
+    mem.write(0x0CE6D25D + 2, b"\x04")                   # the stock handler made the loop
+    mem.write(LOOP_ACTIVE, b"\x01")
+    cur = 214                                            # read pointer: sector 214, block 3
+    mem.write(0x0C7F645C, struct.pack(">hh", cur, cur + 600))
+    mem.put32(0x0C7F6470, 0x0C1E8E5C + cur * 0x930 + 3 * 0x150)
+    for _ in range(40):                                  # 40 blocks counted while held
+        call("loop_roll_isr", cur, 0, 0)
+    start = cur * 7 + 3
+    keys()                                               # released
+    release = start + 39
+    assert sym("loop_roll_release_pos") == release
+    want = g.roll_target(release, 10, div) if quantize else None
+    target = want if want is not None and want > release else release
+    assert sym("loop_roll_quantized") == (1 if target > release else 0)
+    n = 0
+    while sym("loop_roll_jumps") == 0:
+        call("loop_roll_isr", cur, 0, 0)
+        n += 1
+        assert n < 2000
+    if target == release:
+        target += 1                                      # at once: the next block's shadow
+    assert sym("loop_roll_last_target") == target and n == target - release
+    # landed on the counted block of the target: sector target // 7, block target % 7
+    assert mem.u32(0x0C7F6470) == 0x0C1E8E5C + (target // 7) * 0x930 + (target % 7) * 0x150
+
+
+@needs_toolchain
+def test_a_beat_press_while_waiting_takes_the_release_back():
+    p, mem, call, keys, sym, g = _roll_deck(1, True)
+    keys(0x0040)
+    keys(0x0840)
+    keys()
+    mem.write(0x0CE6D25D + 2, b"\x03")
+    keys(0, 0x0040)
+    mem.write(0x0CE6D25D + 2, b"\x04")
+    mem.write(LOOP_ACTIVE, b"\x01")
+    cur = 214
+    mem.write(0x0C7F645C, struct.pack(">hh", cur, cur + 600))
+    mem.put32(0x0C7F6470, 0x0C1E8E5C + cur * 0x930)
+    call("loop_roll_isr", cur, 0, 0)
+    keys()                                               # release: waits for the beat
+    assert sym("loop_roll_quantized") == 1
+    keys(0, 0x0010)                                      # BEAT 1 before it: roll on (stock resizes)
+    assert sym("loop_roll_cancels") == 1
+    for _ in range(800):
+        call("loop_roll_isr", cur, 0, 0)
+    assert sym("loop_roll_jumps") == 0                   # still rolling
+    keys()                                               # released again: lands on a later point
+    for _ in range(800):
+        call("loop_roll_isr", cur, 0, 0)
+    assert sym("loop_roll_jumps") == 1

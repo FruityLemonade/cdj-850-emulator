@@ -1787,6 +1787,16 @@
           "text": "Writes IPR02 with IRQ7 priority 0 to mask DSPDREQ before preparing the PCM block. The read of IPR02 is at 0x0C076640."
         },
         {
+          "address": "0c0766b8",
+          "type": "EOL",
+          "text": "Loads pool 0x0C076764 (0x0C015258), its only reader in irq7_dspdreq_isr, early in the ISR before the loop paths. Lead for a per-request hook outside loops (slip mode, docs/cdj850-slip-design.md); call path not traced yet. [static]"
+        },
+        {
+          "address": "0c0766c8",
+          "type": "EOL",
+          "text": "Loads pool 0x0C076768 (0x0C005BB6), early in irq7_dspdreq_isr. Second lead for a per-request hook outside loops (slip mode, docs/cdj850-slip-design.md); call path not traced yet. [static]"
+        },
+        {
           "address": "0c07715e",
           "type": "EOL",
           "text": "Loads pool 0x0C07730C (isr_loop_out_reached): the forward path's loop-out test, once per block while a loop plays. loop_roll redirects the word (service-gated) to count blocks for the roll's shadow playhead and land there on release. [static + emu]"
