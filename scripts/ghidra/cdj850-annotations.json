@@ -858,6 +858,26 @@
           "name": "wav_pcm_read"
         },
         {
+          "address": "0c0beba0",
+          "name": "mp3act_job_dispatch"
+        },
+        {
+          "address": "0c0bec76",
+          "name": "mp3act_job_check_and_seek"
+        },
+        {
+          "address": "0c0beec0",
+          "name": "mp3act_job_unpack"
+        },
+        {
+          "address": "0c0bf1c8",
+          "name": "mp3act_seek_kind4"
+        },
+        {
+          "address": "0c0bf466",
+          "name": "mp3act_seek_kind6"
+        },
+        {
           "address": "0c0bf6ba",
           "name": "usb_decode_fill"
         },
@@ -1134,12 +1154,20 @@
           "name": "standby_set_state"
         },
         {
+          "address": "0c0efb8e",
+          "name": "pcm_ring_set_sector"
+        },
+        {
           "address": "0c0efb9a",
           "name": "pcm_ring_write"
         },
         {
           "address": "0c0f01dc",
           "name": "audio_build_loop_in_record"
+        },
+        {
+          "address": "0c0f65f0",
+          "name": "player_tick_usb_play"
         },
         {
           "address": "0c0f6e6c",
@@ -1428,7 +1456,7 @@
         {
           "address": "0c02caf4",
           "type": "PLATE",
-          "text": "Browse reply loop over 0x114-byte client cache entries. The entry ID is u32 at +0, the type is u16 at +4, and the UTF-16 title starts at +0x14. The call at 0x0C02CB04 passes the title to the display reply appender. The browse mod replaces only this call\u2019s title pointer."
+          "text": "Browse reply loop over 0x114-byte client cache entries. The entry ID is u32 at +0, the type is u16 at +4, and the UTF-16 title starts at +0x14. The call at 0x0C02CB04 passes the title to the display reply appender. The browse mod replaces only this call’s title pointer."
         },
         {
           "address": "0c038642",
@@ -2603,7 +2631,7 @@
         {
           "address": "0c0f534c",
           "type": "PRE",
-          "text": "Cue prefill call: mov.l @(0x0C0F54D8),r2; jsr @r2 = FUN_0C008C8A(4, .., 400, 120, r14). The only reader of pool 0x0C0F54D8; redirected by hot_cues_prefill through the service-mode gate (players/cdj850.GATED_BOOT_POOLS) [static]."
+          "text": "Cue prefill call: mov.l @(0x0C0F54D8),r2; jsr @r2 = FUN_0C008C8A(4, .., 400, 120, r14). The only reader of pool 0x0C0F54D8; redirected by hot_cues_prefill through the service-mode gate (players/cdj850.GATED_BOOT_POOLS): hot_cues_ring_request restores a pre-cached hot cue into ring slots 120.. (substate 0x72 -> case 0x73, ready at once) and asks only for the rest, else shortens the count to 180 [static + emu]."
         },
         {
           "address": "0c00866e",
@@ -2634,6 +2662,56 @@
           "address": "0c0e62bc",
           "type": "EOL",
           "text": "Pool word (stock FUN_0C00A4CC, 0x0C0E602E/0x0C0E61B4): redirected by quant_loops_resize_req and loop_resize_req to c850_resize_req [static]."
+        },
+        {
+          "address": "0c0beba0",
+          "type": "PLATE",
+          "text": "mp3ActTask job: reset decoder state (0x0C0BEC30), FUN_0C0BEC76 unpacks/checks the message and runs the seek for kind 0x0CE5AC70 (1 0x0C0BEF3C, 2 0x0C0BEFB2, 3 0x0C0BF0EA, 4 0x0C0BF1C8, 10 0x0C0BF272, 5 0x0C0BF2F4, 6 0x0C0BF466). A refusal returns 0xEEEE (nothing decoded, returns 0); only a seek returning 0 sets the ring write pointer from u16 0x0CE5AC44 (0x0C0BEC4C) and runs the decode loop usb_decode_fill (0x0C0BF6BA). hot_cues_beba0 wraps it (pool 0x0C0BE0CC) to decode a tagged hot-cue pre-cache job into SDRAM [static + emu]."
+        },
+        {
+          "address": "0c0becaa",
+          "type": "PRE",
+          "text": "Job check: refuses (-> 0x0C0BFC6C, 0xEEEE) when FUN_0C073922(track slot 0x0CE5A9E4, copied from message +0x14) is past u16 0x0CE5A9E0. A job must carry the stock track_length_slot in +0x14, not a length [emu, gdb]."
+        },
+        {
+          "address": "0c0bdfb4",
+          "type": "PRE",
+          "text": "Loads pool 0x0C0BE0CC and calls mp3act_job_dispatch (FUN_0C0BEBA0) for each mailbox job, then stores 1 to 0x0CE5A9EC. Boot-critical closure: hot_cues_beba0 redirects it through the service-mode gate (GATED_BOOT_POOLS)."
+        },
+        {
+          "address": "0c014d2e",
+          "type": "PRE",
+          "text": "AudioTask: audio state 0x0C7F6627 == 3 (USB play) calls player_tick_usb_play (0x0C0F65F0) through pool 0x0C014E8C; steady play is 0x0C7F6626/0x0C7F6625 = 0/0x11. hot_cues_play_tick (gated) runs the stock tick, then schedules/cancels a background hot-cue pre-cache."
+        },
+        {
+          "address": "0c014d40",
+          "type": "PRE",
+          "text": "AudioTask: audio states 4/5 (pause stutter / ready) call player_tick_usb_playback (0x0C0F6E6C) through pool 0x0C014E90. hot_cues_usb_tick (gated) runs the stock tick, then the hot-cue pre-cache scheduler."
+        },
+        {
+          "address": "0c0bf750",
+          "type": "PRE",
+          "text": "Loads pool 0x0C0BF818 and calls pcm_ring_set_sector(u16 0x0CE5AC44) before the decode loop. hot_cues_pcm_init: for a tagged pre-cache job sets 0x0CE5AC70 = 10, 0x0CE5AC71 = 2, u16 0x0CE5AC76 = 3000, u16 0x0CE5AC44 = 0, so the pass ends after its count without the done mail and FUN_0C0C0346/FUN_0C0C02D4 leave 0x0C750C3C and 0x0C7F645E alone [emu]."
+        },
+        {
+          "address": "0c0c02f8",
+          "type": "PRE",
+          "text": "Loads pool 0x0C0C056C and calls pcm_ring_write(src, longwords). hot_cues_pcm_write copies a tagged job's PCM into the hot-cue cache slot (0x0DE6BD70 + slot*0x56B80) and builds its 16-byte sector records instead."
+        },
+        {
+          "address": "0c0f7312",
+          "type": "PRE",
+          "text": "player_tick_usb_playback read-ahead: FUN_0C008C8A through pool 0x0C0F73A8 (also read at 0x0C0F7332). hot_cues_play_ring_request holds it while the hot-cue cache restore's continuation read is running (until 0x0C7F663D)."
+        },
+        {
+          "address": "0c0f65f0",
+          "type": "PLATE",
+          "text": "USB play tick of AudioTask (audio state 3): read-ahead scheduling while playing. Called through pool 0x0C014E8C from 0x0C014D2E."
+        },
+        {
+          "address": "0c0efb8e",
+          "type": "PLATE",
+          "text": "pcm_ring_set_sector(n): sets the decoder's ring write position to sector n (called from usb_decode_fill via pool 0x0C0BF818)."
         }
       ],
       "labels": [
@@ -3448,6 +3526,58 @@
         {
           "address": "0ce6d0f0",
           "name": "cue_point_kind_flag"
+        },
+        {
+          "address": "0c75a2dc",
+          "name": "cue_snapshot_pcm"
+        },
+        {
+          "address": "0c7f537c",
+          "name": "cue_snapshot_records"
+        },
+        {
+          "address": "0de6bd70",
+          "name": "hot_cues_cue_cache"
+        },
+        {
+          "address": "0ce5a9e4",
+          "name": "mp3act_track_slot"
+        },
+        {
+          "address": "0ce5ac70",
+          "name": "mp3act_job_kind"
+        },
+        {
+          "address": "0ce5ac44",
+          "name": "mp3act_ring_start_sector"
+        },
+        {
+          "address": "0c7f670e",
+          "name": "usb_read_ahead_reseek"
+        },
+        {
+          "address": "0c014e8c",
+          "name": "audio_play_tick_pool"
+        },
+        {
+          "address": "0c014e90",
+          "name": "audio_usb_tick_pool"
+        },
+        {
+          "address": "0c0be0cc",
+          "name": "mp3act_job_dispatch_pool"
+        },
+        {
+          "address": "0c0bf818",
+          "name": "pcm_ring_set_sector_pool"
+        },
+        {
+          "address": "0c0c056c",
+          "name": "pcm_ring_write_pool"
+        },
+        {
+          "address": "0c0f73a8",
+          "name": "usb_read_ahead_request_pool"
         }
       ]
     }

@@ -587,6 +587,226 @@ def test_point_record_snaps_to_the_nearest_beat_with_quantize():
     assert g.in_point(231) == 237 and g.in_point(215) == 202
 
 
+# ---- PCM snapshot cache and background pre-cache ----
+
+CACHE = ["hot_cues_play_req", "hot_cues_play_tick", "hot_cues_usb_tick", "hot_cues_beba0",
+         "hot_cues_pcm_init", "hot_cues_pcm_write"]
+# (pool, stock word, reader, payload symbol, inside the boot-critical closure -> gated)
+CACHE_POOLS = [
+    (0x0C0F73A8, 0x0C008C8A, (0x0C0F7312, 0x0C0F7332), "hot_cues_play_ring_request", False),
+    (0x0C014E8C, 0x0C0F65F0, (0x0C014D2E,), "hot_cues_play_tick", True),
+    (0x0C014E90, 0x0C0F6E6C, (0x0C014D40,), "hot_cues_usb_tick", True),
+    (0x0C0BE0CC, 0x0C0BEBA0, (0x0C0BDFB4,), "hot_cues_beba0", True),
+    (0x0C0BF818, 0x0C0EFB8E, (0x0C0BF750,), "hot_cues_pcm_init", False),
+    (0x0C0C056C, 0x0C0EFB9A, (0x0C0C02F8,), "hot_cues_pcm_write", False),
+]
+HC_CACHE_BASE, HC_CACHE_END, HC_SLOT_STRIDE, HC_SLOT_PCM = 0x0DE6BD70, 0x0DF6FFF0, 0x56B80, 150 * 0x930
+RING, RING_META, SECTOR = 0x0C1E8E5C, 0x0C750C3C, 0x930
+MEMCPY = """
+        tst     r6,r6
+        bt      2f
+        shlr2   r6
+1:      mov.l   @r5+,r0
+        mov.l   r0,@r4
+        dt      r6
+        bf/s    1b
+        add     #4,r4
+2:      rts
+        nop
+"""
+
+
+@needs_main
+@needs_toolchain
+def test_cache_pools_are_gated_where_boot_critical():
+    import bootcrit
+    import validate
+    from players.cdj850 import GATED_BOOT_POOLS, MAIN_PROFILE
+    stock = MAIN.read_bytes()
+    report, spans = {}, {}
+    out = patch_main.patch(stock, patch_main.with_loader(MODS + PREFILL + CACHE + SHOW, "cdj850"), "cdj850",
+                           report, spans)
+    assert all(report[n][0] == "applied" for n in CACHE), report
+    p = payloadbuild.build(["hot_cues"], "cdj850")
+    closure = bootcrit.closure(stock, BASE, byteorder=">")
+    for pool, old, readers, symbol, gated in CACHE_POOLS:
+        o = pool - BASE
+        assert struct.unpack_from(">I", stock, o)[0] == old, hex(pool)
+        assert tuple(_pool_readers(stock, pool)) == readers, hex(pool)
+        assert struct.unpack_from(">I", out, o)[0] == _sym(p, payloadbuild.gate_name(symbol)), hex(pool)
+        assert bool(closure.hit(o, o + 4)) == gated, hex(pool)
+        assert (pool in GATED_BOOT_POOLS) == gated, hex(pool)
+    rep = validate.Report()
+    validate.check_main_image(stock, out, MAIN_PROFILE, spans, rep, gated_boot_pools=GATED_BOOT_POOLS)
+    assert rep.exit_code == 0, rep.text()
+
+
+@needs_toolchain
+def test_cache_lies_above_every_cdj850_payload():
+    """payload.ld emits .bss into the image, so the 1 MB cache sits at fixed SDRAM above all mods' payload."""
+    p = payloadbuild.build(payloadbuild.payload_mods("cdj850"), "cdj850")
+    assert _sym(p, "_payload_end") <= HC_CACHE_BASE
+    assert HC_CACHE_BASE + 3 * HC_SLOT_STRIDE == HC_CACHE_END <= 0x0DF6FFFC
+    assert HC_SLOT_STRIDE == 150 * (0x930 + 16)
+
+
+def _cache_mem(p):
+    mem = _mem(p, mode=1)
+    mem.add(HC_CACHE_BASE, bytes(3 * HC_SLOT_STRIDE))
+    mem.add(0x0DD00000, bytes(0x30000))                   # decoder output, messages
+    mem.add(0x0CE5AC40, bytes(0x40))                      # decoder state (kind 0x0CE5AC70 ...)
+    mem.add(0x0CE5A9E0, bytes(0x10))
+    mem.add(0x0CE59B00, bytes(0x800))                     # track info (+0x3A1 VBR flag)
+    mem.add(0x0C7F6400, bytes(0x80))
+    mem.add(0x0CE49F50, bytes(8))
+    _stub(mem, 0x0C1100B8, MEMCPY)
+    return mem
+
+
+def _slot(mem, p, k, cue, state, sectors=0, out=0, loop=0):
+    mem.write(_sym(p, "hc_cache") + 20 * k,
+              struct.pack(">IIIIHBB", 0x11111111, 0x22222222, cue, out, sectors, state, loop))
+
+
+def _slot_get(mem, p, k):
+    return struct.unpack(">IIIIHBB", mem.read(_sym(p, "hc_cache") + 20 * k, 20))
+
+
+@needs_toolchain
+def test_pcm_write_diverts_decoded_sectors_into_the_cache_slot():
+    p = _payload()
+    mem = _cache_mem(p)
+    _stub(mem, 0x0C0EFB9A, _logger(5))                     # stock pcm_ring_write
+    pcm = bytes((i * 7) & 0xFF for i in range(2 * SECTOR))
+    mem.write(0x0DD00000, pcm)
+    mem.write(_sym(p, "hc_bg_divert"), b"\x01")
+    mem.write(_sym(p, "hc_bg_slot"), b"\x02")
+    mem.write(_sym(p, "hc_bg_want"), struct.pack(">H", 150))
+    mem.put32(_sym(p, "hc_bg_frame"), 4500)
+    mem.write(0x0CE5A9E4, struct.pack(">H", 3))
+    _call(p, mem, "hot_cues_pcm_write", 0x0DD00000, 2 * SECTOR // 4)
+    slot = HC_CACHE_BASE + HC_SLOT_STRIDE
+    assert mem.read(slot, 2 * SECTOR) == pcm
+    assert mem.u16(_sym(p, "hc_bg_sectors")) == 2
+    meta = [struct.unpack(">IIII", mem.read(slot + HC_SLOT_PCM + 16 * k, 16)) for k in range(3)]
+    assert meta[:2] == [(4500, 0, 3, 0xFFFFFFFF), (4501, 0, 3, 0xFFFFFFFF)] and meta[2] == (0, 0, 0, 0)
+    assert mem.u32(LOG + 0x40 * 5 + 28) == 0                # the ring was not written
+    mem.write(_sym(p, "hc_bg_divert"), b"\x00")
+    _call(p, mem, "hot_cues_pcm_write", 0x0DD00000, 588)
+    assert mem.u32(LOG + 0x40 * 5 + 28) == 1 and mem.u32(LOG + 0x40 * 5 + 4) == 588
+
+
+@needs_toolchain
+@pytest.mark.parametrize("divert", [0, 1])
+def test_pcm_init_switches_the_decode_off_the_ring_only_when_diverted(divert):
+    p = _payload()
+    mem = _cache_mem(p)
+    _stub(mem, 0x0C0EFB8E, _logger(6))                     # stock pcm_ring_set_sector
+    mem.write(0x0CE5AC70, b"\x04\x01")
+    mem.write(0x0CE5AC44, struct.pack(">H", 0x546))
+    mem.write(_sym(p, "hc_bg_divert"), bytes([divert]))
+    _call(p, mem, "hot_cues_pcm_init", 0x546)
+    assert mem.u32(LOG + 0x40 * 6) & 0xFFFF == (0 if divert else 0x546)
+    assert mem.read(0x0CE5AC70, 2) == (b"\x0a\x02" if divert else b"\x04\x01")
+    assert mem.u16(0x0CE5AC44) == (0 if divert else 0x546)
+
+
+@needs_toolchain
+def test_play_read_ahead_waits_for_the_restore_continuation():
+    p = _payload()
+    mem = _cache_mem(p)
+    _stub(mem, 0x0C008C8A, _logger(7))
+    mem.write(_sym(p, "hc_stream_inflight"), b"\x01")
+    mem.put32(0x0CE49F54, 1000)
+    mem.put32(_sym(p, "hc_stream_since"), 900)
+    _call(p, mem, "hot_cues_play_ring_request", 5, 0, 1, 0)
+    assert mem.u32(LOG + 0x40 * 7 + 28) == 0                # still streaming: no duplicate request
+    mem.write(0x0C7F663D, b"\x01")                         # the continuation read is done
+    _call(p, mem, "hot_cues_play_ring_request", 5, 0, 1, 0)
+    assert mem.u32(LOG + 0x40 * 7 + 28) == 1 and _u8(mem, 0x0C7F663D) == 0
+    assert _u8(mem, _sym(p, "hc_stream_inflight")) == 0
+
+
+@needs_toolchain
+@pytest.mark.parametrize("cancel", [0, 1])
+def test_beba0_marks_the_slot_ready_after_a_diverted_decode(cancel):
+    p = _payload()
+    mem = _cache_mem(p)
+    sectors = _sym(p, "hc_bg_sectors")
+    divert = _sym(p, "hc_bg_divert")
+    # FUN_0C0BEBA0 stand-in: the decode filled 150 sectors; log whether the divert flag was up
+    _stub(mem, 0x0C0BEBA0, """
+        mov.l   1f,r1
+        mov     #150,r0
+        extu.b  r0,r0
+        mov.w   r0,@r1
+        mov.l   2f,r1
+        mov.b   @r1,r0
+        mov.l   3f,r1
+        mov.l   r0,@r1
+        rts
+        mov     #0,r0
+        .align 2
+1:      .long   %#x
+2:      .long   %#x
+3:      .long   %#x
+""" % (sectors, divert, LOG + 0x40 * 9))
+    _slot(mem, p, 2, 6187, 1, out=6328, loop=1)
+    mem.write(_sym(p, "hc_bg_inflight"), b"\x01")
+    mem.write(_sym(p, "hc_bg_slot"), b"\x03")
+    mem.write(_sym(p, "hc_bg_cancel"), bytes([cancel]))
+    mem.put32(_sym(p, "hc_bg_frame"), 6187)
+    mem.put32(_sym(p, "hc_bg_h1"), 0x11111111)
+    mem.put32(_sym(p, "hc_bg_h2"), 0x22222222)
+    mem.write(0x0DD10011, b"\x04\xFE")                     # kind 4, background marker
+    _call(p, mem, "hot_cues_beba0", 0x0DD10000)
+    assert _u8(mem, _sym(p, "hc_bg_inflight")) == 0 and _u8(mem, divert) == 0
+    if cancel:
+        assert _slot_get(mem, p, 2)[5] == 1 and mem.u32(_sym(p, "hot_cues_precache_aborts")) == 1
+        assert mem.u32(LOG + 0x40 * 9) == 0                 # a cancelled job is not decoded
+    else:
+        assert mem.u32(LOG + 0x40 * 9) == 1                 # decoded with the divert up
+        assert _slot_get(mem, p, 2)[4:6] == (150, 3)
+        assert mem.u32(_sym(p, "hot_cues_precaches")) == 1 and mem.u32(_sym(p, "hot_cues_cache_mask")) == 4
+    # a stock message passes straight through, divert down
+    mem.write(0x0DD10011, b"\x06\x00")
+    _call(p, mem, "hot_cues_beba0", 0x0DD10000)
+    assert mem.u32(LOG + 0x40 * 9) == 0
+
+
+@needs_toolchain
+def test_call_prefill_request_restores_the_cached_cue_into_the_ring():
+    p = _payload()
+    mem = _cache_mem(p)
+    mem.add(RING, bytes(2400 * SECTOR))
+    mem.add(RING_META, bytes(2400 * 16))
+    _stub(mem, 0x0C008C8A, _logger(7))                     # FUN_0C008C8A, the ring read request
+    _stub(mem, 0x0C003E56, _logger(8))                     # frames -> MSF
+    n, cue, track = 30, 562, 7950
+    pcm = bytes((i * 13 + 5) & 0xFF for i in range(n * SECTOR))
+    mem.write(HC_CACHE_BASE, pcm)
+    mem.write(HC_CACHE_BASE + HC_SLOT_PCM, b"".join(struct.pack(">IIII", cue + k, 0, 1, 0xFFFFFFFF)
+                                                    for k in range(n)))
+    _slot(mem, p, 0, cue, 3, sectors=n)
+    mem.put32(0x0CE49F54, 5000)
+    mem.write(_sym(p, "hc_restore_slot"), b"\x01")
+    mem.put32(_sym(p, "hc_restore_frame"), cue)
+    mem.put32(_sym(p, "hc_restore_since"), 4900)
+    mem.put32(0x0C7F66F0, cue)
+    mem.put32(0x0C7F650C, track)
+    _call(p, mem, "hot_cues_ring_request", 4, 0, 1, 0x0DD20000, stack=(400, 120, 0))
+    assert mem.read(RING + 120 * SECTOR, n * SECTOR) == pcm
+    assert struct.unpack(">I", mem.read(RING_META + 120 * 16, 4))[0] == cue
+    assert struct.unpack(">I", mem.read(RING_META + 119 * 16, 4))[0] == 0xFFFFFFFF      # sentinels around it
+    assert struct.unpack(">I", mem.read(RING_META + (120 + n) * 16, 4))[0] == 0xFFFFFFFF
+    assert mem.u16(0x0C7F645E) == 120 + n and mem.u16(0x0C7F6460) == 120
+    assert mem.u32(0x0C7F6744) == cue + n - 1 and _u8(mem, 0x0C7F6625) == 0x72
+    assert mem.u32(LOG + 0x40 * 8) == cue + n                                           # continuation from cue + n
+    assert mem.u32(LOG + 0x40 * 7 + 28) == 1 and mem.u32(LOG + 0x40 * 7) == 4
+    assert mem.u32(_sym(p, "hot_cues_cache_hits")) == 1 and mem.u32(_sym(p, "hot_cues_prefill_last")) == 400
+    assert _u8(mem, _sym(p, "hc_stream_inflight")) == 1
+
+
 # ---- live ----
 
 # Stick: GRID128 (128 BPM, 32 bars, memory cue bar 13, hot cue A = bar 3 point, B = bar 9 one-bar
@@ -645,7 +865,7 @@ STATE_USB, FRAME, LOOP_IN, OUT_REC, ACTIVE = 0x0CE6D25F, 0x0C7F647C, 0x0C7F6498,
 LED7, MODE_BYTE = 0x0C9D0AEB, SETTINGS + 0x22
 EV = ["toggles", "jumps", "records", "deletes", "plays", "failed", "last_slot", "last_in", "last_out",
       "last_result", "avail", "mask", "snapped", "last_pos", "instants", "instant_misses", "instant_from",
-      "instant_sector", "prefills", "prefill_last"]
+      "instant_sector", "prefills", "prefill_last", "cache_hits", "cache_captures", "cache_mask", "precaches"]
 GRID_CTX = 0x0C9D24FC
 
 
@@ -868,7 +1088,7 @@ def test_live_hot_cues_with_every_branch_mod(tmp_path):
         pytest.skip("QMP socket descriptor inheritance requires POSIX")
     stick = build_stick(tmp_path)
     flash = tmp_path / "flash.bin"
-    flash.write_bytes(patch_main.patch_flash(FLASH.read_bytes(), ALL_MODS + MODS + (PREFILL if not os.environ.get("HC_LIVE_NO_PREFILL") else []) + SHOW, "cdj850"))
+    flash.write_bytes(patch_main.patch_flash(FLASH.read_bytes(), ALL_MODS + MODS + (PREFILL + CACHE if not os.environ.get("HC_LIVE_NO_PREFILL") else []) + SHOW, "cdj850"))
     syms = payloadbuild.build(ALL_FOLDERS, "cdj850").symbols
     r = drive(stick, flash, syms, tmp_path)
     print("hot_cues live:", json.dumps(r))
@@ -905,9 +1125,10 @@ def test_live_hot_cues_with_every_branch_mod(tmp_path):
     # B: the loop plays
     jb = r["jump_b"]
     assert jb["state"] == 4 and jb["active"] == 1 and (jb["in"], jb["out"]) == (B, 1265), jb
-    # a loop slot takes the CALL path, with the short prefill (180 of the stock 400 sectors)
+    # a loop slot takes the CALL path; B's 2 s were copied out of the ring after the load (snapshot cache),
+    # so the CALL restores them from SDRAM instead of waiting for a prefill
     if not os.environ.get("HC_LIVE_NO_PREFILL"):
-        assert jb["prefills"] == 1 and jb["prefill_last"] == 180, jb
+        assert jb["cache_hits"] == 1 and jb["prefills"] == 0, jb
     fr, plays = _moved_from(r["jump_b_frames"], B)
     assert plays and max(fr) <= 1265
     # delete A
@@ -939,3 +1160,120 @@ def test_live_hot_cues_with_every_branch_mod(tmp_path):
     rb = r["reboot"]
     assert rb["mode"] == 0 and rb["avail"] == 1 and rb["mask"] == 7, rb
     assert r["leds_reboot"] == [0xF]
+
+
+# A 106 s track (56 bars at 128): hot cues A/B/C at bars 5/33/45 = frames 562 / 4500 / 6187; C is a one-bar
+# loop (out 6328). B and C lie far outside the 32 s PCM ring, so only the background pre-cache can make them
+# instant on the first hit.
+_LONG_STICK_BUILDER = _STICK_BUILDER.split("spec = {")[0].replace("if num == 1:      # hot cue B",
+                                                                    "if num == 2:      # hot cue C") \
+    .replace('Num="1"', 'Num="2"') + r'''
+spec = {"device_name": "PRECACHE", "playlist": "Precache", "tracks": [
+    {"title": "LONG128", "bpm": 128, "first_downbeat": 0, "bars": 56, "memory_cues": [13], "hot_cues": [5, 33, 45]}]}
+sp = pathlib.Path(out_dir) / 'spec.json'
+sp.write_text(json.dumps(spec))
+rc = stick.main(['--spec', str(sp), '--out', out_dir + '/wav-stick', '--image', image, '--size-mb', '64',
+                 '--baken', baken])
+if rc:
+    raise SystemExit(rc)
+'''
+
+
+@needs_toolchain
+@pytest.mark.skipif(not FLASH.is_file(), reason="extract/cdj850/flash_cdj850.bin is not present")
+def test_live_out_of_ring_hot_cues_play_from_the_precache(tmp_path):
+    if os.name == "nt":
+        pytest.skip("QMP socket descriptor inheritance requires POSIX")
+    import importlib.util
+    if not BAKEN.is_file() or importlib.util.find_spec("pyfatfs") is None or importlib.util.find_spec("numpy") is None:
+        pytest.skip("tools/baken/baken, pyfatfs and numpy are needed for the hot-cue stick")
+    sys.path.insert(0, str(ROOT / "scripts" / "debug"))
+    import cdj850_trace as tr
+    stick = tmp_path / "precache.img"
+    subprocess.run([sys.executable, "-c", _LONG_STICK_BUILDER, str(ROOT / "scripts" / "media"),
+                    str(tmp_path / "stick"), str(stick), str(BAKEN)], check=True, capture_output=True, text=True,
+                   timeout=300)
+    flash = tmp_path / "flash.bin"
+    flash.write_bytes(patch_main.patch_flash(FLASH.read_bytes(), ALL_MODS + MODS + PREFILL + CACHE + SHOW, "cdj850"))
+    syms = payloadbuild.build(ALL_FOLDERS, "cdj850").symbols
+    S = lambda n: payloadbuild.lookup(syms, "hot_cues_" + n)
+    A, B, C, C_OUT = 562, 4500, 6187, 6328
+    names = ["jumps", "plays", "prefills", "cache_hits", "cache_captures", "cache_mask", "precaches",
+             "precache_aborts", "instants"]
+
+    with tr.Deck(stick, flash=flash, log=open(tmp_path / "qemu.log", "w")) as d:
+        def stats():
+            d.q("stop")
+            v = {"state": d.rb(STATE_USB), "frame": d.rw(FRAME), "in": d.rw(LOOP_IN), "out": d.rw(OUT_REC),
+                 "active": d.rb(ACTIVE), "write_sec": d.rh(0x0C7F645E)}
+            v.update({n: d.rw(S(n)) for n in names})
+            d.q("cont")
+            return v
+
+        def follow(pred, timeout=90):
+            """(wall s, frame, state) samples until pred(frame, state); the emulator is slower than wall time."""
+            out, t0 = [], time.monotonic()
+            while time.monotonic() - t0 < timeout:
+                fr, st = d.rw(FRAME), d.rb(STATE_USB)
+                out.append((round(time.monotonic() - t0, 2), fr, st))
+                if pred(fr, st):
+                    break
+                time.sleep(0.05)
+            return out
+
+        d.wait_line("mode=0x0a", "[LONG128]", timeout=300)
+        time.sleep(1.5)
+        for _ in range(6):
+            if d.rb(STATE_USB) == 3:
+                break
+            d.key("play")
+            time.sleep(2.5)
+        assert d.rb(STATE_USB) == 3
+        # UTILITY HOT CUES is on by default: the pre-cache starts with the load; A is in the ring (copied
+        # out of it), B and C are decoded into SDRAM by mp3ActTask between stock read-aheads
+        t0 = time.monotonic()
+        while d.rw(S("cache_mask")) != 7 and time.monotonic() - t0 < 120:
+            time.sleep(0.5)
+        pre = stats()
+        print("precached:", pre)
+        assert pre["cache_mask"] == 7 and pre["precaches"] >= 2 and pre["state"] == 3, pre
+        d.hold("beat_select")
+        time.sleep(0.6)
+        d.key("reloop")
+        time.sleep(0.8)
+        d.release("beat_select")
+        time.sleep(0.5)
+
+        # B, ~60 s ahead: on B within one poll, playing throughout, on past the 150 cached sectors
+        d.key("beat_2")
+        fb = follow(lambda fr, st: fr > B + 200)
+        jb = stats()
+        print("B:", jb, fb[:6], fb[-3:])
+        after = [x for x in fb if x[1] >= B]
+        assert after and after[0][0] < 0.6, fb[:10]
+        assert all(x[2] == 3 for x in after) and all(y[1] >= x[1] for x, y in zip(after, after[1:])), fb
+        assert jb["cache_hits"] == 1 and jb["prefills"] == 0 and jb["frame"] > B + 200, jb
+
+        # C, a loop: armed and playing from the cache
+        d.key("beat_4")
+        follow(lambda fr, st: st == 4 and C <= fr < C_OUT, timeout=30)
+        time.sleep(1.0)
+        jc = stats()
+        print("C:", jc)
+        assert jc["cache_hits"] == 2 and jc["prefills"] == 0, jc
+        assert jc["state"] == 4 and jc["active"] == 1 and (jc["in"], jc["out"]) == (C, C_OUT), jc
+
+        # leave the loop, pause, then A (~75 s back) from paused: auto-plays from the cache
+        d.key("reloop")
+        follow(lambda fr, st: st == 3, timeout=20)
+        for _ in range(3):
+            d.key("play")
+            if follow(lambda fr, st: st not in (3, 4), timeout=10)[-1][2] not in (3, 4):
+                break
+        assert d.rb(STATE_USB) in (5, 6), stats()
+        d.key("beat_1")
+        fa = follow(lambda fr, st: st == 3 and fr > A + 160)
+        ja = stats()
+        print("A:", ja, fa[:6])
+        assert ja["cache_hits"] == 3 and ja["prefills"] == 0, ja
+        assert ja["state"] == 3 and ja["frame"] > A + 160, ja
