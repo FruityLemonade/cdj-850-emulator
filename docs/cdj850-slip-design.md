@@ -42,7 +42,7 @@ for scratch and reverse; making that a choice is cheap once the engine exists.
 
 - **UTILITY > `SLIP MODE`** (`ON`/`OFF`, saved): master enable/disable for slip mode (and `BEAT SELECT + LOOP OUT`). When set to `OFF`, slip mode and `BEAT SELECT + LOOP OUT` are disabled.
 - **`BEAT SELECT + LOOP OUT`**: arms or disarms slip mode in RAM (`SLIP ON` / `SLIP OFF`, zero flash/USB writes mid-playback; starts disarmed at boot). When active, the jog display's **`VINYL` indicator** (`S[1]`/`S[0xF]` bit `0x18`, via gated pool `0x0C063124`) blinks at 300 ms intervals.
-- **`REV` hold >= 1.5 s**: pressing and holding `REV` for 1.5 s starts momentary slip-reverse until released even when slip mode isn't armed (short `< 1.5 s` `REV` presses stay normal non-slip reverse unless slip mode is armed). With slip mode armed, all beat rolls, `REV`, `VINYL` scratch, and pause slip back to the shadow playhead.
+- **`REV` hold >= 0.75 s**: pressing and holding `REV` for 0.75 s starts momentary slip-reverse until released even when slip mode isn't armed (short `< 0.75 s` `REV` presses stay normal non-slip reverse unless slip mode is armed, and toggle latched slip-reverse when slip mode is armed). With slip mode armed, all beat rolls, `REV`, `VINYL` scratch, and pause slip back to the shadow playhead. With quantize on, releasing `REV` waits in reverse until the next 1/4, 1/2, or 1 beat quantize point before exiting reverse and landing on the shadow.
 
 ## The shadow clock
 

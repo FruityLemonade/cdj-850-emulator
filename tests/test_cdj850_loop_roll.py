@@ -509,7 +509,7 @@ def test_slip_pause_and_cue_abort_and_miss():
 
 
 @needs_toolchain
-def test_slip_jog_vinyl_indicator_and_rev_hold_1500ms():
+def test_slip_jog_vinyl_indicator_and_rev_hold_750ms():
     p, mem, call, keys, sym, _ = _roll_deck(div=1, quantize=False)
     mem.add(0x0C9D0AD8, bytes(0x20))
     mem.add(0x0C064D10, struct.pack(">6HI", 0xD102, 0xE018, 0x8011, 0x801F, 0x000B, 0xE000, 0x0C9D0AD8))
@@ -525,18 +525,20 @@ def test_slip_jog_vinyl_indicator_and_rev_hold_1500ms():
         call("loop_roll_jog_flags")
         assert mem.read(0x0C9D0AD9, 1)[0] == 0x18 and mem.read(0x0C9D0AE7, 1)[0] == 0x18
 
-    # Short REV tap (< 1.5 s) with slip disarmed: no slip started, stays in normal reverse
+    # Short REV tap (700 ms < 0.75 s) with slip disarmed: no slip started, stays in normal reverse
     mem.put32(0x0CE49F54, 1000)
     keys(0x8000, 0)                                      # REV down
     mem.write(0x0C7F666C, b"\x01")                       # stock enters reverse
     call("c850_ui_tick")
-    mem.put32(0x0CE49F54, 1400)                          # released after 400 ms
+    mem.put32(0x0CE49F54, 1700)                          # released after 700 ms
+    call("c850_ui_tick")
+    assert sym("loop_roll_slip_starts") == 0
     keys(0, 0)
     call("c850_ui_tick")
     assert sym("loop_roll_slip_starts") == 0
     assert (mem.u16(0x0CE6CA08) & 0x8000) == 0           # no synthetic REV exit
 
-    # Long REV hold (>= 1.5 s) with slip disarmed: momentary slip-reverse!
+    # Hold REV (>= 0.75 s) with slip disarmed: momentary slip-reverse!
     mem.write(0x0C7F666C, b"\x00")
     mem.put32(0x0CE49F54, 2000)
     call("c850_ui_tick")
@@ -544,15 +546,17 @@ def test_slip_jog_vinyl_indicator_and_rev_hold_1500ms():
     mem.write(0x0C7F666C, b"\x01")
     mem.put32(0x0C7F6470, 0x0C1E8E5C + 200 * 0x930 + 332)
     call("c850_ui_tick")
-    for t in (2500, 3000, 3500):                          # held 1.5 s across ticks (dt <= SLIP_DT_MAX)
-        mem.put32(0x0CE49F54, t)
-        call("c850_ui_tick")
+    mem.put32(0x0CE49F54, 2700)                          # 700 ms: not yet triggered
+    call("c850_ui_tick")
+    assert sym("loop_roll_slip_starts") == 0
+    mem.put32(0x0CE49F54, 2750)                          # 750 ms: triggers momentary slip-reverse
+    call("c850_ui_tick")
     assert sym("loop_roll_slip_starts") == 1
     # VINYL indicator blinks off/on while momentary slip-reverse is active
-    mem.put32(0x0CE49F54, 3600)                          # (3600/300)=12 (even) -> off
+    mem.put32(0x0CE49F54, 3000)                          # (3000/300)=10 (even) -> off
     call("loop_roll_jog_flags")
     assert mem.read(0x0C9D0AD9, 1)[0] == 0x00 and mem.read(0x0C9D0AE7, 1)[0] == 0x00
-    mem.put32(0x0CE49F54, 3900)                          # (3900/300)=13 (odd) -> on
+    mem.put32(0x0CE49F54, 3300)                          # (3300/300)=11 (odd) -> on
     call("loop_roll_jog_flags")
     assert mem.read(0x0C9D0AD9, 1)[0] == 0x18 and mem.read(0x0C9D0AE7, 1)[0] == 0x18
 
@@ -563,23 +567,196 @@ def test_slip_jog_vinyl_indicator_and_rev_hold_1500ms():
     mem.write(0x0C7F666C, b"\x00")                       # stock exited reverse, forward aligned
     mem.put32(0x0C7F6470, 0x0C1E8E5C + 180 * 0x930)
     mem.write(0x0C7F645C, struct.pack(">hh", 180, 1200))
-    mem.put32(0x0CE49F54, 3920)
+    mem.put32(0x0CE49F54, 3320)
     call("c850_ui_tick")
     assert (mem.u16(0x0CE6CA08) & 0x8000) == 0           # cleared
     assert sym("loop_roll_slip_jumps") == 1
-    want = 200 * 7 + (1920 * 21 * 10000) // 400000
+    want = 200 * 7 + (1320 * 21 * 10000) // 400000
     assert sym("loop_roll_slip_last_target") == want
 
-    # Arm slip mode via BEAT SELECT + LOOP OUT: VINYL indicator blinks; UTILITY SLIP MODE OFF disables it
+    # Arm slip mode via BEAT SELECT + LOOP OUT: short press latches slip reverse until pressed again,
+    # and holding >= 0.75 s exits on release; UTILITY SLIP MODE OFF disables indicator blink
     keys(0x0040, 0)
     keys(0x0840, 0)
     keys(0, 0)
-    mem.put32(0x0CE49F54, 4200)                          # (4200/300)=14 (even) -> off
+    mem.put32(0x0CE49F54, 3600)                          # (3600/300)=12 (even) -> off
     call("loop_roll_jog_flags")
     assert mem.read(0x0C9D0AD9, 1)[0] == 0x00
+    call("c850_ui_tick")                                 # latch normal playback
+    keys(0x8000, 0)                                      # short REV press in slip mode
+    mem.write(0x0C7F666C, b"\x01")
+    mem.put32(0x0C7F6470, 0x0C1E8E5C + 200 * 0x930 + 332)
+    call("c850_ui_tick")
+    assert sym("loop_roll_slip_starts") == 2
+    mem.put32(0x0CE49F54, 4000)                          # released after 400 ms (< 750 ms)
+    keys(0, 0)
+    call("c850_ui_tick")
+    assert (mem.u16(0x0CE6CA08) & 0x8000) == 0           # stays in slip reverse until pressed again
+    keys(0x8000, 0)                                      # pressed again -> exits and lands
+    mem.write(0x0C7F666C, b"\x00")
+    mem.write(0x0C7F645C, struct.pack(">hh", 190, 1400))
+    mem.put32(0x0C7F6470, 0x0C1E8E5C + 190 * 0x930)
+    mem.put32(0x0CE49F54, 4200)
+    call("c850_ui_tick")
+    assert sym("loop_roll_slip_jumps") == 2
+    keys(0, 0)
+
     call("c850_ui_set_flag", 0x2000, 1)                  # UTILITY SLIP MODE OFF
     call("loop_roll_jog_flags")
     assert mem.read(0x0C9D0AD9, 1)[0] == 0x18
+
+
+@needs_toolchain
+@pytest.mark.parametrize("lr_mode,div,quantize", [
+    (False, 1, False),
+    (False, 1, True),
+    (False, 2, True),
+    (False, 4, True),
+    (True, 4, True),
+    (True, 1, False),
+])
+def test_slip_rev_hold_release_quantize_and_cancel(lr_mode, div, quantize):
+    p, mem, call, keys, sym, g = _roll_deck(div=div, quantize=quantize)
+    mem.write(0x0CE6D252, b"\x02")
+    mem.write(0x0CE6D25D + 2, b"\x03")
+    cur = 214
+    mem.write(0x0C7F645C, struct.pack(">hh", cur, cur + 1200))
+    mem.put32(0x0C7F6470, 0x0C1E8E5C + cur * 0x930)
+    if lr_mode:
+        keys(0x0040, 0)
+        keys(0x0840, 0)
+        keys(0, 0)
+    tick_ms = 500
+    mem.put32(0x0CE49F54, tick_ms)
+    call("c850_ui_tick")
+
+    # Hold REV for 850 ms (>= 750 ms)
+    keys(0x8000, 0)
+    mem.write(0x0C7F666C, b"\x01")
+    mem.put32(0x0C7F6470, 0x0C1E8E5C + cur * 0x930 + 332)
+    call("c850_ui_tick")
+    for dt in (100, 100, 100, 100, 100, 100, 100, 100, 50):
+        tick_ms += dt
+        mem.put32(0x0CE49F54, tick_ms)
+        call("c850_ui_tick")
+    assert sym("loop_roll_slip_starts") == 1
+
+    # Release REV: instant exit if quantize off, else waits in reverse until next 1 / 1/2 / 1/4 beat
+    keys(0, 0)
+    call("c850_ui_tick")
+    if not quantize:
+        assert (mem.u16(0x0CE6CA08) & 0x8000) == 0x8000
+        mem.write(0x0C7F666C, b"\x00")
+        mem.write(0x0C7F645C, struct.pack(">hh", 190, 1400))
+        mem.put32(0x0C7F6470, 0x0C1E8E5C + 190 * 0x930)
+        tick_ms += 12
+        mem.put32(0x0CE49F54, tick_ms)
+        call("c850_ui_tick")
+        assert sym("loop_roll_slip_jumps") == 1
+        assert sym("loop_roll_slip_quantized") == 0
+    else:
+        rel = sym("loop_roll_slip_release_pos")
+        want = g.roll_target(rel, 10, div)
+        assert want is not None and want > rel
+        assert sym("loop_roll_slip_quantized") == 1
+        # Remains in reverse until ~6 blocks before target
+        while (mem.u16(0x0CE6CA08) & 0x8000) == 0:
+            assert sym("loop_roll_slip_jumps") == 0
+            tick_ms += 12
+            mem.put32(0x0CE49F54, tick_ms)
+            call("c850_ui_tick")
+            assert tick_ms < 5000
+        # Audio task exits reverse and aligns
+        mem.write(0x0C7F666C, b"\x00")
+        mem.write(0x0C7F645C, struct.pack(">hh", 190, 1400))
+        mem.put32(0x0C7F6470, 0x0C1E8E5C + 190 * 0x930)
+        while sym("loop_roll_slip_jumps") == 0:
+            tick_ms += 12
+            mem.put32(0x0CE49F54, tick_ms)
+            call("c850_ui_tick")
+            assert tick_ms < 5000
+        target = sym("loop_roll_slip_last_target")
+        assert want <= target <= want + 10
+        assert mem.u32(0x0C7F6470) == 0x0C1E8E5C + (target // 7) * 0x930 + (target % 7) * 0x150
+
+    # Pressing REV again while waiting for a quantized exit cancels the waiting release
+    if quantize and not lr_mode:
+        tick_ms += 50
+        mem.put32(0x0CE49F54, tick_ms)
+        call("c850_ui_tick")
+        keys(0x8000, 0)
+        mem.write(0x0C7F666C, b"\x01")
+        mem.write(0x0C7F645C, struct.pack(">hh", 200, 1400))
+        mem.put32(0x0C7F6470, 0x0C1E8E5C + 200 * 0x930 + 332)
+        call("c850_ui_tick")
+        for dt in (100, 100, 100, 100, 100, 100, 100, 100, 50):
+            tick_ms += dt
+            mem.put32(0x0CE49F54, tick_ms)
+            call("c850_ui_tick")
+        keys(0, 0)                                       # release -> starts waiting for beat
+        call("c850_ui_tick")
+        assert (mem.u16(0x0CE6CA08) & 0x8000) == 0
+        tick_ms += 12
+        mem.put32(0x0CE49F54, tick_ms)
+        call("c850_ui_tick")
+        keys(0x8000, 0)                                  # press again while waiting -> cancels release
+        assert (mem.u16(0x0CE6CA08) & 0x8000) == 0       # hidden from stock so reverse continues
+        for _ in range(10):                              # pass the old beat without exiting
+            tick_ms += 100
+            mem.put32(0x0CE49F54, tick_ms)
+            call("c850_ui_tick")
+        assert sym("loop_roll_slip_jumps") == 1
+        keys(0, 0)
+        call("c850_ui_tick")
+        while (mem.u16(0x0CE6CA08) & 0x8000) == 0:
+            tick_ms += 12
+            mem.put32(0x0CE49F54, tick_ms)
+            call("c850_ui_tick")
+            assert tick_ms < 10000
+        mem.write(0x0C7F666C, b"\x00")
+        mem.write(0x0C7F645C, struct.pack(">hh", 190, 1400))
+        mem.put32(0x0C7F6470, 0x0C1E8E5C + 190 * 0x930)
+        while sym("loop_roll_slip_jumps") == 1:
+            tick_ms += 12
+            mem.put32(0x0CE49F54, tick_ms)
+            call("c850_ui_tick")
+            assert tick_ms < 10000
+        assert sym("loop_roll_slip_jumps") == 2
+
+    # Short press REV in slip mode (lr_mode=True) with quantize on: stays in slip reverse after release
+    # and pressing REV again waits in reverse until the next quantize beat
+    if quantize and lr_mode:
+        tick_ms += 50
+        mem.put32(0x0CE49F54, tick_ms)
+        call("c850_ui_tick")
+        keys(0x8000, 0)
+        mem.write(0x0C7F666C, b"\x01")
+        mem.write(0x0C7F645C, struct.pack(">hh", 200, 1400))
+        mem.put32(0x0C7F6470, 0x0C1E8E5C + 200 * 0x930 + 332)
+        call("c850_ui_tick")
+        tick_ms += 200
+        mem.put32(0x0CE49F54, tick_ms)
+        keys(0, 0)                                       # short press released -> stays in slip reverse
+        call("c850_ui_tick")
+        assert (mem.u16(0x0CE6CA08) & 0x8000) == 0
+        # 200*7 + 200*21/40 = 1505 blocks; next 1/4 beat on 128@0.35 is 1538 (> 6 blocks ahead)
+        keys(0x8000, 0)                                  # second press to exit: waits until next 1/4 beat
+        assert (mem.u16(0x0CE6CA08) & 0x8000) == 0       # intercepted while waiting for quantize beat
+        keys(0, 0)
+        while (mem.u16(0x0CE6CA08) & 0x8000) == 0:
+            tick_ms += 12
+            mem.put32(0x0CE49F54, tick_ms)
+            call("c850_ui_tick")
+            assert tick_ms < 10000
+        mem.write(0x0C7F666C, b"\x00")
+        mem.write(0x0C7F645C, struct.pack(">hh", 190, 1400))
+        mem.put32(0x0C7F6470, 0x0C1E8E5C + 190 * 0x930)
+        while sym("loop_roll_slip_jumps") == 1:
+            tick_ms += 12
+            mem.put32(0x0CE49F54, tick_ms)
+            call("c850_ui_tick")
+            assert tick_ms < 10000
+        assert sym("loop_roll_slip_jumps") == 2
 
 
 # ---- live slip mode (reverse, scratch, pause) ----
@@ -640,7 +817,7 @@ def drive_slip(stick, flash, syms):
         while d.rw(PLAY_FRAME) < 600:
             time.sleep(0.05)
 
-        # Disarmed: short REV tap stays normal reverse (no slip); 1.5s hold REV enters momentary slip-reverse
+        # Disarmed: short REV tap stays normal reverse (no slip); 0.75s hold REV enters momentary slip-reverse
         pre_short = ev(d)
         d.key("rev", dur=200)
         end_rev = time.monotonic() + 15
@@ -655,17 +832,17 @@ def drive_slip(stick, flash, syms):
         res["rev_short_disarmed"] = {"pre": pre_short, "ev": ev(d)}
 
         ensure_playing(d)
-        pre_1500 = ev(d)
+        pre_750 = ev(d)
         d.hold("rev")
         deadline = time.monotonic() + 45
-        while time.monotonic() < deadline and ev(d)["slip_starts"] == pre_1500["slip_starts"]:
+        while time.monotonic() < deadline and ev(d)["slip_starts"] == pre_750["slip_starts"]:
             time.sleep(0.05)
-        assert ev(d)["slip_starts"] > pre_1500["slip_starts"]
+        assert ev(d)["slip_starts"] > pre_750["slip_starts"]
         d.release("rev")
-        e_1500 = wait_jump(d, pre_1500)
+        e_750 = wait_jump(d, pre_750)
         time.sleep(0.5)
-        res["rev_hold_1500"] = {"pre": pre_1500, "ev": e_1500, "after": frames_for(d, 1.5),
-                                "state": d.rb(STATE_USB)}
+        res["rev_hold_750"] = {"pre": pre_750, "ev": e_750, "after": frames_for(d, 1.5),
+                               "state": d.rb(STATE_USB)}
 
         # Slip mode on: BEAT SELECT + LOOP OUT; VINYL indicator blinks on jog display
         d.key("beat_select", dur=1200)
@@ -734,7 +911,7 @@ def test_live_slip_mode(tmp_path):
     res = drive_slip(stick, flash, syms)
     print("slip_mode live:", json.dumps(res))
     assert res["rev_short_disarmed"]["ev"]["slip_starts"] == res["rev_short_disarmed"]["pre"]["slip_starts"]
-    check_slip_gesture(res["rev_hold_1500"], 1)
+    check_slip_gesture(res["rev_hold_750"], 1)
     assert res["toggle"]["toggles"] == 1
     assert res["vinyl_blink"] == [0, 0x18], res["vinyl_blink"]
     check_slip_gesture(res["rev"], 1)

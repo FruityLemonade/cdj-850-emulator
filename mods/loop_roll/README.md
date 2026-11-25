@@ -8,8 +8,8 @@ Default off. **Prototype**: emulator-tested only, never run on a deck.
 | hold BEAT SELECT, press LOOP OUT | arms/disarms slip mode in RAM (not saved, zero flash/USB writes); `VINYL` jog indicator flashes while active; displays `SLIP ON` / `SLIP OFF` for 1.5 s | same (when UTILITY `SLIP MODE` is `ON`) |
 | hold BEAT 1 / 2 / 4 / 8 while playing | the stock auto beat loop plays while the button is held (with `quant_loops`: on the grid, wrapping to the block); another beat button while held resizes it | stock beat loop |
 | release every beat button | playback lands where it would be had the loop never played, and the loop is left | stock: the loop keeps playing |
-| hold REV >= 1.5 s while playing | slips during reverse and jumps to the shadow on release | momentary slip-reverse while held (>= 1.5 s), then exits reverse and jumps to the shadow on release (VINYL indicator flashes) |
-| short press REV (< 1.5 s) while playing | track reverses while held/latched; on returning to forward playback, jumps to the shadow playhead | normal non-slip reverse |
+| hold REV >= 0.75 s while playing | slips during reverse and jumps to the shadow on release (or on the next quantize beat) | momentary slip-reverse while held (>= 0.75 s), then exits reverse and jumps to the shadow on release (VINYL indicator flashes) |
+| short press REV (< 0.75 s) while playing | track reverses until REV is pressed again; on returning to forward playback, jumps to the shadow playhead | normal non-slip reverse |
 | touch jog top in VINYL mode (scratch / backspin), then release | platter scratches or spins back; once the release ramp ends, playback jumps to the shadow playhead | stock VINYL scratch |
 | pause with PLAY/PAUSE, then press PLAY | deck pauses; on PLAY (and after any VINYL ramp), playback jumps to the shadow playhead | stock pause |
 | release / return with quantize on (and `quant_loops`, a rekordbox grid) | playback waits until the next quantize point of the shadow (UTILITY `QUANTIZE SIZE`: 1, 1/2 or 1/4 beat) and lands there; a point at most 10 blocks (19 ms) behind counts as reached and lands at once; resuming a roll/gesture before it lands keeps slipping | same |
