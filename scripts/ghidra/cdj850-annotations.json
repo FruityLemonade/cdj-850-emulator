@@ -1340,6 +1340,30 @@
         {
           "address": "0c140b0c",
           "name": "mp3_pcm_out"
+        },
+        {
+          "address": "0c088bc4",
+          "name": "edbmalloc"
+        },
+        {
+          "address": "0c088c5c",
+          "name": "edbfree"
+        },
+        {
+          "address": "0c11d572",
+          "name": "db_cursor_next"
+        },
+        {
+          "address": "0c11d5e6",
+          "name": "db_row_column"
+        },
+        {
+          "address": "0c11d39c",
+          "name": "db_cursor_close"
+        },
+        {
+          "address": "0c07f55e",
+          "name": "db_fill_track_results"
         }
       ],
       "comments": [
@@ -1881,7 +1905,7 @@
         {
           "address": "0c07c330",
           "type": "PLATE",
-          "text": "Builds a djdbContent cursor and optionally sorts it. Bit 7 of r4 requests the sortable cursor. Query kind 4 selects all tracks."
+          "text": "db_query_content(flags, kind, f1, f2, f3, selection): builds a djdbContent cursor and optionally sorts it. Bit 7 of flags requests the sortable cursor. Every kind is a track list over djdbContent: 4 all tracks (TRACK, also 0x15), 2/3 album and artist tracks, 6 BPM range, 7 key, 8, 9, 10, 11, 12, 15, 19 (duration), 20, 1. Each list handler calls it through its own pool word (0x0C074FF4 TRACK, 0x0C08400C, 0x0C08424C, 0x0C084474, 0x0C08489C, 0x0C084AFC, 0x0C084EF8, 0x0C085BD8, 0x0C0861AC, 0x0C08669C, 0x0C086E1C, 0x0C08705C, 0x0C088750, 0x0C088BB8, 0x0C07AFD0) [static]. Playlists and history use a separate query over djdbSongPlaylist/djdbSongHistory (pools 0x0C07CAA0/0x0C07C7F4) [static]."
         },
         {
           "address": "0c07c6be",
@@ -1991,7 +2015,7 @@
         {
           "address": "0c0babac",
           "type": "PLATE",
-          "text": "Finalizes DB menu results. Count is u16 at +2, primary sort mode is u8 at +4, and the u16 row index pointer is at +0x2C. A nonzero primary sort mode builds the index with the stock comparator. The finalizer then releases its sort workspace."
+          "text": "Finalizes DB menu results (every list, through pool 0x0C0BB804). Results: u16 count at +2, primary sort mode u8 at +4, u8 +7 = number rows (+0x0A), request u16 at +8, selection u32 at +0xC, u16 row index pointer (display order) at +0x2C, rows at +0x44 (0x14 bytes: +0 ID (content ID for tracks), +0x0A position, +0x0C item type: 4 track, 7 artist, 8 playlist, 0x0F key, 0x81.. top menu). A nonzero primary sort mode builds the index with the stock sorter (0x0C0A730C create, 0x0C0A7380 comparator, 0x0C0A73CE add, 0x0C0A74C4 next, 0x0C0A73B0 destroy). The finalizer then releases its sort workspace (+0x30, +0x34) [static + emu]."
         },
         {
           "address": "0c0bb68a",
@@ -2712,6 +2736,36 @@
           "address": "0c0efb8e",
           "type": "PLATE",
           "text": "pcm_ring_set_sector(n): sets the decoder's ring write position to sector n (called from usb_decode_fill via pool 0x0C0BF818)."
+        },
+        {
+          "address": "0c0bbabe",
+          "type": "PLATE",
+          "text": "db_check_menu_results_cache(cache, selection, request, args): called for every DB request by the dispatcher (pool 0x0C051CEC). Requests 0x1012, 0x1300 and 0x1105 (playlist) bypass the cache. A hit (0x0C0BA440) needs the same request, the same selection media byte (bits 8..15) and the same argument words 1..7 (28 bytes). USB browse requests seen: 0x1000 top menu, 0x1002 artists, 0x1102 artist's albums, 0x1202 album tracks, 0x1004 TRACK, 0x100B keys, 0x110B key tracks, 0x1105 playlists/playlist tracks; argument word 7 was zero in all [static + emu]."
+        },
+        {
+          "address": "0c088bc4",
+          "type": "PLATE",
+          "text": "edbmalloc(size): DB task heap allocation (size 0 -> 0x20); NULL on failure [static]."
+        },
+        {
+          "address": "0c088c5c",
+          "type": "PLATE",
+          "text": "edbfree(ptr): DB task heap free, NULL ignored [static]."
+        },
+        {
+          "address": "0c11d572",
+          "type": "PLATE",
+          "text": "db_cursor_next(cursor, &error): next row of a DB cursor, 0 at the end [static + emu]."
+        },
+        {
+          "address": "0c11d5e6",
+          "type": "PLATE",
+          "text": "db_row_column(row, column, &converted): pointer to a column value of a row (djdbContent: 0 ID, 4 title, 8 tempo x100, 10 track number, 0x14 key ID). converted = 1 when the value was converted into a new buffer the caller frees with edbfree [static + emu]."
+        },
+        {
+          "address": "0c07f55e",
+          "type": "PLATE",
+          "text": "db_fill_track_results(ctx, &cursor, short): reads every cursor row (columns 0, title, 10, 0x18) into the results as item type 4 through 0x0C0BB4EC [static]."
         }
       ],
       "labels": [
