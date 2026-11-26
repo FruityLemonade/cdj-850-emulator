@@ -1134,7 +1134,7 @@
         {
           "address": "0c085584",
           "type": "PLATE",
-          "text": "Logs error code r4 (0x12, 0x15, 0x22, 0x26, 0x90, 0x91, 0x62, 0xF0) in the 16-slot ring at record +4 (index +3); for 0x12/0x15 also copies 4 detail bytes to +0x14..+0x17, then saves. The mods keep their flags in +0x17 (0x50 | off bits)."
+          "text": "Logs error code r4 (0x12, 0x15, 0x22, 0x26, 0x90, 0x91, 0x62, 0xF0) in the 16-slot ring at record +4 (index +3); for 0x12/0x15 also copies 4 detail bytes to +0x14..+0x17, then saves. The mods keep their flags in +0x17 ((0x50 + quantize size << 4) | off bits; size 0..2 = 1, 1/2, 1/4 beat)."
         },
         {
           "address": "0c0c6064",

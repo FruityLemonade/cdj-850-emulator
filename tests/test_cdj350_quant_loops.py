@@ -159,29 +159,45 @@ class Grid:
         b = s if s < 16 else 0
         return loop_in + ms_to_frames(self.grid_ms(i, b + q) - self.grid_ms(i, b))
 
-    def auto_points(self, pos, beats=4):
-        i = self.nearest(pos)
-        if i < 0 or not self.ok(i):
+    def point_nearest(self, frame, step):
+        """Nearest point every `step` sixteenths (ties to the earlier one): (beat, step)."""
+        i = self.at_or_before(frame)
+        if i == -2:
             return None
-        fin = ms_to_frames(self.e[i][2])
-        fout = max(fin + 1, fin + ms_to_frames(self.ms_after(i, beats) - self.e[i][2]))
+        if i == -1:
+            return 0, 0
+        if i + 1 >= len(self.e):
+            return i, 0
+        s = min(range(0, 17, step), key=lambda s: (abs(self.pt(i, s) - frame), s))
+        return (i + 1, 0) if s == 16 else (i, s)
+
+    def auto_points(self, pos, beats=4, div=1):
+        pn = self.point_nearest(pos, 16 // div)
+        if pn is None or not self.ok(pn[0]):
+            return None
+        i, s = pn
+        t_in = self.grid_ms(i, s)
+        fin = ms_to_frames(t_in)
+        fout = max(fin + 1, fin + ms_to_frames(self.grid_ms(i, s + beats * 16) - t_in))
         return None if fout <= pos else (fin, fout)
 
-    def in_point(self, pos):
-        i = self.nearest(pos)
-        return pos if i < 0 or not self.ok(i) else self.f(i)
+    def in_point(self, pos, div=1):
+        pn = self.point_nearest(pos, 16 // div)
+        return pos if pn is None or not self.ok(pn[0]) else self.pt(*pn)
 
-    def out_point(self, loop_in, pos):
-        i = self.nearest(pos)
-        if i < 0 or not self.ok(i):
+    def out_point(self, loop_in, pos, div=1):
+        step = 16 // div
+        pn = self.point_nearest(pos, step)
+        if pn is None or not self.ok(pn[0]):
             return pos
+        i, s = pn
         k = self.at_or_before(loop_in)
         if k == -2:
             return pos
         k = max(k, 0)
-        s = 0 if i < k else (i - k) * 16
+        s = 0 if i < k else s + (i - k) * 16
         if self.pt(k, s) <= loop_in:
-            s = next((s for s in range(0, 64, 16) if self.pt(k, s) > loop_in), None)
+            s = next((s for s in range(0, 64, step) if self.pt(k, s) > loop_in), None)
             if s is None:
                 return pos
         sin = self.step_of(k, loop_in)
@@ -375,6 +391,38 @@ def test_loop_length_is_the_rounded_grid_length():
             # LOOP OUT at the beat 4 after an in on beat i: the same length
             assert _call(p, m, "quant_loops_out_point", fin, g.f(i + 4)) == want, (name, i)
         assert rounded_apart, name
+
+
+QSIZE_BYTE = {1: 0x00, 2: 0x60, 4: 0x70}   # settings +0x17: the quantize size (c350_ui.h)
+
+
+@needs_toolchain
+@pytest.mark.parametrize("div", [2, 4])
+def test_quantize_size_on_the_interpreter(div):
+    """UTILITY Q SIZE 1/2 or 1/4 beat: LOOP IN, LOOP OUT and the auto loop's in snap to the
+    nearest point every 1/div beat; the auto loop stays 4 beats of grid time from there."""
+    p = _payload()
+    m = _mem(p)
+    m.write(USB_MODE, b"\x01")
+    m.write(0x0C9BE004 + 0x17, bytes([QSIZE_BYTE[div]]))
+    off_beat = 0
+    for name in ("128 @0.35", "127.96 @0.35", "120->133.33"):
+        entries = GRIDS[name]
+        _put_grid(m, entries)
+        g = Grid(entries)
+        for pos in range(20, 1300, 7):
+            assert _call(p, m, "quant_loops_in_point", pos) == g.in_point(pos, div), (name, pos)
+            off_beat += g.in_point(pos, div) != g.in_point(pos)
+            ok = _call(p, m, "quant_loops_auto_points", pos, 4, 0x0F002000, 0x0F002004)
+            want = g.auto_points(pos, 4, div)
+            assert ok == (want is not None), (name, pos)
+            if want:
+                assert (m.u32(0x0F002000), m.u32(0x0F002004)) == want, (name, pos)
+            loop_in = g.in_point(pos, div)
+            for d in (3, 9, 20, 40):
+                assert _call(p, m, "quant_loops_out_point", loop_in, loop_in + d) == \
+                    g.out_point(loop_in, loop_in + d, div), (name, pos, d)
+    assert off_beat                      # some points really are between the beats
 
 
 def _stub(m, addr, insns):

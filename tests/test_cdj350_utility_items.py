@@ -95,13 +95,13 @@ def test_quant_loops_redirects_the_utility_words_and_validates():
 
 
 @needs_toolchain
-def test_item_table_has_both_quant_loops_items():
+def test_item_table_has_the_quant_loops_items():
     p = payloadbuild.build(["quant_loops"], "cdj350")
     a, b = (payloadbuild.lookup(p.symbols, n) for n in ("c350_ui_items_start", "c350_ui_items_end"))
     words = [struct.unpack_from(">I", p.blob, x - payloadbuild.BASE)[0] for x in range(a, b + 4, 4)]
     names = {v: k.lstrip("_") for k, v in p.symbols.items()}
     assert words[0] == 0 and words[-1] == 0
-    assert sorted(names[w] for w in words[1:-1]) == ["ql_drift_item", "ql_quant_item"]
+    assert sorted(names[w] for w in words[1:-1]) == ["ql_drift_item", "ql_quant_item", "ql_size_item"]
 
 
 # ---- interpreter ----
@@ -183,10 +183,12 @@ def test_utility_list_continues_after_ver():
     assert mem.read(TEXT_MODE, 1) == b"\x03" and _calls(mem, 5) == 1
     assert mem.u32(LOG + 0x40 * 5) == 3 and mem.u32(LOG + 0x40 * 5 + 4) == 2
     _call(p, mem, "c350_ui_utility_scroll", 1, 1)
-    assert mem.read(CURSOR, 1) == b"\x06" and _draw(p, mem) == ("UTILITY", "DRIFT FIX  ON")
+    assert mem.read(CURSOR, 1) == b"\x06" and _draw(p, mem) == ("UTILITY", "Q SIZE      1")
+    _call(p, mem, "c350_ui_utility_scroll", 1, 1)
+    assert mem.read(CURSOR, 1) == b"\x07" and _draw(p, mem) == ("UTILITY", "DRIFT FIX  ON")
     _call(p, mem, "c350_ui_utility_scroll", 1, 4)         # the last item: clamps
-    assert mem.read(CURSOR, 1) == b"\x06"
-    _call(p, mem, "c350_ui_utility_scroll", 0, 3)         # back into the stock items
+    assert mem.read(CURSOR, 1) == b"\x07"
+    _call(p, mem, "c350_ui_utility_scroll", 0, 4)         # back into the stock items
     assert mem.read(CURSOR, 1) == b"\x03" and _calls(mem, 1) == 1
     _draw(p, mem)
     assert _calls(mem, 4) == 1                            # stock draws LIBRARY CREATOR
@@ -207,15 +209,25 @@ def test_push_switches_and_saves_the_flags():
     assert mem.u32(LOG) == 2 and mem.u32(LOG + 4) == SETTINGS
     mem.write(CURSOR, b"\x05")
     assert _draw(p, mem) == ("UTILITY", "QUANTIZE  OFF")
-    _call(p, mem, "c350_ui_utility_select", 3, 6)         # DRIFT FIX -> OFF, quantize kept
+    _call(p, mem, "c350_ui_utility_select", 3, 6)         # Q SIZE hidden: DRIFT FIX -> OFF
     assert mem.read(SETTINGS + 0x17, 1) == b"\x53" and _calls(mem, 0) == 2
     mem.write(CURSOR, b"\x06")
     assert _draw(p, mem) == ("UTILITY", "DRIFT FIX OFF")
     _call(p, mem, "c350_ui_utility_select", 3, 5)         # QUANTIZE -> ON, drift kept off
     assert mem.read(SETTINGS + 0x17, 1) == b"\x52"
-    _call(p, mem, "c350_ui_utility_select", 3, 6)
-    assert mem.read(SETTINGS + 0x17, 1) == b"\x00"        # both on: the defaults' zero again
+    _call(p, mem, "c350_ui_utility_select", 3, 7)         # Q SIZE shown again: DRIFT FIX is 7
+    assert mem.read(SETTINGS + 0x17, 1) == b"\x00"        # all on: the defaults' zero again
     assert mem.read(SETTINGS, 4) == b"\xC3\x02\x10\x00"
+
+    mem.write(CURSOR, b"\x06")                            # Q SIZE: 1 -> 1/2 -> 1/4 -> 1
+    for byte, row in ((0x60, "Q SIZE    1/2"), (0x70, "Q SIZE    1/4"), (0x00, "Q SIZE      1")):
+        _call(p, mem, "c350_ui_utility_select", 3, 6)
+        assert mem.read(SETTINGS + 0x17, 1) == bytes([byte]) and _draw(p, mem) == ("UTILITY", row)
+    _call(p, mem, "c350_ui_utility_select", 3, 6)         # 1/2, then DRIFT FIX OFF keeps it
+    _call(p, mem, "c350_ui_utility_select", 3, 7)
+    assert mem.read(SETTINGS + 0x17, 1) == b"\x62"
+    _call(p, mem, "c350_ui_utility_select", 3, 5)         # QUANTIZE OFF keeps it too
+    assert mem.read(SETTINGS + 0x17, 1) == b"\x63"
 
     _call(p, mem, "c350_ui_utility_select", 3, 1)         # a stock item: utility_set_level(3, 1)
     assert _calls(mem, 2) == 1 and mem.u32(LOG + 0x80) == 3 and mem.u32(LOG + 0x84) == 1
@@ -228,8 +240,11 @@ def test_the_flags_gate_snapping_and_drift():
     p = payloadbuild.build(["quant_loops"], "cdj350")
     mem = _mem(p)
     for byte, quant, drift in ((0x00, 1, 1), (0x51, 0, 1), (0x52, 1, 0), (0x53, 0, 0),
-                               (0x03, 1, 1), (0x13, 1, 1), (0xF3, 1, 1), (0x5C, 1, 1)):
+                               (0x03, 1, 1), (0x13, 1, 1), (0xF3, 1, 1), (0x5C, 1, 1),
+                               (0x61, 0, 1), (0x72, 1, 0), (0x83, 1, 1), (0x43, 1, 1)):
         mem.write(SETTINGS + 0x17, bytes([byte]))
+        div = {0x5: 1, 0x6: 2, 0x7: 4}.get(byte >> 4, 1)
+        assert _call(p, mem, "c350_ui_quant_div") == div, hex(byte)
         assert _call(p, mem, "c350_ui_quantize") == quant, hex(byte)
         assert _call(p, mem, "c350_ui_drift") == drift, hex(byte)
 

@@ -231,6 +231,9 @@ before the refresh ran; loop 308..448 as without the delay. 1/2 beat at frame 11
 
 `cdj350/` ports the snapping and the drift correction (see `docs/cdj350.md`,
 "Quantized loops"), with the CDJ-850's grid-true lengths (out = in + the grid length rounded
-once). Block loops, QUANTIZE SIZE and the loop resizes are CDJ-850 only. The CDJ-350 has no BEAT SELECT, so the switches are in UTILITY: hold
-DISPLAY/UTILITY, turn past `Ver` to `QUANTIZE   ON` and `DRIFT FIX  ON`, and push to switch.
-Both are saved with the deck's settings and are on on a fresh deck.
+once) and QUANTIZE SIZE (UTILITY `Q SIZE`: `1` / `1/2` / `1/4` beat for LOOP IN, LOOP OUT and the
+auto loop's in; hidden while QUANTIZE is OFF). Block loops are not ported yet (they need the
+CDJ-350's feeder loop-out test located in the image); the resizes and BEAT SELECT have no
+CDJ-350 counterpart (LOOP DIVIDE does not move the loop points). The CDJ-350 has no BEAT SELECT, so the switches are in UTILITY: hold
+DISPLAY/UTILITY, turn past `Ver` to `QUANTIZE   ON`, `Q SIZE      1` and `DRIFT FIX  ON`, and
+push to switch. All are saved with the deck's settings; a fresh deck has both switches on and 1 beat.
