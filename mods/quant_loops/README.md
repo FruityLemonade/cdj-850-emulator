@@ -230,6 +230,7 @@ before the refresh ran; loop 308..448 as without the delay. 1/2 beat at frame 11
 ## CDJ-350 (MAIN 1.14)
 
 `cdj350/` ports the snapping and the drift correction (see `docs/cdj350.md`,
-"Quantized loops"). The CDJ-350 has no BEAT SELECT, so the switches are in UTILITY: hold
+"Quantized loops"), with the CDJ-850's grid-true lengths (out = in + the grid length rounded
+once). Block loops, QUANTIZE SIZE and the loop resizes are CDJ-850 only. The CDJ-350 has no BEAT SELECT, so the switches are in UTILITY: hold
 DISPLAY/UTILITY, turn past `Ver` to `QUANTIZE   ON` and `DRIFT FIX  ON`, and push to switch.
 Both are saved with the deck's settings and are on on a fresh deck.

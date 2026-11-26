@@ -142,12 +142,29 @@ class Grid:
         bpm100 = self.e[i][1] or 13000
         return self.e[i][2] + (k * 6000000 + bpm100 // 2) // bpm100
 
+    def grid_ms(self, i, p):
+        """Grid time of p sixteenths of a beat after beat i (quant_loops_grid_ms)."""
+        t0 = self.ms_after(i, p >> 4)
+        r = p & 15
+        return t0 if r == 0 else t0 + (r * (self.ms_after(i, (p >> 4) + 1) - t0) + 8) // 16
+
+    def pt(self, i, s):
+        return ms_to_frames(self.grid_ms(i, s))
+
+    def step_of(self, i, loop_in):
+        return next((s for s in range(16) if self.pt(i, s) == loop_in), 16)
+
+    def out_from(self, i, s, loop_in, q):
+        """in + the grid duration from step s to s + q, rounded once."""
+        b = s if s < 16 else 0
+        return loop_in + ms_to_frames(self.grid_ms(i, b + q) - self.grid_ms(i, b))
+
     def auto_points(self, pos, beats=4):
         i = self.nearest(pos)
         if i < 0 or not self.ok(i):
             return None
         fin = ms_to_frames(self.e[i][2])
-        fout = max(fin + 1, ms_to_frames(self.ms_after(i, beats)))
+        fout = max(fin + 1, fin + ms_to_frames(self.ms_after(i, beats) - self.e[i][2]))
         return None if fout <= pos else (fin, fout)
 
     def in_point(self, pos):
@@ -158,14 +175,19 @@ class Grid:
         i = self.nearest(pos)
         if i < 0 or not self.ok(i):
             return pos
-        if self.f(i) <= loop_in:
-            i = self.at_or_before(loop_in)
-            if i == -2:
+        k = self.at_or_before(loop_in)
+        if k == -2:
+            return pos
+        k = max(k, 0)
+        s = 0 if i < k else (i - k) * 16
+        if self.pt(k, s) <= loop_in:
+            s = next((s for s in range(0, 64, 16) if self.pt(k, s) > loop_in), None)
+            if s is None:
                 return pos
-            i = 0 if i == -1 else i + 1
-            if i >= len(self.e) or self.f(i) <= loop_in:
-                return pos
-        return self.f(i)
+        sin = self.step_of(k, loop_in)
+        if sin < 16 and s > sin:
+            return self.out_from(k, sin, loop_in, s - sin)
+        return self.pt(k, s)
 
 
 def _grid(n, bpm100, start_ms=0):
@@ -330,6 +352,29 @@ def test_auto_points_on_the_interpreter():
     # no grid / CD mode -> 0
     m.write(USB_MODE, b"\x00")
     assert _call(p, m, "quant_loops_auto_points", 100, 4, 0x0F002000, 0x0F002004) == 0
+
+
+@needs_toolchain
+def test_loop_length_is_the_rounded_grid_length():
+    """out = in + round(grid length): the first pass is within half a frame of the grid, where
+    rounding the in and the out apart was up to a frame off (128 BPM: 14 of 36 beats)."""
+    p = _payload()
+    m = _mem(p)
+    m.write(USB_MODE, b"\x01")
+    for name in ("128 @0.35", "127.96 @0.35"):
+        entries = GRIDS[name]
+        _put_grid(m, entries)
+        g = Grid(entries)
+        rounded_apart = 0
+        for i in range(len(entries) - 4):
+            fin = g.f(i)
+            want = fin + ms_to_frames(g.ms_after(i, 4) - entries[i][2])
+            rounded_apart += ms_to_frames(g.ms_after(i, 4)) != want
+            assert _call(p, m, "quant_loops_auto_points", fin, 4, 0x0F002000, 0x0F002004) == 1
+            assert (m.u32(0x0F002000), m.u32(0x0F002004)) == (fin, want), (name, i)
+            # LOOP OUT at the beat 4 after an in on beat i: the same length
+            assert _call(p, m, "quant_loops_out_point", fin, g.f(i + 4)) == want, (name, i)
+        assert rounded_apart, name
 
 
 def _stub(m, addr, insns):

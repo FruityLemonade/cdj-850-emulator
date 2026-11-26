@@ -161,6 +161,43 @@ u32 quant_loops_beat_ms_after(int i, u32 k)
     return C350_GRID_TIME_MS(i) + ql_beats_ms(k, C350_GRID_BPM100(i));
 }
 
+/* Grid time (ms) of position p sixteenths of a beat after beat i. */
+u32 quant_loops_grid_ms(int i, u32 p)
+{
+    u32 t0 = quant_loops_beat_ms_after(i, p >> 4), r = p & 15u;
+
+    if (r == 0)
+        return t0;
+    return t0 + (r * (quant_loops_beat_ms_after(i, (p >> 4) + 1u) - t0) + 8u) / 16u;
+}
+
+static __attribute__((noinline)) u32 ql_pt_frame(int i, u32 s)
+{
+    return quant_loops_ms_to_frames(quant_loops_grid_ms(i, s));
+}
+
+/* The step of frame `in` on beat i (a 1/16 step whose frame is `in`), else 16. */
+static __attribute__((noinline)) u32 ql_step_of(int i, u32 in)
+{
+    u32 s;
+
+    for (s = 0; s < 16u; s++)
+        if (ql_pt_frame(i, s) == in)
+            return s;
+    return 16u;
+}
+
+/* Out frame of a loop from `in` (step s of beat i; 16 = off the 1/16 steps)
+ * to step s + q: in + the grid duration, rounded once. Rounding the length
+ * rather than the out keeps the first pass within half a frame of the grid
+ * length (in and out rounded apart could be a whole frame off it). */
+static __attribute__((noinline)) u32 ql_out_from(int i, u32 s, u32 in, u32 q)
+{
+    u32 b = s < 16u ? s : 0u;
+
+    return in + quant_loops_ms_to_frames(quant_loops_grid_ms(i, b + q) - quant_loops_grid_ms(i, b));
+}
+
 int quant_loops_grid_ok(int i)
 {
     u32 base = C350_BPM_BASE_TENTHS;
@@ -193,7 +230,7 @@ int quant_loops_auto_points(u32 pos, u32 beats, u32 *in, u32 *out)
     t_in = C350_GRID_TIME_MS(i);
     t_out = quant_loops_beat_ms_after(i, beats);
     fin = quant_loops_ms_to_frames(t_in);
-    fout = quant_loops_ms_to_frames(t_out);
+    fout = fin + quant_loops_ms_to_frames(t_out - t_in);   /* the grid length, rounded once */
     if (fout <= fin)
         fout = fin + 1;
     if (fout <= pos)
@@ -213,20 +250,29 @@ u32 quant_loops_in_point(u32 pos)
 
 u32 quant_loops_out_point(u32 in, u32 pos)
 {
-    u32 n = quant_loops_window_n();
-    int i = quant_loops_beat_nearest(pos);
+    u32 n = quant_loops_window_n(), s, sin;
+    int i = quant_loops_beat_nearest(pos), k;
 
     if (i < 0 || !quant_loops_grid_ok(i))
         return pos;
-    if (quant_loops_beat_frame(i) <= in) {
-        i = quant_loops_beat_at_or_before(in);
-        if (i == QL_AWAY)
-            return pos;
-        i = i == QL_NONE ? 0 : i + 1;
-        if ((u32)i >= n || quant_loops_beat_frame(i) <= in)
+    k = quant_loops_beat_at_or_before(in);
+    if (k == QL_AWAY)
+        return pos;
+    if (k == QL_NONE)
+        k = 0;
+    if ((u32)k >= n)
+        return pos;
+    s = i < k ? 0u : (u32)(i - k) * 16u;    /* the beat nearest pos, from beat k */
+    if (ql_pt_frame(k, s) <= in) {          /* not after in: the next beat after in */
+        for (s = 0; s < 64u && ql_pt_frame(k, s) <= in; s += 16u)
+            ;
+        if (s >= 64u)
             return pos;
     }
-    return quant_loops_beat_frame(i);
+    sin = ql_step_of(k, in);
+    if (sin < 16u && s > sin)
+        return ql_out_from(k, sin, in, s - sin);
+    return ql_pt_frame(k, s);
 }
 
 int quant_loops_sector_of(int s, u32 pos, u32 frame)
@@ -430,21 +476,9 @@ u32 quant_loops_effective_out(u32 in)
     return qd_fresh && qd_dc > in ? qd_dc : qd_b0;
 }
 
-u32 quant_loops_grid_ms(int i, u32 p)
-{
-    u32 t0 = quant_loops_beat_ms_after(i, p >> 4), r = p & 15u;
-
-    if (r == 0)
-        return t0;
-    return t0 + (r * (quant_loops_beat_ms_after(i, (p >> 4) + 1u) - t0) + 8u) / 16u;
-}
-
-static u32 qd_grid_out(int i, u32 s, u32 in, u32 q)
-{
-    if (s < 16u)
-        return quant_loops_ms_to_frames(quant_loops_grid_ms(i, s + q));
-    return in + quant_loops_ms_to_frames(quant_loops_grid_ms(i, q) - C350_GRID_TIME_MS(i));
-}
+/* Out frame of a loop q/16 beats long from in, which is step s (0..15) of
+ * beat i, or off the grid (s = 16): in + the rounded grid duration. */
+#define qd_grid_out ql_out_from
 
 static u32 qd_tz(u32 q)
 {
@@ -465,9 +499,7 @@ u32 quant_loops_drift_length(u32 in, u32 out, u32 *num, u32 *den)
 
     if (i < 0 || out <= in || out - in < QL_DRIFT_MIN || !quant_loops_grid_ok(i))
         return 0;
-    for (s = 0; s < 16u; s++)
-        if (quant_loops_ms_to_frames(quant_loops_grid_ms(i, s)) == in)
-            break;
+    s = ql_step_of(i, in);
     lo = 1;
     hi = QL_MAX_Q;
     while (lo < hi) {
