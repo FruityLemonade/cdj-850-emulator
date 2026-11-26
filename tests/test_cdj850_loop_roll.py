@@ -564,12 +564,14 @@ def test_slip_jog_vinyl_indicator_and_rev_hold_750ms():
     keys(0, 0)
     call("c850_ui_tick")
     assert (mem.u16(0x0CE6CA08) & 0x8000) == 0x8000      # synthetic REV edge
+    assert mem.read(0x0CE6D0FC, 1)[0] == 1               # key-event flag set so 0x0C0D8D78 runs
     mem.write(0x0C7F666C, b"\x00")                       # stock exited reverse, forward aligned
     mem.put32(0x0C7F6470, 0x0C1E8E5C + 180 * 0x930)
     mem.write(0x0C7F645C, struct.pack(">hh", 180, 1200))
     mem.put32(0x0CE49F54, 3320)
     call("c850_ui_tick")
     assert (mem.u16(0x0CE6CA08) & 0x8000) == 0           # cleared
+    assert mem.read(0x0CE6D0FC, 1)[0] == 0               # key-event flag cleared
     assert sym("loop_roll_slip_jumps") == 1
     want = 200 * 7 + (1320 * 21 * 10000) // 400000
     assert sym("loop_roll_slip_last_target") == want
