@@ -81,7 +81,7 @@ Earlier builds corrected loop drift a frame at a time (`quant_loops_drift`, UTIL
 run the correction could not help either (no grid or quantize off: no grid length; the in out of
 the ring: the stock wrap re-reads the ring with a gap anyway; reverse: rare), so the item, its
 tick and its flag are gone on the CDJ-850. The flag bit (`+0x21` bit `0x02`,
-`C850_UI_FLAG_DRIFT_OFF`) is left alone; the CDJ-350 port still uses it.
+`C850_UI_FLAG_DRIFT_OFF`) is left alone. The CDJ-350 port has block loops too and dropped its DRIFT FIX the same way.
 
 **Settings on the stick (prototype).** `quant_loops_usb_settings` reads `/PIONEER/MODSET.DAT`
 when a rekordbox stick mounts; while it is in, every on-deck switch (QUANTIZE and the other mods'
@@ -229,11 +229,15 @@ before the refresh ran; loop 308..448 as without the delay. 1/2 beat at frame 11
 
 ## CDJ-350 (MAIN 1.14)
 
-`cdj350/` ports the snapping and the drift correction (see `docs/cdj350.md`,
-"Quantized loops"), with the CDJ-850's grid-true lengths (out = in + the grid length rounded
-once) and QUANTIZE SIZE (UTILITY `Q SIZE`: `1` / `1/2` / `1/4` beat for LOOP IN, LOOP OUT and the
-auto loop's in; hidden while QUANTIZE is OFF). Block loops are not ported yet (they need the
-CDJ-350's feeder loop-out test located in the image); the resizes and BEAT SELECT have no
-CDJ-350 counterpart (LOOP DIVIDE does not move the loop points). The CDJ-350 has no BEAT SELECT, so the switches are in UTILITY: hold
-DISPLAY/UTILITY, turn past `Ver` to `QUANTIZE   ON`, `Q SIZE      1` and `DRIFT FIX  ON`, and
-push to switch. All are saved with the deck's settings; a fresh deck has both switches on and 1 beat.
+`cdj350/` ports the snapping, QUANTIZE SIZE and the block-precise loops (see `docs/cdj350.md`,
+"Quantized loops" and "Block-precise loops"). The CDJ-350's feeder is the CDJ-850's (84-sample
+blocks, the forward loop-out test through pool `0x0C06EDB0`), so every pass of a grid loop is
+within a block of the grid length there too, with no drift; the frame drift correction and its
+`DRIFT FIX` item are gone. Two CDJ-350 details: its stock loop plays the out frame whole, so the
+out record of a block loop is the frame of the first pass's last block; and after each block wrap
+the hook runs the stock wrap's tail (ring trim, LOOP DIVIDE's beat module), so LOOP DIVIDE works
+inside a block loop. The CDJ-350 has no BEAT SELECT, so the switches are in UTILITY: hold
+DISPLAY/UTILITY, turn past `Ver` to `QUANTIZE   ON` and `Q SIZE      1` (1, 1/2 or 1/4 beat for
+LOOP IN, LOOP OUT and the auto loop's in; hidden while QUANTIZE is OFF), and push to switch. Both
+are saved with the deck's settings; a fresh deck has quantize on and 1 beat. The resize sends and
+BEAT SELECT fraction loops have no CDJ-350 counterpart (LOOP DIVIDE does not move the loop points).

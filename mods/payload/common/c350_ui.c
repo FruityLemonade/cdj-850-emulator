@@ -5,7 +5,7 @@
  *
  * Built once into the payload when any built mod names 'c350_ui' in
  * PAYLOAD_COMMON (mods/payloadbuild.py). Users: quant_loops (QUANTIZE,
- * Q SIZE, DRIFT FIX), browse (SORT).
+ * Q SIZE), browse (SORT).
  */
 #include "c350_ui.h"
 
@@ -83,10 +83,6 @@ int c350_ui_quantize(void)
     return !c350_ui_flag(C350_UI_FLAG_QUANT_OFF);
 }
 
-int c350_ui_drift(void)
-{
-    return !c350_ui_flag(C350_UI_FLAG_DRIFT_OFF);
-}
 
 /* ---- UTILITY items ---- */
 

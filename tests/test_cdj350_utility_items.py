@@ -1,17 +1,18 @@
 # SPDX-License-Identifier: GPL-2.0-or-later
-"""The UTILITY items after Ver (c350_ui.c) on the CDJ-350 MAIN 1.14: QUANTIZE and DRIFT FIX
-ON/OFF (quant_loops), and bpm999's three immediates.
+"""The UTILITY items after Ver (c350_ui.c) on the CDJ-350 MAIN 1.14: QUANTIZE ON/OFF and Q SIZE
+(quant_loops), and bpm999's three immediates.
 
 * static: the three UTILITY pool words have one reader each, outside the boot-critical
   closure; quant_loops redirects them to the gated shared routines; the image passes the
-  validator; the item table holds both quant_loops items;
+  validator; the item table holds the quant_loops items;
 * the compiled payload on the SH-2A interpreter (tests/sh2a.py): the list continues after Ver
-  (item 4) with QUANTIZE (5) and DRIFT FIX (6), scrolling clamps at the last item and stays
-  stock inside the stock items; a push switches the value, writes settings +0x17 (0x50 | off
-  bits, 0 with none) and saves the record; a fresh deck reads ON for both, and so does any
-  +0x17 without the 0x5_ magic; the scanner's erased-flash bits of +1 are never touched; the draw routine writes UTILITY
-  over the item's row and calls the stock text copier, and draws stock items with stock code;
-  the flags gate the snapping and the drift correction;
+  (item 4) with QUANTIZE (5) and Q SIZE (6, hidden while QUANTIZE is OFF), scrolling clamps at
+  the last item and stays stock inside the stock items; a push switches the value, writes
+  settings +0x17 ((0x50 + size << 4) | off bits, 0 with none) and saves the record; a fresh deck
+  reads ON and 1 beat, and so does any +0x17 without a 0x5_ / 0x6_ / 0x7_ high nibble; the
+  scanner's erased-flash bits of +1 are never touched; the draw routine writes UTILITY over the
+  item's row and calls the stock text copier, and draws stock items with stock code; the flags
+  gate the snapping and set its step (the DRIFT FIX bit of earlier builds is ignored);
 * bpm999: the three movi20 immediates become 9990 and nothing else changes.
 """
 import struct
@@ -41,7 +42,7 @@ POOLS = [(0x0C0C902C, 0x0C0D641A, 0x0C0C8EFE, "c350_ui_utility_scroll"),
          (0x0C0666A4, 0x0C063C88, 0x0C0665E8, "c350_ui_utility_draw")]
 QUANT = ["quant_loops", "quant_loops_auto_send", "quant_loops_loop_in", "quant_loops_loop_in2",
          "quant_loops_loop_in3", "quant_loops_loop_out", "quant_loops_loop_out2", "quant_loops_loop_out3",
-         "quant_loops_drift", "quant_loops_utility_scroll", "quant_loops_utility_select",
+         "quant_loops_tick", "quant_loops_blocks", "quant_loops_utility_scroll", "quant_loops_utility_select",
          "quant_loops_utility_draw"]
 
 needs_toolchain = pytest.mark.skipif(not payloadbuild.have_toolchain(), reason="sh-elf toolchain not installed")
@@ -101,7 +102,7 @@ def test_item_table_has_the_quant_loops_items():
     words = [struct.unpack_from(">I", p.blob, x - payloadbuild.BASE)[0] for x in range(a, b + 4, 4)]
     names = {v: k.lstrip("_") for k, v in p.symbols.items()}
     assert words[0] == 0 and words[-1] == 0
-    assert sorted(names[w] for w in words[1:-1]) == ["ql_drift_item", "ql_quant_item", "ql_size_item"]
+    assert sorted(names[w] for w in words[1:-1]) == ["ql_quant_item", "ql_size_item"]
 
 
 # ---- interpreter ----
@@ -184,11 +185,9 @@ def test_utility_list_continues_after_ver():
     assert mem.u32(LOG + 0x40 * 5) == 3 and mem.u32(LOG + 0x40 * 5 + 4) == 2
     _call(p, mem, "c350_ui_utility_scroll", 1, 1)
     assert mem.read(CURSOR, 1) == b"\x06" and _draw(p, mem) == ("UTILITY", "Q SIZE      1")
-    _call(p, mem, "c350_ui_utility_scroll", 1, 1)
-    assert mem.read(CURSOR, 1) == b"\x07" and _draw(p, mem) == ("UTILITY", "DRIFT FIX  ON")
     _call(p, mem, "c350_ui_utility_scroll", 1, 4)         # the last item: clamps
-    assert mem.read(CURSOR, 1) == b"\x07"
-    _call(p, mem, "c350_ui_utility_scroll", 0, 4)         # back into the stock items
+    assert mem.read(CURSOR, 1) == b"\x06"
+    _call(p, mem, "c350_ui_utility_scroll", 0, 3)         # back into the stock items
     assert mem.read(CURSOR, 1) == b"\x03" and _calls(mem, 1) == 1
     _draw(p, mem)
     assert _calls(mem, 4) == 1                            # stock draws LIBRARY CREATOR
@@ -209,13 +208,10 @@ def test_push_switches_and_saves_the_flags():
     assert mem.u32(LOG) == 2 and mem.u32(LOG + 4) == SETTINGS
     mem.write(CURSOR, b"\x05")
     assert _draw(p, mem) == ("UTILITY", "QUANTIZE  OFF")
-    _call(p, mem, "c350_ui_utility_select", 3, 6)         # Q SIZE hidden: DRIFT FIX -> OFF
-    assert mem.read(SETTINGS + 0x17, 1) == b"\x53" and _calls(mem, 0) == 2
-    mem.write(CURSOR, b"\x06")
-    assert _draw(p, mem) == ("UTILITY", "DRIFT FIX OFF")
-    _call(p, mem, "c350_ui_utility_select", 3, 5)         # QUANTIZE -> ON, drift kept off
-    assert mem.read(SETTINGS + 0x17, 1) == b"\x52"
-    _call(p, mem, "c350_ui_utility_select", 3, 7)         # Q SIZE shown again: DRIFT FIX is 7
+    mem.write(CURSOR, b"\x04")                            # Q SIZE hidden: QUANTIZE is the last
+    _call(p, mem, "c350_ui_utility_scroll", 1, 3)
+    assert mem.read(CURSOR, 1) == b"\x05"
+    _call(p, mem, "c350_ui_utility_select", 3, 5)         # QUANTIZE -> ON
     assert mem.read(SETTINGS + 0x17, 1) == b"\x00"        # all on: the defaults' zero again
     assert mem.read(SETTINGS, 4) == b"\xC3\x02\x10\x00"
 
@@ -223,11 +219,11 @@ def test_push_switches_and_saves_the_flags():
     for byte, row in ((0x60, "Q SIZE    1/2"), (0x70, "Q SIZE    1/4"), (0x00, "Q SIZE      1")):
         _call(p, mem, "c350_ui_utility_select", 3, 6)
         assert mem.read(SETTINGS + 0x17, 1) == bytes([byte]) and _draw(p, mem) == ("UTILITY", row)
-    _call(p, mem, "c350_ui_utility_select", 3, 6)         # 1/2, then DRIFT FIX OFF keeps it
-    _call(p, mem, "c350_ui_utility_select", 3, 7)
-    assert mem.read(SETTINGS + 0x17, 1) == b"\x62"
-    _call(p, mem, "c350_ui_utility_select", 3, 5)         # QUANTIZE OFF keeps it too
-    assert mem.read(SETTINGS + 0x17, 1) == b"\x63"
+    _call(p, mem, "c350_ui_utility_select", 3, 6)         # 1/2, then QUANTIZE OFF keeps it
+    _call(p, mem, "c350_ui_utility_select", 3, 5)
+    assert mem.read(SETTINGS + 0x17, 1) == b"\x61"
+    _call(p, mem, "c350_ui_utility_select", 3, 5)         # and ON again
+    assert mem.read(SETTINGS + 0x17, 1) == b"\x60"
 
     _call(p, mem, "c350_ui_utility_select", 3, 1)         # a stock item: utility_set_level(3, 1)
     assert _calls(mem, 2) == 1 and mem.u32(LOG + 0x80) == 3 and mem.u32(LOG + 0x84) == 1
@@ -236,17 +232,15 @@ def test_push_switches_and_saves_the_flags():
 
 
 @needs_toolchain
-def test_the_flags_gate_snapping_and_drift():
+def test_the_flags_gate_snapping_and_set_its_step():
     p = payloadbuild.build(["quant_loops"], "cdj350")
     mem = _mem(p)
-    for byte, quant, drift in ((0x00, 1, 1), (0x51, 0, 1), (0x52, 1, 0), (0x53, 0, 0),
-                               (0x03, 1, 1), (0x13, 1, 1), (0xF3, 1, 1), (0x5C, 1, 1),
-                               (0x61, 0, 1), (0x72, 1, 0), (0x83, 1, 1), (0x43, 1, 1)):
+    for byte, quant in ((0x00, 1), (0x51, 0), (0x52, 1), (0x53, 0), (0x03, 1), (0x13, 1), (0xF3, 1),
+                        (0x5C, 1), (0x61, 0), (0x72, 1), (0x83, 1), (0x43, 1)):
         mem.write(SETTINGS + 0x17, bytes([byte]))
         div = {0x5: 1, 0x6: 2, 0x7: 4}.get(byte >> 4, 1)
         assert _call(p, mem, "c350_ui_quant_div") == div, hex(byte)
         assert _call(p, mem, "c350_ui_quantize") == quant, hex(byte)
-        assert _call(p, mem, "c350_ui_drift") == drift, hex(byte)
 
 
 # ---- bpm999 ----

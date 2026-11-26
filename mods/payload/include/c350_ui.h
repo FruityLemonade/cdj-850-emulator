@@ -42,7 +42,7 @@
 #define C350_UI_FLAGS_BYTE       C350_U8(C350_UI_SETTINGS + 0x17)
 #define C350_UI_FLAGS_MAGIC      0x50u           /* high nibble of a valid flags byte, size 1 beat (0x60: 1/2, 0x70: 1/4) */
 #define C350_UI_FLAG_QUANT_OFF   0x01u           /* quantize off (default on) */
-#define C350_UI_FLAG_DRIFT_OFF   0x02u           /* loop drift correction off (default on) */
+#define C350_UI_FLAG_DRIFT_OFF   0x02u           /* reserved: DRIFT FIX of builds before block loops (ignored) */
 #define C350_UI_FLAG_SORT_MASK   0x0Cu           /* browse: TRACK sort 0 default, 1 BPM, 2 key */
 #define C350_UI_FLAG_SORT_SHIFT  2u
 #define C350_UI_FLAGS_MASK       0x0Fu
@@ -52,7 +52,6 @@ void c350_ui_set_flag(u32 flag, int on);        /* changes the bit and saves the
 u32 c350_ui_field(u32 mask, u32 shift);         /* a multi-bit field of the flags */
 void c350_ui_set_field(u32 mask, u32 shift, u32 value);  /* ... and saves the record */
 int c350_ui_quantize(void);                     /* 1 = grid snapping on */
-int c350_ui_drift(void);                        /* 1 = loop drift correction on */
 u32 c350_ui_quant_div(void);                    /* quantize size: 1, 2 or 4 points per beat */
 void c350_ui_set_quant_div(u32 div);            /* ... and saves the record */
 

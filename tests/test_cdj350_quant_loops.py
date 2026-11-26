@@ -1,13 +1,15 @@
 # SPDX-License-Identifier: GPL-2.0-or-later
 """quant_loops on the CDJ-350 MAIN 1.14: loops snap to the rekordbox beat grid.
 
-* static: the eight pool-word redirects (stock words, the instructions that
-  read them, all outside the boot-critical closure), composition with flac,
-  no FPU code and small stack frames;
+* static: the pool-word redirects (stock words, the instructions that read
+  them, all outside the boot-critical closure; the feeder's loop-out word
+  included), composition with flac, no FPU code and small stack frames;
 * the compiled payload on the SH-2A interpreter (tests/sh2a.py) against a
   Python reference: frame rounding, beat search, auto loop points (4 beats,
-  variable tempo, window edge), LOOP IN/OUT points, and all entry points end
-  to end including state-6 cued auto loop and per-pass drift correction;
+  variable tempo, window edge, Q SIZE), LOOP IN/OUT points as block loops
+  (in record = the frame of the in block, out record = the frame of the
+  first pass's last block), and the entry points end to end including the
+  state-6 cued auto loop. The block wraps themselves: test_cdj350_block_loops.py;
 * live (QEMU cdj350 machine + baken stick): auto 4-beat loop (`beat_loop`)
   and manual LOOP IN/OUT (`loop_in` / `loop_out`) pressed off-beat on a
   128.00 BPM track, verified against the grid entries in RAM.
@@ -37,7 +39,7 @@ MODS = [
     "quant_loops", "quant_loops_auto_send",
     "quant_loops_loop_in", "quant_loops_loop_in2", "quant_loops_loop_in3",
     "quant_loops_loop_out", "quant_loops_loop_out2", "quant_loops_loop_out3",
-    "quant_loops_drift",
+    "quant_loops_tick", "quant_loops_blocks",
 ]
 NEXT_SECTOR = 0x0C006A92
 AUDIO_SEND_CMD = 0x0C0C7850
@@ -60,7 +62,8 @@ POOLS = [
         0x0C0D1930, 0x0C0D193A, 0x0C0D1964, 0x0C0D196E,
     ], "quant_loops_loop_out"),
     (0x0C0D1BB8, AUDIO_SEND_CMD, [0x0C0D1A3C, 0x0C0D1A46], "quant_loops_loop_out"),
-    (0x0C0C7F7C, STATE4_KEYS, [0x0C0C7D92], "quant_loops_drift_entry"),
+    (0x0C0C7F7C, STATE4_KEYS, [0x0C0C7D92], "quant_loops_tick_entry"),
+    (0x0C06EDB0, 0x0C0161C8, [0x0C06EBF6], "quant_loops_out_isr"),
 ]
 
 GRID_CTX = 0x0C9B8F34
@@ -90,6 +93,11 @@ needs_main = pytest.mark.skipif(not MAIN.is_file(), reason="extract/cdj350/c350_
 
 def ms_to_frames(ms):
     return (ms * 75 + 500) // 1000
+
+
+def blk(ms):
+    """Grid ms -> the nearest feeder block (84 samples, 525 a second)."""
+    return (ms * 21 + 20) // 40
 
 
 class Grid:
@@ -151,14 +159,6 @@ class Grid:
     def pt(self, i, s):
         return ms_to_frames(self.grid_ms(i, s))
 
-    def step_of(self, i, loop_in):
-        return next((s for s in range(16) if self.pt(i, s) == loop_in), 16)
-
-    def out_from(self, i, s, loop_in, q):
-        """in + the grid duration from step s to s + q, rounded once."""
-        b = s if s < 16 else 0
-        return loop_in + ms_to_frames(self.grid_ms(i, b + q) - self.grid_ms(i, b))
-
     def point_nearest(self, frame, step):
         """Nearest point every `step` sixteenths (ties to the earlier one): (beat, step)."""
         i = self.at_or_before(frame)
@@ -171,39 +171,106 @@ class Grid:
         s = min(range(0, 17, step), key=lambda s: (abs(self.pt(i, s) - frame), s))
         return (i + 1, 0) if s == 16 else (i, s)
 
-    def auto_points(self, pos, beats=4, div=1):
+    # ---- block loops (quant_loops.c) ----
+
+    def pt_in(self, i, s):
+        """A grid point as a loop in frame: the frame that holds its block."""
+        return blk(self.grid_ms(i, s)) // 7
+
+    def step_of(self, i, loop_in):
+        """The 1/16 step (0..16) whose in frame is loop_in, else whose rounded frame is; else 17."""
+        for f in (self.pt_in, self.pt):
+            s = next((s for s in range(17) if f(i, s) == loop_in), None)
+            if s is not None:
+                return s
+        return 17
+
+    def block_len(self, i, p0, q):
+        """(num, den): q/16 beats from step p0 of beat i in 1/40 blocks."""
+        n = len(self.e)
+        bpm, last, j = self.e[i][1], i + (p0 + q + 15) // 16, i + 1
+        while j <= last and j < n and self.e[j][1] == bpm:
+            j += 1
+        if bpm and q <= 512 and (j > last or j >= n):
+            return q * 7875000, bpm
+        return (self.grid_ms(i, p0 + q) - self.grid_ms(i, p0)) * 21, 1
+
+    def point_loop(self, i, s, q):
+        """(in_blk, a0, num, den) of the loop q/16 beats long from grid point (i, s)."""
+        ms = self.grid_ms(i, s)
+        return (blk(ms), (ms * 21 + 20) % 40) + self.block_len(i, s, q)
+
+    @staticmethod
+    def len0(b):
+        in_blk, a0, num, den = b
+        return (num + a0 * den) // (40 * den)
+
+    def out_frame(self, b):
+        """The CDJ-350's stock out record of block loop b: the frame of its first pass's last block."""
+        return (b[0] + max(self.len0(b), 1) - 1) // 7
+
+    def in_spec(self, loop_in):
+        """(on, beat, p0, in_blk, a0) of the loop whose in record is loop_in; on 2 = grid point,
+        1 = off the grid (the frame's first block); None when the grid cannot say."""
+        i = self.at_or_before(loop_in)
+        if i == -2:
+            return None
+        i = max(i, 0)
+        if not self.ok(i):
+            return None
+        s = self.step_of(i, loop_in)
+        if s <= 16:
+            ms = self.grid_ms(i, s)
+            return 2, i, s, blk(ms), (ms * 21 + 20) % 40
+        return 1, i, 0, loop_in * 7, 20
+
+    def auto_loop(self, pos, beats=4, div=1):
+        """The block loop of the auto loop at pos: (in_blk, a0, num, den), or None."""
         pn = self.point_nearest(pos, 16 // div)
         if pn is None or not self.ok(pn[0]):
             return None
-        i, s = pn
-        t_in = self.grid_ms(i, s)
-        fin = ms_to_frames(t_in)
-        fout = max(fin + 1, fin + ms_to_frames(self.grid_ms(i, s + beats * 16) - t_in))
+        return self.point_loop(pn[0], pn[1], beats * 16)
+
+    def auto_points(self, pos, beats=4, div=1):
+        """in = the frame of the in block, out = the stock out record; None when the playhead
+        would be past the out."""
+        b = self.auto_loop(pos, beats, div)
+        if b is None:
+            return None
+        fin = b[0] // 7
+        fout = max(self.out_frame(b), fin)
         return None if fout <= pos else (fin, fout)
 
     def in_point(self, pos, div=1):
+        """LOOP IN: the nearest point as a loop in frame."""
         pn = self.point_nearest(pos, 16 // div)
-        return pos if pn is None or not self.ok(pn[0]) else self.pt(*pn)
+        return pos if pn is None or not self.ok(pn[0]) else self.pt_in(*pn)
 
-    def out_point(self, loop_in, pos, div=1):
+    def out_loop(self, loop_in, pos, div=1):
+        """LOOP OUT's block loop: (in_blk, a0, num, den), or None when the grid cannot say."""
         step = 16 // div
         pn = self.point_nearest(pos, step)
         if pn is None or not self.ok(pn[0]):
-            return pos
+            return None
         i, s = pn
-        k = self.at_or_before(loop_in)
-        if k == -2:
-            return pos
-        k = max(k, 0)
+        sp = self.in_spec(loop_in)
+        if sp is None:
+            return None
+        on, k, p0, in_blk, a0 = sp
         s = 0 if i < k else s + (i - k) * 16
-        if self.pt(k, s) <= loop_in:
-            s = next((s for s in range(0, 64, step) if self.pt(k, s) > loop_in), None)
-            if s is None:
-                return pos
-        sin = self.step_of(k, loop_in)
-        if sin < 16 and s > sin:
-            return self.out_from(k, sin, loop_in, s - sin)
-        return self.pt(k, s)
+        while blk(self.grid_ms(k, s)) <= in_blk:
+            s += step
+            if s >= p0 + 64:
+                return None
+        if on == 2:
+            num, den = self.block_len(k, p0, s - p0)
+        else:
+            num, den = (blk(self.grid_ms(k, s)) - in_blk) * 40, 1
+        return in_blk, a0, num, den
+
+    def out_point(self, loop_in, pos, div=1):
+        b = self.out_loop(loop_in, pos, div)
+        return pos if b is None else self.out_frame(b)
 
 
 def _grid(n, bpm100, start_ms=0):
@@ -371,26 +438,34 @@ def test_auto_points_on_the_interpreter():
 
 
 @needs_toolchain
-def test_loop_length_is_the_rounded_grid_length():
-    """out = in + round(grid length): the first pass is within half a frame of the grid, where
-    rounding the in and the out apart was up to a frame off (128 BPM: 14 of 36 beats)."""
+def test_out_record_holds_the_last_block_of_the_pass():
+    """The stock records of a block loop: in = the frame that holds the in block, out = the
+    frame that holds the first pass's last block. The CDJ-350's stock test plays the out frame
+    whole and wraps after it (seen live), so the stock wrap is never due before the block wrap,
+    and the play reaches the out frame every pass (the "out frame reached" branch of the feeder
+    starts LOOP DIVIDE's beat module there)."""
     p = _payload()
     m = _mem(p)
     m.write(USB_MODE, b"\x01")
-    for name in ("128 @0.35", "127.96 @0.35"):
+    for name in ("128 @0.35", "127.96 @0.35", "120->133.33"):
         entries = GRIDS[name]
         _put_grid(m, entries)
         g = Grid(entries)
-        rounded_apart = 0
         for i in range(len(entries) - 4):
-            fin = g.f(i)
-            want = fin + ms_to_frames(g.ms_after(i, 4) - entries[i][2])
-            rounded_apart += ms_to_frames(g.ms_after(i, 4)) != want
+            b = g.point_loop(i, 0, 64)
+            in_blk, out_blk = b[0], b[0] + g.len0(b)
+            fin, fout = in_blk // 7, (out_blk - 1) // 7
+            if not g.ok(i):          # past the tempo change the grid no longer gives the tempo
+                assert _call(p, m, "quant_loops_auto_points", fin, 4, 0x0F002000, 0x0F002004) == 0
+                continue
             assert _call(p, m, "quant_loops_auto_points", fin, 4, 0x0F002000, 0x0F002004) == 1
-            assert (m.u32(0x0F002000), m.u32(0x0F002004)) == (fin, want), (name, i)
-            # LOOP OUT at the beat 4 after an in on beat i: the same length
+            assert (m.u32(0x0F002000), m.u32(0x0F002004)) == (fin, fout), (name, i)
+            assert 7 * fout < out_blk <= 7 * (fout + 1)     # the stock wrap: at 7 * (out + 1)
+            # LOOP OUT at the beat 4 after an in on beat i: the same loop (where that beat's
+            # tempo is still the deck's; else stock)
+            want = fout if g.ok(i + 4) else g.f(i + 4)
+            assert g.out_point(fin, g.f(i + 4)) == want, (name, i)
             assert _call(p, m, "quant_loops_out_point", fin, g.f(i + 4)) == want, (name, i)
-        assert rounded_apart, name
 
 
 QSIZE_BYTE = {1: 0x00, 2: 0x60, 4: 0x70}   # settings +0x17: the quantize size (c350_ui.h)
@@ -505,8 +580,9 @@ def test_auto_loop_entry_points_end_to_end():
     m.put32(CUE_FRAME, 231)
     m.write(CUE_TRACK, struct.pack(">H", 1))
     _call(p, m, "quant_loops_auto_send", 0x1E, 0, 231 + 138, 0, stack=(0, 0, 0, 2))
-    want = g.auto_points(231, 4)
-    assert _log(m, log)[2] == 231 + (want[1] - want[0])
+    b = g.auto_loop(231, 4)
+    sp = g.in_spec(231)
+    assert _log(m, log)[2] == g.out_frame(sp[3:5] + b[2:])   # the cue's in, the grid's length
     # no grid tempo -> stock
     m, log = _entry_mem(p, entries)
     m.write(BASE_TENTHS, struct.pack(">H", 1300))
@@ -518,38 +594,31 @@ def test_auto_loop_entry_points_end_to_end():
 
 
 @needs_toolchain
-def test_loop_in_out_and_drift_on_the_interpreter():
+def test_loop_in_out_on_the_interpreter():
+    """LOOP IN takes the frame of the nearest point's block; LOOP OUT sends the out record of the
+    block loop from the in and arms that block loop (in block, first out block)."""
     p = _payload()
-    entries = GRIDS["127.96 @0.35"]
-    g = Grid(entries)
-    for pos in (215, 231, 600):
-        m, log = _entry_mem(p, entries)
-        _ring(m, first_frame=pos - 1000)
-        m.write(0x0DDFE100, struct.pack(">h", 1000))
-        _call(p, m, "quant_loops_loop_in")
-        loop_in = g.in_point(pos)
-        assert struct.unpack(">h", m.read(IN_SECTOR, 2))[0] == 1000 + loop_in - pos
-        m.put32(LOOP_IN, loop_in)
-        out_pos = loop_in + 40
-        sector = 1000 + out_pos - pos
-        _call(p, m, "quant_loops_loop_out", 1, 1, 0, 3, stack=(sector, 1, 0, 2))
-        want = g.out_point(loop_in, out_pos)
-        assert _log(m, log) == [1, 1, 0, 3, sector + want - out_pos, 1, 0, 2]
-
-    # drift correction: 128.00 BPM, 4 beats = 140.625 frames -> alternates 140 and 141
-    m, log = _entry_mem(p, GRIDS["128 @0.35"], state=4)
-    m.write(LOOP_ACTIVE, b"\x01")
-    m.put32(LOOP_IN, 26)
-    m.put32(LOOP_OUT, 167)      # 141 frames
-    m.put32(OUT_REQ, 167)
-    m.put32(payloadbuild.lookup(p.symbols, "quant_loops_drift_owner"), 26)
-    m.put32(PLAY_FRAME, 30)
-    _call(p, m, "quant_loops_drift_tick")
-    m.put32(PLAY_FRAME, 165)
-    _call(p, m, "quant_loops_drift_tick")
-    m.put32(PLAY_FRAME, 27)     # wrap!
-    _call(p, m, "quant_loops_drift_tick")
-    assert _log(m, log)[:4] == [0x1E, 0, 166, 1]   # moved out to 166 (140 frames)
+    sym = lambda m, n: m.u32(payloadbuild.lookup(p.symbols, "quant_loops_" + n))
+    for name in ("127.96 @0.35", "128 @0.35"):
+        entries = GRIDS[name]
+        g = Grid(entries)
+        for pos in (215, 231, 600):
+            m, log = _entry_mem(p, entries)
+            _ring(m, first_frame=pos - 1000)
+            m.write(0x0DDFE100, struct.pack(">h", 1000))
+            _call(p, m, "quant_loops_loop_in")
+            loop_in = g.in_point(pos)
+            assert struct.unpack(">h", m.read(IN_SECTOR, 2))[0] == 1000 + loop_in - pos
+            m.put32(LOOP_IN, loop_in)
+            out_pos = loop_in + 40
+            sector = 1000 + out_pos - pos
+            arms = sym(m, "blk_arms")
+            _call(p, m, "quant_loops_loop_out", 1, 1, 0, 3, stack=(sector, 1, 0, 2))
+            want = g.out_point(loop_in, out_pos)
+            assert _log(m, log) == [1, 1, 0, 3, sector + want - out_pos, 1, 0, 2], (name, pos)
+            b = g.out_loop(loop_in, out_pos)
+            assert sym(m, "blk_arms") == arms + 1
+            assert (sym(m, "blk_in"), sym(m, "blk_out0")) == (b[0], b[0] + g.len0(b)), (name, pos)
 
 
 def test_live_loops_on_the_grid(tmp_path):
@@ -567,12 +636,7 @@ def test_live_loops_on_the_grid(tmp_path):
         pytest.skip("cdj350 qemu, flash_cdj350.bin, or baken not available")
 
     patched_flash = tmp_path / "flash_cdj350_quant.bin"
-    quant_mods = [
-        "quant_loops", "quant_loops_auto_send",
-        "quant_loops_loop_in", "quant_loops_loop_in2", "quant_loops_loop_in3",
-        "quant_loops_loop_out", "quant_loops_loop_out2", "quant_loops_loop_out3",
-        "quant_loops_drift",
-    ]
+    quant_mods = MODS
     subprocess.run(
         [sys.executable, str(ROOT / "mods" / "patch_main.py"),
          "--flash", "--model", "cdj350",
@@ -714,11 +778,14 @@ def test_live_loops_on_the_grid(tmp_path):
             f"last_pos={sym('quant_loops_last_pos')} last_in={sym('quant_loops_last_in')} "
             f"last_out={sym('quant_loops_last_out')} trace_tail={trace[-8:]}"
         )
-        grid_frames = [g.f(i) for i in range(len(g.e))]
+        # in records are the frames of the beats' blocks, out records the frames of the first
+        # pass's last block (block loops)
+        grid_frames = [g.pt_in(i, 0) for i in range(len(g.e))]
         snapped_beat = min(range(len(grid_frames)), key=lambda i: abs(grid_frames[i] - lin))
         assert lin == grid_frames[snapped_beat], (diag, grid_frames[snapped_beat])
         if sym("quant_loops_auto_count") > 0:
-            assert lout == grid_frames[snapped_beat + 4], (diag, grid_frames[snapped_beat + 4])
+            want = g.out_frame(g.point_loop(snapped_beat, 0, 64))
+            assert lout == want, (diag, want)
             # Wait for scripted reloop exit
             wait_until(lambda: rb(PLAYER_STATE + rb(SOURCE)) == 3, timeout=60.0)
             # Wait for scripted manual loop_in + loop_out
@@ -726,10 +793,14 @@ def test_live_loops_on_the_grid(tmp_path):
             man_in = rw(LOOP_IN)
             man_out = rw(LOOP_OUT)
             assert man_in in grid_frames, (man_in, grid_frames[:24])
-            assert man_out == g.out_point(man_in, man_out), (man_in, man_out)
+            k = grid_frames.index(man_in)
+            outs = [g.out_frame(g.point_loop(k, 0, 16 * n)) for n in range(1, 5)]
+            assert man_out in outs, (man_in, man_out, outs)
         else:
             assert sym("quant_loops_in_count") >= 1 and sym("quant_loops_out_count") >= 1, diag
-            assert lout == g.out_point(lin, lout), (diag, lout)
+            k = grid_frames.index(lin)
+            outs = [g.out_frame(g.point_loop(k, 0, 16 * n)) for n in range(1, 5)]
+            assert lout in outs, (diag, outs)
     finally:
         try:
             q("quit")
@@ -742,3 +813,105 @@ def test_live_loops_on_the_grid(tmp_path):
             proc.kill()
         qmp.close()
         qs.close()
+
+
+# ---- live helper (also used by test_cdj350_block_loops.py) ----
+
+STICK_BUILDER = (
+    "import sys, wave, numpy as np\n"
+    "sys.path.insert(0, sys.argv[1])\n"
+    "import make_test_stick as stick\n"
+    "def render(track, path):\n"
+    "    rate = 44100\n"
+    "    t = np.arange(round(stick.track_length(track) * rate)) / rate\n"
+    "    phase = t % (60 / track['bpm'])\n"
+    "    sig = 0.5 * np.sin(2 * np.pi * 55 * phase) * np.exp(-25 * phase)\n"
+    "    s = np.rint(sig * 32767).astype('<i2')\n"
+    "    with wave.open(path, 'wb') as w:\n"
+    "        w.setparams((2, 2, rate, 0, 'NONE', 'not compressed'))\n"
+    "        w.writeframes(np.repeat(s, 2).tobytes())\n"
+    "    return True\n"
+    "stick.have_ffmpeg = lambda: True\n"
+    "stick.render_audio = render\n"
+    "stick.file_name = lambda n, title: f'{title}.wav'\n"
+    "raise SystemExit(stick.main(['--spec', sys.argv[2], '--out', sys.argv[3],\n"
+    "    '--image', sys.argv[4], '--size-mb', '32', '--baken', sys.argv[5]]))\n"
+)
+
+
+class LiveDeck:
+    """The cdj350 machine on a flash image with a one-track 128 BPM grid stick, over QMP."""
+
+    def __init__(self, tmp_path, flash, qemu, script):
+        import json
+        import socket
+        spec = tmp_path / "spec.json"
+        spec.write_text(json.dumps({
+            "device_name": "QL350", "playlist": "QL",
+            "tracks": [{"title": "GRID128", "bpm": 128, "first_downbeat": 0.35, "bars": 32}],
+        }))
+        usb = tmp_path / "usb.img"
+        subprocess.run([sys.executable, "-c", STICK_BUILDER, str(ROOT / "scripts" / "media"),
+                        str(spec), str(tmp_path / "stick"), str(usb), str(BAKEN)], check=True, timeout=300)
+        self.tmp = tmp_path
+        env = os.environ.copy()
+        env["CDJ850_PANEL_SCRIPT"] = script
+        qs, qc = socket.socketpair()
+        self.proc = subprocess.Popen(
+            [qemu, "-M", "cdj350", "-display", "none", "-monitor", "none", "-serial", "none",
+             "-icount", "shift=2,align=off,sleep=off",
+             "-drive", f"if=pflash,format=raw,file={flash},snapshot=on",
+             "-drive", f"if=none,id=usbstk,format=raw,file={usb},snapshot=on",
+             "-device", "usb-storage,drive=usbstk,port=1",
+             "-chardev", f"socket,id=qmp,fd={qc.fileno()}", "-mon", "chardev=qmp,mode=control"],
+            stdout=subprocess.DEVNULL, stderr=subprocess.PIPE, pass_fds=(qc.fileno(),), env=env)
+        qc.close()
+        self.qs = qs
+        qs.settimeout(60)
+        self.qmp = qs.makefile("rwb", buffering=0)
+        assert b"QMP" in self.qmp.readline()
+        self.q("qmp_capabilities")
+
+    def q(self, cmd, **args):
+        import json
+        self.qmp.write(json.dumps({"execute": cmd, "arguments": args}).encode() + b"\n")
+        while True:
+            r = json.loads(self.qmp.readline())
+            if "error" in r:
+                raise RuntimeError((cmd, r))
+            if "return" in r:
+                return r["return"]
+
+    def _x(self, addr, unit):
+        out = self.q("human-monitor-command", **{"command-line": f"xp /1{unit}x {addr:#x}"})
+        return int(out.split(":")[-1].strip(), 16)
+
+    def b(self, addr):
+        return self._x(addr, "b")
+
+    def w(self, addr):
+        return self._x(addr, "w")
+
+    def mem(self, addr, size):
+        path = self.tmp / "dump.bin"
+        self.q("pmemsave", val=addr, size=size, filename=str(path))
+        return path.read_bytes()
+
+    def wait(self, pred, timeout):
+        end = time.monotonic() + timeout
+        while time.monotonic() < end:
+            if pred():
+                return
+            assert self.proc.poll() is None, self.proc.stderr.read().decode(errors="replace")
+            time.sleep(0.2)
+        raise TimeoutError("condition not reached in %.0f s" % timeout)
+
+    def close(self):
+        self.proc.kill()
+        self.proc.wait()
+        self.qmp.close()
+        self.qs.close()
+
+
+def live_deck(tmp_path, flash, qemu, script):
+    return LiveDeck(tmp_path, flash, qemu, script)
