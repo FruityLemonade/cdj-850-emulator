@@ -366,6 +366,42 @@
         {
           "address": "0c0af72e",
           "name": "db_results_title_compare"
+        },
+        {
+          "address": "0c06e118",
+          "name": "pcm_feeder_isr"
+        },
+        {
+          "address": "0c0161c8",
+          "name": "isr_loop_out_reached"
+        },
+        {
+          "address": "0c01684e",
+          "name": "loop_divide_feed_reset"
+        },
+        {
+          "address": "0c00a7e0",
+          "name": "loop_out_record_build"
+        },
+        {
+          "address": "0c00b71c",
+          "name": "ring_trim_ahead_usb"
+        },
+        {
+          "address": "0c00b5f4",
+          "name": "ring_trim_ahead_cd"
+        },
+        {
+          "address": "0c00b4a4",
+          "name": "loop_is_short"
+        },
+        {
+          "address": "0c0163d4",
+          "name": "beat_module_reset"
+        },
+        {
+          "address": "0c00920e",
+          "name": "ring_played_count"
         }
       ],
       "labels": [
@@ -808,6 +844,54 @@
         {
           "address": "0c0ae44c",
           "name": "keys_tick_1ms_pool"
+        },
+        {
+          "address": "0c06edb0",
+          "name": "isr_loop_out_reached_pool_fwd"
+        },
+        {
+          "address": "0c06e72c",
+          "name": "isr_loop_out_reached_pool_rev"
+        },
+        {
+          "address": "0c7e4d12",
+          "name": "ring_write_index"
+        },
+        {
+          "address": "0c7e4d14",
+          "name": "ring_oldest_sector"
+        },
+        {
+          "address": "0c7e4d24",
+          "name": "pcm_read_ptr"
+        },
+        {
+          "address": "0c7e4d5c",
+          "name": "loop_in_ring_sector"
+        },
+        {
+          "address": "0c7e4d60",
+          "name": "loop_out_record"
+        },
+        {
+          "address": "0c7e4d70",
+          "name": "loop_out_ring_sector"
+        },
+        {
+          "address": "0c7e4f78",
+          "name": "audio_cd_mode"
+        },
+        {
+          "address": "0c7e4f25",
+          "name": "loop_out_reached_pending"
+        },
+        {
+          "address": "0c7e4f1c",
+          "name": "ring_alt_fill"
+        },
+        {
+          "address": "0c1ab7d4",
+          "name": "beat_module_started"
         }
       ],
       "comments": [
@@ -1069,7 +1153,7 @@
         {
           "address": "0c0d28ac",
           "type": "PLATE",
-          "text": "CDJ-350 state-4 looping key handler (keys_state4_looping), jumped to via pool word 0x0C0C7F7C at 0x0C0C7D92 (redirected by quant_loops_drift for per-pass loop drift correction) [static + emu]."
+          "text": "CDJ-350 state-4 looping key handler (keys_state4_looping), jumped to via pool word 0x0C0C7F7C at 0x0C0C7D92 (redirected by quant_loops_tick: the block-loop owner tick, then this handler) [static + emu]."
         },
         {
           "address": "0c1caae0",
@@ -1134,7 +1218,7 @@
         {
           "address": "0c085584",
           "type": "PLATE",
-          "text": "Logs error code r4 (0x12, 0x15, 0x22, 0x26, 0x90, 0x91, 0x62, 0xF0) in the 16-slot ring at record +4 (index +3); for 0x12/0x15 also copies 4 detail bytes to +0x14..+0x17, then saves. The mods keep their flags in +0x17 (0x50 | off bits)."
+          "text": "Logs error code r4 (0x12, 0x15, 0x22, 0x26, 0x90, 0x91, 0x62, 0xF0) in the 16-slot ring at record +4 (index +3); for 0x12/0x15 also copies 4 detail bytes to +0x14..+0x17, then saves. The mods keep their flags in +0x17 ((0x50 + quantize size << 4) | off bits; size 0..2 = 1, 1/2, 1/4 beat)."
         },
         {
           "address": "0c0c6064",
@@ -1190,6 +1274,41 @@
           "address": "0c02b900",
           "type": "PLATE",
           "text": "Adds one browse reply item: r4 reply, r5 type (0x04 track, 0x5A loaded, 0x5D), r6 attributes, r7 UTF-16 title at +0x14 of the 0x114-byte cache entry (track id at +0). browse prefixes \"*\" to played titles via pool 0x0C02CE98."
+        },
+        {
+          "address": "0c06e118",
+          "type": "PLATE",
+          "text": "PCM feeder ISR body: one block of 84 stereo samples (0x150 bytes, 7 per 0x930-byte sector) per interrupt, from pcm_read_ptr (or loop_divide_feed_pos while a short loop's beat module runs); then pcm_read_ptr += 0x150 and play_sector = (ptr - 0x0C1D7710) / 0x930 (ring of 2400 sectors). Its stack word @(4,r15) is 0 (the track argument of the tail calls). [static + emu]"
+        },
+        {
+          "address": "0c06ebf6",
+          "type": "PRE",
+          "text": "Forward loop-out test: isr_loop_out_reached(play_sector, *loop_out_record, 0) through pool 0x0C06EDB0 (its only reader). On true: in-ring jump to the in record's sector (0x0C06EC6A: play_sector, pcm_read_ptr, loop_divide_feed_reset), then the USB tail ring_trim_ahead_usb(0) (CD: ring_trim_ahead_cd) and beat_lamp_update when beat_module_started is 0. quant_loops redirects the pool to quant_loops_out_isr: block-precise wraps of its grid loops, else this test. The reverse-capable path reads pool 0x0C06E72C at 0x0C06E654 (stock). [static + emu]"
+        },
+        {
+          "address": "0c0161c8",
+          "type": "PLATE",
+          "text": "isr_loop_out_reached(sector, out, z). USB (audio_cd_mode 0, ring_alt_fill 0): when the sector's frame equals out it notes loop_out_ring_sector = sector and 0x0C7E503C = sector + 1 (the beat module's loop end); returns 1 when the frame is past out (or the sector is another track). So a stock loop plays its out frame whole: in 274, out 414 reached ring offset 140 block 6 in the emulator. [static + emu]"
+        },
+        {
+          "address": "0c01684e",
+          "type": "PLATE",
+          "text": "loop_divide_feed_pos = -1: the next feeder block is taken from pcm_read_ptr again. Called after every in-ring jump of the feeder. [static]"
+        },
+        {
+          "address": "0c00a7e0",
+          "type": "PLATE",
+          "text": "Audio task: applies the out request (audio cmd 0x1e, 0x0C7E4D8C) to loop_out_record (+0 frame clamped to the track, +0x10 ring sector from the in sector), copies it to 0x0C7E4D74, then loop_divide_feed_enable = 1 and 0x0C7E4F27 = 1. [static]"
+        },
+        {
+          "address": "0c00b71c",
+          "type": "PLATE",
+          "text": "USB ring housekeeping after a backward jump: buffered-ahead count to 0x0C7E4F36, played count to 0x0C7E4F38; more than 1200 ahead pulls ring_write_index back. Returns 1 when it trimmed (the feeder then sets 0x0C7E4F2D). The CD counterpart is 0x0C00B5F4. [static]"
+        },
+        {
+          "address": "0c00b4a4",
+          "type": "PLATE",
+          "text": "loop_is_short: 1 when loop_out_record - loop in <= 1125 frames (the feeder runs the beat module only for such loops). [static]"
         }
       ]
     }
